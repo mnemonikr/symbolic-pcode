@@ -1,10 +1,10 @@
 use thiserror;
 
 use crate::mem;
-use crate::sleigh::{
+use crate::sym;
+use sla::{
     Address, AddressSpace, AddressSpaceType, LoadImage, OpCode, PcodeInstruction, VarnodeData,
 };
-use crate::sym;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -43,7 +43,7 @@ impl LoadImage for PcodeEmulator {
             .into_iter()
             .map(|x| x.try_into())
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|err| "symbolic byte".to_string())
+            .map_err(|_err| "symbolic byte".to_string())
     }
 }
 

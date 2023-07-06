@@ -1,38 +1,12 @@
 use std::fs;
 
 use pcode::emulator::PcodeEmulator;
-use pcode::ffi::api::LoadImage;
-use pcode::sleigh::{Address, Sleigh, VarnodeData};
 use pcode::sym::SymbolicBitVec;
-
-struct SleighMemoryLoader<'a, T: LoadImage>(std::rc::Weak<&'a T>);
-
-impl<'a, T: LoadImage> Default for SleighMemoryLoader<'a, T> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<'a, T: LoadImage> LoadImage for SleighMemoryLoader<'a, T> {
-    fn load_fill(&self, data: &mut [u8], address: &pcode::ffi::sys::Address) -> Result<(), String> {
-        if let Some(loader) = self.0.upgrade() {
-            todo!()
-        } else {
-            Err("no loader".to_string())
-        }
-    }
-}
+use sla::{Address, Sleigh, VarnodeData};
 
 pub struct Processor<'a> {
     sleigh: Sleigh<'a>,
     emulator: PcodeEmulator,
-    //loader: SleighMemoryLoader<'a, PcodeEmulator>,
-}
-
-struct PcodeInstruction {
-    op_code: pcode::sleigh::OpCode,
-    inputs: Vec<VarnodeData>,
-    output: Option<VarnodeData>,
 }
 
 impl<'a> Processor<'a> {
@@ -132,7 +106,7 @@ pub fn x86_64_sleigh<'a>() -> Sleigh<'a> {
     let sleigh_spec =
         fs::read_to_string("tests/data/x86-64.sla").expect("failed to read processor spec file");
     let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+        fs::read_to_string("sla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
             .expect("failed to read processor spec file");
     sleigh
         .initialize(&sleigh_spec, &processor_spec)
