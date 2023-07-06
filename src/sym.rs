@@ -155,6 +155,35 @@ impl<const N: usize> SymbolicBitBuf<N> {
     }
 }
 
+impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        let mut bits: [std::mem::MaybeUninit<SymbolicBit>; N] =
+            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+
+        self.bits
+            .into_iter()
+            .zip(rhs.bits.into_iter())
+            .enumerate()
+            .for_each(|(i, (lhs, rhs))| {
+                bits[i].write(lhs & rhs);
+            });
+
+        Self {
+            // SAFETY: Array values are initialized, now safe to convert from array of MaybeUninits
+            // to array of initialized values.
+            bits: unsafe { (&bits as *const _ as *const [SymbolicBit; N]).read() },
+        }
+    }
+}
+
+impl<const N: usize> From<[SymbolicBit; N]> for SymbolicBitBuf<N> {
+    fn from(bits: [SymbolicBit; N]) -> Self {
+        Self { bits }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SymbolicBitVec {
     bits: Vec<SymbolicBit>,
@@ -508,6 +537,14 @@ impl std::ops::Deref for SymbolicBitVec {
 
     fn deref(&self) -> &Self::Target {
         &self.bits.as_slice()
+    }
+}
+
+impl<const N: usize> std::ops::Deref for SymbolicBitBuf<N> {
+    type Target = [SymbolicBit];
+
+    fn deref(&self) -> &Self::Target {
+        &self.bits
     }
 }
 

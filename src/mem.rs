@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use thiserror;
 
-use crate::sleigh::{Address, AddressSpace, AddressSpaceType, VarnodeData};
 use crate::sym;
 use crate::sym::{ConcretizationError, SymbolicBitVec};
+use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
 
 type Result<T> = std::result::Result<T, Error>;
 

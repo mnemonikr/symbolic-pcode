@@ -289,15 +289,15 @@ impl<'a> Sleigh<'a> {
 
         let mut store = sys::new_document_storage();
         sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec)
-            .map_err(|err| "Failed to parse sleigh spec")?;
+            .map_err(|_err| "Failed to parse sleigh spec")?;
 
         sys::parse_document_and_register_root(store.pin_mut(), &processor_spec)
-            .map_err(|err| "Failed to parse processor spec")?;
+            .map_err(|_err| "Failed to parse processor spec")?;
 
         self.sleigh
             .pin_mut()
             .initialize(store.pin_mut())
-            .map_err(|err| "Failed to initialize sleigh")?;
+            .map_err(|_err| "Failed to initialize sleigh")?;
 
         self.sleigh
             .pin_mut()
@@ -384,7 +384,7 @@ impl<'a> Sleigh<'a> {
         let bytes_consumed = self
             .sleigh
             .print_assembly(&mut emitter, address.as_ref().unwrap())
-            .map_err(|err| "Failed to decode instruction")?;
+            .map_err(|_err| "Failed to decode instruction")?;
 
         let data_read = VarnodeData {
             address: (&*address).into(),
