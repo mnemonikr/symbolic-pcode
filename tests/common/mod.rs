@@ -1,8 +1,8 @@
 use std::fs;
 
 use pcode::emulator::PcodeEmulator;
-use pcode::sym::SymbolicBitVec;
 use sla::{Address, Sleigh, VarnodeData};
+use sym::SymbolicBitVec;
 
 pub struct Processor<'a> {
     sleigh: Sleigh<'a>,

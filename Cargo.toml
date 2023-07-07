@@ -1,5 +1,5 @@
 [workspace]
-members = ["sla"]
+members = ["sla", "sym"]
 
 [package]
 name = "pcode"
@@ -8,4 +8,5 @@ edition = "2021"
 
 [dependencies]
 sla = { path = "sla" }
+sym = { path = "sym" }
 thiserror = "1.0"

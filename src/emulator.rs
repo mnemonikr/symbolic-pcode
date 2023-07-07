@@ -1,10 +1,10 @@
 use thiserror;
 
 use crate::mem;
-use crate::sym;
 use sla::{
     Address, AddressSpace, AddressSpaceType, LoadImage, OpCode, PcodeInstruction, VarnodeData,
 };
+use sym;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
