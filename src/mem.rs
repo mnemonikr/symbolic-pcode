@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use thiserror;
 
-use crate::sym;
-use crate::sym::{ConcretizationError, SymbolicBitVec};
 use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
+use sym;
+use sym::{ConcretizationError, SymbolicBitVec};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -101,7 +101,7 @@ impl Memory {
     }
 
     fn read_const(&self, input: &VarnodeData) -> Vec<SymbolicBitVec> {
-        sym::SymbolicBitVec::constant(input.address.offset, 8 * input.size).into_parts(8)
+        SymbolicBitVec::constant(input.address.offset, 8 * input.size).into_parts(8)
     }
 
     pub fn read_bytes_owned(&self, input: &VarnodeData) -> Result<Vec<SymbolicBitVec>> {

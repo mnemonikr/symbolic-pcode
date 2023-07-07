@@ -480,8 +480,8 @@ mod tests {
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x0f\xaf\xc0\x5d\xc3".to_vec());
         let mut sleigh = Sleigh::new();
-        let sleigh_spec =
-            fs::read_to_string("tests/data/x86-64.sla").expect("Failed to read sleigh spec file");
+        let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
+            .expect("Failed to read sleigh spec file");
         let mut context = HashMap::new();
         context.insert("opsize".to_string(), 1);
         context.insert("addrsize".to_string(), 2);
@@ -514,7 +514,7 @@ mod tests {
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
         let mut sleigh = Sleigh::new();
-        let sleigh_spec = fs::read_to_string("tests/data/x86-64.sla")
+        let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     pub fn register_from_name() {
         let mut sleigh = Sleigh::new();
-        let sleigh_spec = fs::read_to_string("tests/data/x86-64.sla")
+        let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
