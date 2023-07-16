@@ -60,9 +60,11 @@ This section document which p-code operations are currently supported by the emu
 | `INT_OR`         | ⬜     |
 | `INT_LEFT`       | ⬜     |
 | `INT_RIGHT`      | ⬜     |
+| `INT_SRIGHT`     | ⬜     |
 | `INT_MULT`       | ⬜     |
 | `INT_DIV`        | ⬜     |
 | `INT_REM`        | ⬜     |
+| `INT_SDIV`       | ⬜     |
 | `INT_SREM`       | ⬜     |
 
 ## Boolean operations
