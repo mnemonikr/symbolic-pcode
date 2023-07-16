@@ -45,5 +45,8 @@ jobs:
               printf "%s %s " -object $file; \
             done \
           ) \
-        --instr-profile=merged.profdata --summary-only
+        --instr-profile=merged.profdata \
+        --summary-only \
+        --use-color \
+        --ignore-filename-regex='/.cargo/registry'
 
