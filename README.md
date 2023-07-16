@@ -4,6 +4,81 @@ Emulate instructions for Ghidra-supported processors using concrete or symbolic 
 
 TODO
 
+# Supported operations
+
+| Opcode      | Status |
+| ----------- | ------ |
+| `COPY`      | - [x]  |
+| `LOAD`      | - [x]  |
+| `STORE`     | - [x]  |
+| `BRANCH`    | - [ ]  |
+| `CBRANCH`   | - [ ]  |
+| `BRANCHIND` | - [x]  |
+| `CALL`      | - [ ]  |
+| `CALLIND`   | - [ ]  |
+| `RETURN`    | - [x]  |
+| `PIECE`     | - [ ]  |
+| `SUBPIECE`  | - [ ]  |
+| `POPCOUNT`  | - [x]  |
+
+## Integer operations
+
+| Opcode           | Status |
+| ---------------- | ------ |
+| `INT_EQUAL`      | - [x]  |
+| `INT_NOTEQUAL`   | - [x]  |
+| `INT_LESS`       | - [x]  |
+| `INT_SLESS`      | - [x]  |
+| `INT_LESSEQUAL`  | - [x]  |
+| `INT_SLESSEQUAL` | - [x]  |
+| `INT_ZEXT`       | - [x]  |
+| `INT_SEXT`       | - [x]  |
+| `INT_ADD`        | - [x]  |
+| `INT_SUB`        | - [x]  |
+| `INT_CARRY`      | - [x]  |
+| `INT_SCARRY`     | - [ ]  |
+| `INT_SBORROW`    | - [ ]  |
+| `INT_2COMP`      | - [x]  |
+| `INT_NEGATE`     | - [x]  |
+| `INT_XOR`        | - [x]  |
+| `INT_OR`         | - [x]  |
+| `INT_LEFT`       | - [ ]  |
+| `INT_RIGHT`      | - [ ]  |
+| `INT_MULT`       | - [ ]  |
+| `INT_DIV`        | - [ ]  |
+| `INT_REM`        | - [ ]  |
+| `INT_SREM`       | - [ ]  |
+
+## Boolean operations
+
+| Opcode        | Status |
+| ------------- | ------ |
+| `BOOL_NEGATE` | - [x]  |
+| `BOOL_XOR`    | - [x]  |
+| `BOOL_AND`    | - [x]  |
+| `BOOL_OR`     | - [x]  |
+
+## Floating point operations
+
+| Opcode            | Status  |
+| ----------------- | ------- |
+| `FLOAT_LESS`      | - [ ]   |
+| `FLOAT_LESSEQUAL` | - [ ]   |
+| `FLOAT_ADD`       | - [ ]   |
+| `FLOAT_SUB`       | - [ ]   |
+| `FLOAT_MULT`      | - [ ]   |
+| `FLOAT_DIV`       | - [ ]   |
+| `FLOAT_NEG`       | - [ ]   |
+| `FLOAT_ABS`       | - [ ]   |
+| `FLOAT_SQRT`      | - [ ]   |
+| `FLOAT_CEIL`      | - [ ]   |
+| `FLOAT_FLOOR`     | - [ ]   |
+| `FLOAT_ROUND`     | - [ ]   |
+| `FLOAT_NAN`       | - [ ]   |
+| `INT2FLOAT`       | - [ ]   |
+| `FLOAT2INT`       | - [ ]   |
+| `TRUNC`           | - [ ]   |
+
 # How it works
 
 ## Native code to p-code
