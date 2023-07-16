@@ -25,6 +25,8 @@ jobs:
     - name: Run coverage report
       run: |
         rustup component add llvm-tools-preview
+        rustup show home
+        rustup show home | xargs -I '{}' find {} -name 'llvm-profdata'
         PATH=$(rustup show home | xargs -I '{}' find {} -name 'llvm-profdata' | xargs -I '{}' dirname {}):$PATH
         RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib 2>&1 > /dev/null \
           | sed -ne 's/^[ ]*Running unittests [^ ]* (\([^)]*\))$/\1/p' \
