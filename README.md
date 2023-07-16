@@ -4,6 +4,97 @@ Emulate instructions for Ghidra-supported processors using concrete or symbolic 
 
 TODO
 
+# P-code operations
+
+This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
+
+## Memory operations
+
+| Opcode      | Status |
+| ----------- | ------ |
+| `COPY`      | ✅     |
+| `LOAD`      | ✅     |
+| `STORE`     | ✅     |
+
+## Control flow operations
+
+| Opcode      | Status |
+| ----------- | ------ |
+| `BRANCH`    | ⬜     |
+| `CBRANCH`   | ⬜     |
+| `BRANCHIND` | ⬜     |
+| `CALL`      | ⬜     |
+| `CALLIND`   | ⬜     |
+| `RETURN`    | ✅     |
+
+
+## General operations
+
+| Opcode     | Status |
+| ---------- | ------ |
+| `PIECE`    | ⬜     |
+| `SUBPIECE` | ✅     |
+| `POPCOUNT` | ✅     |
+
+## Integer operations
+
+| Opcode           | Status |
+| ---------------- | ------ |
+| `INT_EQUAL`      | ✅     |
+| `INT_NOTEQUAL`   | ✅     |
+| `INT_LESS`       | ⬜     |
+| `INT_SLESS`      | ✅     |
+| `INT_LESSEQUAL`  | ⬜     |
+| `INT_SLESSEQUAL` | ⬜     |
+| `INT_ZEXT`       | ✅     |
+| `INT_SEXT`       | ✅     |
+| `INT_ADD`        | ✅     |
+| `INT_SUB`        | ✅     |
+| `INT_CARRY`      | ✅     |
+| `INT_SCARRY`     | ✅     |
+| `INT_SBORROW`    | ⬜     |
+| `INT_2COMP`      | ✅     |
+| `INT_NEGATE`     | ⬜     |
+| `INT_XOR`        | ⬜     |
+| `INT_AND`        | ✅     |
+| `INT_OR`         | ⬜     |
+| `INT_LEFT`       | ⬜     |
+| `INT_RIGHT`      | ⬜     |
+| `INT_MULT`       | ⬜     |
+| `INT_DIV`        | ⬜     |
+| `INT_REM`        | ⬜     |
+| `INT_SREM`       | ⬜     |
+
+## Boolean operations
+
+| Opcode        | Status |
+| ------------- | ------ |
+| `BOOL_NEGATE` | ⬜     |
+| `BOOL_XOR`    | ⬜     |
+| `BOOL_AND`    | ⬜     |
+| `BOOL_OR`     | ⬜     |
+
+## Floating point operations
+
+| Opcode            | Status  |
+| ----------------- | ------- |
+| `FLOAT_LESS`      | ⬜      |
+| `FLOAT_LESSEQUAL` | ⬜      |
+| `FLOAT_ADD`       | ⬜      |
+| `FLOAT_SUB`       | ⬜      |
+| `FLOAT_MULT`      | ⬜      |
+| `FLOAT_DIV`       | ⬜      |
+| `FLOAT_NEG`       | ⬜      |
+| `FLOAT_ABS`       | ⬜      |
+| `FLOAT_SQRT`      | ⬜      |
+| `FLOAT_CEIL`      | ⬜      |
+| `FLOAT_FLOOR`     | ⬜      |
+| `FLOAT_ROUND`     | ⬜      |
+| `FLOAT_NAN`       | ⬜      |
+| `INT2FLOAT`       | ⬜      |
+| `FLOAT2INT`       | ⬜      |
+| `TRUNC`           | ⬜      |
+
 # How it works
 
 ## Native code to p-code
