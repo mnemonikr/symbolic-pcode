@@ -1034,15 +1034,4 @@ mod tests {
         assert_eq!(branch_addr, expected_addr);
         Ok(())
     }
-
-    // CPUI_COPY ✅
-    // CPUI_INT_SUB ✅
-    // CPUI_STORE ✅
-    // CPUI_INT_ADD ✅
-    // CPUI_LOAD ✅
-    // CPUI_INT_ZEXT ✅
-    // CPUI_INT_SEXT ✅
-    // CPUI_SUBPIECE ✅
-    // CPUI_INT_NOTEQUAL ✅
-    // CPUI_RETURN ✅
 }
