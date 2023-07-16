@@ -4,7 +4,9 @@ Emulate instructions for Ghidra-supported processors using concrete or symbolic 
 
 TODO
 
-# Supported operations
+# P-code operations
+
+This section document which p-code operations are currently supported. Emulation of unsupported operations will trigger a panic.
 
 ## Memory operations
 
