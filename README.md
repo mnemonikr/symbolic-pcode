@@ -6,78 +6,82 @@ TODO
 
 # Supported operations
 
+## Memory operations
+
+## Control flow operations
+
 | Opcode      | Status |
 | ----------- | ------ |
-| `COPY`      | - [x]  |
-| `LOAD`      | - [x]  |
-| `STORE`     | - [x]  |
-| `BRANCH`    | - [ ]  |
-| `CBRANCH`   | - [ ]  |
-| `BRANCHIND` | - [x]  |
-| `CALL`      | - [ ]  |
-| `CALLIND`   | - [ ]  |
-| `RETURN`    | - [x]  |
-| `PIECE`     | - [ ]  |
-| `SUBPIECE`  | - [ ]  |
-| `POPCOUNT`  | - [x]  |
+| `COPY`      | ✅  |
+| `LOAD`      | ✅  |
+| `STORE`     | ✅  |
+| `BRANCH`    | ⬜  |
+| `CBRANCH`   | ⬜  |
+| `BRANCHIND` | ✅  |
+| `CALL`      | ⬜  |
+| `CALLIND`   | ⬜  |
+| `RETURN`    | ✅  |
+| `PIECE`     | ⬜  |
+| `SUBPIECE`  | ⬜  |
+| `POPCOUNT`  | ✅  |
 
 ## Integer operations
 
 | Opcode           | Status |
 | ---------------- | ------ |
-| `INT_EQUAL`      | - [x]  |
-| `INT_NOTEQUAL`   | - [x]  |
-| `INT_LESS`       | - [x]  |
-| `INT_SLESS`      | - [x]  |
-| `INT_LESSEQUAL`  | - [x]  |
-| `INT_SLESSEQUAL` | - [x]  |
-| `INT_ZEXT`       | - [x]  |
-| `INT_SEXT`       | - [x]  |
-| `INT_ADD`        | - [x]  |
-| `INT_SUB`        | - [x]  |
-| `INT_CARRY`      | - [x]  |
-| `INT_SCARRY`     | - [ ]  |
-| `INT_SBORROW`    | - [ ]  |
-| `INT_2COMP`      | - [x]  |
-| `INT_NEGATE`     | - [x]  |
-| `INT_XOR`        | - [x]  |
-| `INT_OR`         | - [x]  |
-| `INT_LEFT`       | - [ ]  |
-| `INT_RIGHT`      | - [ ]  |
-| `INT_MULT`       | - [ ]  |
-| `INT_DIV`        | - [ ]  |
-| `INT_REM`        | - [ ]  |
-| `INT_SREM`       | - [ ]  |
+| `INT_EQUAL`      | ✅  |
+| `INT_NOTEQUAL`   | ✅  |
+| `INT_LESS`       | ✅  |
+| `INT_SLESS`      | ✅  |
+| `INT_LESSEQUAL`  | ✅  |
+| `INT_SLESSEQUAL` | ✅  |
+| `INT_ZEXT`       | ✅  |
+| `INT_SEXT`       | ✅  |
+| `INT_ADD`        | ✅  |
+| `INT_SUB`        | ✅  |
+| `INT_CARRY`      | ✅  |
+| `INT_SCARRY`     | ⬜  |
+| `INT_SBORROW`    | ⬜  |
+| `INT_2COMP`      | ✅  |
+| `INT_NEGATE`     | ✅  |
+| `INT_XOR`        | ✅  |
+| `INT_OR`         | ✅  |
+| `INT_LEFT`       | ⬜  |
+| `INT_RIGHT`      | ⬜  |
+| `INT_MULT`       | ⬜  |
+| `INT_DIV`        | ⬜  |
+| `INT_REM`        | ⬜  |
+| `INT_SREM`       | ⬜  |
 
 ## Boolean operations
 
 | Opcode        | Status |
 | ------------- | ------ |
-| `BOOL_NEGATE` | - [x]  |
-| `BOOL_XOR`    | - [x]  |
-| `BOOL_AND`    | - [x]  |
-| `BOOL_OR`     | - [x]  |
+| `BOOL_NEGATE` | ✅  |
+| `BOOL_XOR`    | ✅  |
+| `BOOL_AND`    | ✅  |
+| `BOOL_OR`     | ✅  |
 
 ## Floating point operations
 
 | Opcode            | Status  |
 | ----------------- | ------- |
-| `FLOAT_LESS`      | - [ ]   |
-| `FLOAT_LESSEQUAL` | - [ ]   |
-| `FLOAT_ADD`       | - [ ]   |
-| `FLOAT_SUB`       | - [ ]   |
-| `FLOAT_MULT`      | - [ ]   |
-| `FLOAT_DIV`       | - [ ]   |
-| `FLOAT_NEG`       | - [ ]   |
-| `FLOAT_ABS`       | - [ ]   |
-| `FLOAT_SQRT`      | - [ ]   |
-| `FLOAT_CEIL`      | - [ ]   |
-| `FLOAT_FLOOR`     | - [ ]   |
-| `FLOAT_ROUND`     | - [ ]   |
-| `FLOAT_NAN`       | - [ ]   |
-| `INT2FLOAT`       | - [ ]   |
-| `FLOAT2INT`       | - [ ]   |
-| `TRUNC`           | - [ ]   |
+| `FLOAT_LESS`      | ⬜   |
+| `FLOAT_LESSEQUAL` | ⬜   |
+| `FLOAT_ADD`       | ⬜   |
+| `FLOAT_SUB`       | ⬜   |
+| `FLOAT_MULT`      | ⬜   |
+| `FLOAT_DIV`       | ⬜   |
+| `FLOAT_NEG`       | ⬜   |
+| `FLOAT_ABS`       | ⬜   |
+| `FLOAT_SQRT`      | ⬜   |
+| `FLOAT_CEIL`      | ⬜   |
+| `FLOAT_FLOOR`     | ⬜   |
+| `FLOAT_ROUND`     | ⬜   |
+| `FLOAT_NAN`       | ⬜   |
+| `INT2FLOAT`       | ⬜   |
+| `FLOAT2INT`       | ⬜   |
+| `TRUNC`           | ⬜   |
 
 # How it works
 
