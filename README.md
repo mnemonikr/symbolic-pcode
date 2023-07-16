@@ -6,7 +6,7 @@ TODO
 
 # P-code operations
 
-This section document which p-code operations are currently supported. Emulation of unsupported operations will trigger a panic.
+This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
 
 ## Memory operations
 
@@ -22,7 +22,7 @@ This section document which p-code operations are currently supported. Emulation
 | ----------- | ------ |
 | `BRANCH`    | ⬜     |
 | `CBRANCH`   | ⬜     |
-| `BRANCHIND` | ✅     |
+| `BRANCHIND` | ⬜     |
 | `CALL`      | ⬜     |
 | `CALLIND`   | ⬜     |
 | `RETURN`    | ✅     |
@@ -33,7 +33,7 @@ This section document which p-code operations are currently supported. Emulation
 | Opcode     | Status |
 | ---------- | ------ |
 | `PIECE`    | ⬜     |
-| `SUBPIECE` | ⬜     |
+| `SUBPIECE` | ✅     |
 | `POPCOUNT` | ✅     |
 
 ## Integer operations
@@ -42,21 +42,22 @@ This section document which p-code operations are currently supported. Emulation
 | ---------------- | ------ |
 | `INT_EQUAL`      | ✅     |
 | `INT_NOTEQUAL`   | ✅     |
-| `INT_LESS`       | ✅     |
+| `INT_LESS`       | ⬜     |
 | `INT_SLESS`      | ✅     |
-| `INT_LESSEQUAL`  | ✅     |
-| `INT_SLESSEQUAL` | ✅     |
+| `INT_LESSEQUAL`  | ⬜     |
+| `INT_SLESSEQUAL` | ⬜     |
 | `INT_ZEXT`       | ✅     |
 | `INT_SEXT`       | ✅     |
 | `INT_ADD`        | ✅     |
 | `INT_SUB`        | ✅     |
 | `INT_CARRY`      | ✅     |
-| `INT_SCARRY`     | ⬜     |
+| `INT_SCARRY`     | ✅     |
 | `INT_SBORROW`    | ⬜     |
 | `INT_2COMP`      | ✅     |
-| `INT_NEGATE`     | ✅     |
-| `INT_XOR`        | ✅     |
-| `INT_OR`         | ✅     |
+| `INT_NEGATE`     | ⬜     |
+| `INT_XOR`        | ⬜     |
+| `INT_AND`        | ✅     |
+| `INT_OR`         | ⬜     |
 | `INT_LEFT`       | ⬜     |
 | `INT_RIGHT`      | ⬜     |
 | `INT_MULT`       | ⬜     |
@@ -68,10 +69,10 @@ This section document which p-code operations are currently supported. Emulation
 
 | Opcode        | Status |
 | ------------- | ------ |
-| `BOOL_NEGATE` | ✅     |
-| `BOOL_XOR`    | ✅     |
-| `BOOL_AND`    | ✅     |
-| `BOOL_OR`     | ✅     |
+| `BOOL_NEGATE` | ⬜     |
+| `BOOL_XOR`    | ⬜     |
+| `BOOL_AND`    | ⬜     |
+| `BOOL_OR`     | ⬜     |
 
 ## Floating point operations
 
