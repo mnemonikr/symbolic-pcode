@@ -22,3 +22,27 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --workspace --verbose
+    - name: Run coverage report
+      run: |
+        rustup component add llvm-tools-preview
+        PATH=$(rustup show home | xargs -I '{}' find {} -name 'llvm-profdata' | xargs -I '{}' dirname {}):$PATH
+        RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib
+        llvm-profdata merge -sparse default_*.profraw -o merged.profdata
+        llvm-cov report \
+          $( \
+            for file in \
+              $( \
+                RUSTFLAGS="-C instrument-coverage" \
+                  cargo test --workspace --lib --no-run --message-format=json \
+                    | jq -r "select(.profile.test == true) | .filenames[]" \
+                    | grep -v dSYM - \
+              ); \
+            do \
+              printf "%s %s " -object $file; \
+            done \
+          ) \
+        --instr-profile=merged.profdata \
+        --summary-only \
+        --use-color \
+        --ignore-filename-regex='/.cargo/registry'
+
