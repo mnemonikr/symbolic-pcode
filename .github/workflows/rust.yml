@@ -24,6 +24,7 @@ jobs:
       run: cargo test --workspace --verbose
     - name: Run coverage report
       run: |
+        rustup component install llvm-tools-preview
         RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib 2>&1 > /dev/null \
           | sed -ne 's/^[ ]*Running unittests [^ ]* (\([^)]*\))$/\1/p' \
           | tr '\n' ' ' \
