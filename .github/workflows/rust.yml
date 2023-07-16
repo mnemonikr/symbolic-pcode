@@ -30,10 +30,20 @@ jobs:
         rustup show home | xargs -I '{}' find {} -name 'llvm-profdata' | xargs -I '{}' dirname {}
         PATH=$(rustup show home | xargs -I '{}' find {} -name 'llvm-profdata' | xargs -I '{}' dirname {}):$PATH
         echo $PATH
-        RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib 2>&1 > /dev/null \
-          | sed -ne 's/^[ ]*Running unittests [^ ]* (\([^)]*\))$/\1/p' \
-          | tr '\n' ' ' \
-          | sed -e 's/target/--object target/g' \
-          > object_args
+        RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib
         llvm-profdata merge -sparse default_*.profraw -o merged.profdata
-        cat object_args | xargs llvm-cov report --use-color --ignore-filename-regex='/.cargo/registry' --instr-profile=merged.profdata
+        llvm-cov report \
+          $( \
+            for file in \
+              $( \
+                RUSTFLAGS="-C instrument-coverage" \
+                  cargo test --workspace --lib --no-run --message-format=json \
+                    | jq -r "select(.profile.test == true) | .filenames[]" \
+                    | grep -v dSYM - \
+              ); \
+            do \
+              printf "%s %s " -object $file; \
+            done \
+          ) \
+        --instr-profile=merged.profdata --summary-only
+
