@@ -22,3 +22,12 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --workspace --verbose
+    - name: Run coverage report
+      run: |
+        RUSTFLAGS="-C instrument-coverage" cargo test --workspace --lib 2>&1 > /dev/null \
+          | sed -ne 's/^[ ]*Running unittests [^ ]* (\([^)]*\))$/\1/p' \
+          | tr '\n' ' ' \
+          | sed -e 's/target/--object target/g' \
+          > object_args
+        llvm-profdata merge -sparse default_*.profraw -o merged.profdata
+        cat object_args | xargs llvm-cov report --use-color --ignore-filename-regex='/.cargo/registry' --instr-profile=merged.profdata
