@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use thiserror;
 
 use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
-use sym;
-use sym::{ConcretizationError, SymbolicBitVec};
+use sym::{self, ConcretizationError, SymbolicBitVec};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -13,7 +12,7 @@ pub enum Error {
     #[error("space id {0:0width$x} does not refer to a known address space", width = 2 * std::mem::size_of::<usize>())]
     UnknownAddressSpace(usize),
 
-    #[error("address {address} address space is not {expected:?}")]
+    #[error("address space for {address} does not match expected: {expected:?}")]
     InvalidAddressSpaceType {
         address: Address,
         expected: AddressSpaceType,
@@ -44,6 +43,13 @@ impl AddressSpaceData {
             data: Default::default(),
         }
     }
+
+    pub fn read_bytes(
+        &self,
+        range: impl std::ops::RangeBounds<usize>,
+    ) -> impl Iterator<Item = (&usize, &SymbolicBitVec)> {
+        self.data.range(range)
+    }
 }
 
 pub struct Memory {
@@ -67,23 +73,32 @@ impl Memory {
             .get(&space_id)
             .ok_or(Error::UnknownAddressSpace(space_id))?;
 
-        let mut data = Vec::with_capacity(input.size as usize);
-        for offset in input.range() {
-            data.push(memory.data.get(&offset).ok_or_else(|| {
-                Error::UndefinedData(Address {
-                    offset,
-                    address_space: input.address.address_space.clone(),
-                })
-            })?);
-        }
+        // Collect into a Vec or return the first undefined offset
+        let result: std::result::Result<Vec<&SymbolicBitVec>, &usize> = memory
+            .read_bytes(input.range())
+            .enumerate()
+            .map(|(i, (offset, v))| {
+                if *offset == i + input.address.offset {
+                    Ok(v)
+                } else {
+                    // Undefined offset
+                    Err(offset)
+                }
+            })
+            .collect();
 
-        Ok(data)
+        result.map_err(|&offset| {
+            Error::UndefinedData(Address {
+                offset,
+                address_space: input.address.address_space.clone(),
+            })
+        })
     }
 
     pub fn read_concrete_value<T>(&self, input: &VarnodeData) -> Result<T>
     where
         T: TryFrom<usize>,
-        <T as TryFrom<usize>>::Error: std::error::Error,
+        <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
         // TODO Handle this result properly
         sym::concretize_bit_iter(
@@ -115,23 +130,26 @@ impl Memory {
             .get(&space_id)
             .ok_or(Error::UnknownAddressSpace(space_id))?;
 
-        let mut data = Vec::with_capacity(input.size as usize);
-        for offset in input.range() {
-            data.push(
-                memory
-                    .data
-                    .get(&offset)
-                    .ok_or_else(|| {
-                        Error::UndefinedData(Address {
-                            offset,
-                            address_space: input.address.address_space.clone(),
-                        })
-                    })
-                    .map(SymbolicBitVec::clone)?,
-            );
-        }
+        // Collect into a Vec or return the first undefined offset
+        let result: std::result::Result<Vec<SymbolicBitVec>, &usize> = memory
+            .read_bytes(input.range())
+            .enumerate()
+            .map(|(i, (offset, v))| {
+                if *offset == i + input.address.offset {
+                    Ok(v.clone())
+                } else {
+                    // Undefined offset
+                    Err(offset)
+                }
+            })
+            .collect();
 
-        Ok(data)
+        result.map_err(|&offset| {
+            Error::UndefinedData(Address {
+                offset,
+                address_space: input.address.address_space.clone(),
+            })
+        })
     }
 
     pub fn write_bytes(&mut self, input: Vec<SymbolicBitVec>, output: &VarnodeData) -> Result<()> {
@@ -173,12 +191,14 @@ impl Memory {
             .map(|data| &data.address_space)
     }
 
+    /// Dumps the contents of memory to stdout.
     pub fn dump(&self) {
         for addr_space_data in self.data.values() {
             println!(
                 "Begin memory dump for {}",
                 addr_space_data.address_space.name
             );
+
             for key in addr_space_data.data.keys() {
                 let byte: u8 = addr_space_data
                     .data
@@ -188,7 +208,64 @@ impl Memory {
                     .expect("failed to convert to byte");
                 println!("{key:016x}: {byte:02x}");
             }
+
             println!("End memory dump for {}", addr_space_data.address_space.name);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn address_space(id: usize) -> AddressSpace {
+        AddressSpace {
+            id,
+            name: String::from("test_space"),
+            word_size: 1,
+            address_size: 8, // 64-bit
+            space_type: AddressSpaceType::Processor,
+            big_endian: false,
+        }
+    }
+
+    fn const_space() -> AddressSpace {
+        AddressSpace {
+            id: 0,
+            name: String::from("constant_space"),
+            word_size: 1,
+            address_size: 8, // 64-bit
+            space_type: AddressSpaceType::Constant,
+            big_endian: false,
+        }
+    }
+
+    #[test]
+    fn read_and_write() -> Result<()> {
+        let addr_space = address_space(0);
+        let varnode = VarnodeData {
+            address: Address {
+                offset: 0,
+                address_space: addr_space.clone(),
+            },
+            size: 8,
+        };
+        let value = SymbolicBitVec::constant(0x0123456789abcdef, 64).into_parts(8);
+
+        // Read and write value into memory
+        let mut memory = Memory::new(vec![addr_space]);
+        memory.write_bytes(value.clone(), &varnode)?;
+        let read_value = memory.read_bytes(&varnode)?;
+
+        // Confirm read value matches written value
+        assert_eq!(read_value.len(), value.len());
+        for (expected, actual) in value.into_iter().zip(read_value.into_iter()) {
+            assert_eq!(
+                actual.clone().equals(expected),
+                sym::SymbolicBit::Literal(true)
+            );
+        }
+
+        Ok(())
     }
 }
