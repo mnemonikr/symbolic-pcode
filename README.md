@@ -8,94 +8,34 @@ TODO
 
 This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
 
-## Memory operations
-
-| Opcode      | Status |
-| ----------- | ------ |
-| `COPY`      | ✅     |
-| `LOAD`      | ✅     |
-| `STORE`     | ✅     |
-
-## Control flow operations
-
-| Opcode      | Status |
-| ----------- | ------ |
-| `BRANCH`    | ⬜     |
-| `CBRANCH`   | ⬜     |
-| `BRANCHIND` | ✅     |
-| `CALL`      | ⬜     |
-| `CALLIND`   | ⬜     |
-| `RETURN`    | ✅     |
-
-
-## General operations
-
-| Opcode     | Status |
-| ---------- | ------ |
-| `PIECE`    | ⬜     |
-| `SUBPIECE` | ✅     |
-| `POPCOUNT` | ✅     |
-
-## Integer operations
-
-| Opcode           | Status |
-| ---------------- | ------ |
-| `INT_EQUAL`      | ✅     |
-| `INT_NOTEQUAL`   | ✅     |
-| `INT_LESS`       | ⬜     |
-| `INT_SLESS`      | ✅     |
-| `INT_LESSEQUAL`  | ⬜     |
-| `INT_SLESSEQUAL` | ⬜     |
-| `INT_ZEXT`       | ✅     |
-| `INT_SEXT`       | ✅     |
-| `INT_ADD`        | ✅     |
-| `INT_SUB`        | ✅     |
-| `INT_CARRY`      | ✅     |
-| `INT_SCARRY`     | ✅     |
-| `INT_SBORROW`    | ⬜     |
-| `INT_2COMP`      | ✅     |
-| `INT_NEGATE`     | ✅     |
-| `INT_XOR`        | ✅     |
-| `INT_AND`        | ✅     |
-| `INT_OR`         | ✅     |
-| `INT_LEFT`       | ⬜     |
-| `INT_RIGHT`      | ⬜     |
-| `INT_SRIGHT`     | ⬜     |
-| `INT_MULT`       | ⬜     |
-| `INT_DIV`        | ⬜     |
-| `INT_REM`        | ⬜     |
-| `INT_SDIV`       | ⬜     |
-| `INT_SREM`       | ⬜     |
-
-## Boolean operations
-
-| Opcode        | Status |
-| ------------- | ------ |
-| `BOOL_NEGATE` | ✅     |
-| `BOOL_XOR`    | ✅     |
-| `BOOL_AND`    | ✅     |
-| `BOOL_OR`     | ✅     |
-
-## Floating point operations
-
-| Opcode            | Status  |
-| ----------------- | ------- |
-| `FLOAT_LESS`      | ⬜      |
-| `FLOAT_LESSEQUAL` | ⬜      |
-| `FLOAT_ADD`       | ⬜      |
-| `FLOAT_SUB`       | ⬜      |
-| `FLOAT_MULT`      | ⬜      |
-| `FLOAT_DIV`       | ⬜      |
-| `FLOAT_NEG`       | ⬜      |
-| `FLOAT_ABS`       | ⬜      |
-| `FLOAT_SQRT`      | ⬜      |
-| `FLOAT_CEIL`      | ⬜      |
-| `FLOAT_FLOOR`     | ⬜      |
-| `FLOAT_ROUND`     | ⬜      |
-| `FLOAT_NAN`       | ⬜      |
-| `INT2FLOAT`       | ⬜      |
-| `FLOAT2INT`       | ⬜      |
-| `TRUNC`           | ⬜      |
+| Opcode        | Status | Opcode           | Status | Opcode            | Status |
+| ------------- | ------ | ---------------- | ------ | ----------------  | ------ |
+| `COPY`        | ✅     | `INT_LESS`       | ⬜     | `FLOAT_LESS`      | ⬜     |
+| `LOAD`        | ✅     | `INT_LESSEQUAL`  | ⬜     | `FLOAT_LESSEQUAL` | ⬜     |
+| `STORE`       | ✅     | `INT_ADD`        | ✅     | `FLOAT_ADD`       | ⬜     |
+| `BRANCH`      | ⬜     | `INT_SUB`        | ✅     | `FLOAT_SUB`       | ⬜     |
+| `CBRANCH`     | ⬜     | `INT_MULT`       | ⬜     | `FLOAT_MULT`      | ⬜     |
+| `BRANCHIND`   | ✅     | `INT_DIV`        | ⬜     | `FLOAT_DIV`       | ⬜     |
+| `CALL`        | ⬜     | `INT_2COMP`      | ✅     | `FLOAT_NEG`       | ⬜     |
+| `CALLIND`     | ⬜     | `INT_ZEXT`       | ✅     | `FLOAT_ABS`       | ⬜     |
+| `RETURN`      | ✅     | `INT_SEXT`       | ✅     | `FLOAT_SQRT`      | ⬜     |
+| `PIECE`       | ⬜     | `INT_SBORROW`    | ⬜     | `FLOAT_CEIL`      | ⬜     |
+| `SUBPIECE`    | ✅     | `INT_CARRY`      | ✅     | `FLOAT_FLOOR`     | ⬜     |
+| `POPCOUNT`    | ✅     | `INT_SCARRY`     | ✅     | `FLOAT_ROUND`     | ⬜     |
+| `BOOL_NEGATE` | ✅     | `INT_NEGATE`     | ✅     | `FLOAT_NAN`       | ⬜     |
+| `BOOL_XOR`    | ✅     | `INT_XOR`        | ✅     | `INT2FLOAT`       | ⬜     |
+| `BOOL_AND`    | ✅     | `INT_AND`        | ✅     | `FLOAT2INT`       | ⬜     |
+| `BOOL_OR`     | ✅     | `INT_OR`         | ✅     | `TRUNC`           | ⬜     |
+|               |        | `INT_LEFT`       | ⬜     |                   |        |
+|               |        | `INT_RIGHT`      | ⬜     |  
+|               |        | `INT_SRIGHT`     | ⬜     |
+|               |        | `INT_EQUAL`      | ✅     |
+|               |        | `INT_NOTEQUAL`   | ✅     |
+|               |        | `INT_SLESS`      | ✅     |
+|               |        | `INT_SLESSEQUAL` | ⬜     |
+|               |        | `INT_REM`        | ⬜     |
+|               |        | `INT_SREM`       | ⬜     |
+|               |        | `INT_SDIV`       | ⬜     |
 
 # How it works
 
