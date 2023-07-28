@@ -22,7 +22,7 @@ This section document which p-code operations are currently supported by the emu
 | ----------- | ------ |
 | `BRANCH`    | ⬜     |
 | `CBRANCH`   | ⬜     |
-| `BRANCHIND` | ⬜     |
+| `BRANCHIND` | ✅     |
 | `CALL`      | ⬜     |
 | `CALLIND`   | ⬜     |
 | `RETURN`    | ✅     |
