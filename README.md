@@ -71,10 +71,10 @@ This section document which p-code operations are currently supported by the emu
 
 | Opcode        | Status |
 | ------------- | ------ |
-| `BOOL_NEGATE` | ⬜     |
-| `BOOL_XOR`    | ⬜     |
-| `BOOL_AND`    | ⬜     |
-| `BOOL_OR`     | ⬜     |
+| `BOOL_NEGATE` | ✅     |
+| `BOOL_XOR`    | ✅     |
+| `BOOL_AND`    | ✅     |
+| `BOOL_OR`     | ✅     |
 
 ## Floating point operations
 
