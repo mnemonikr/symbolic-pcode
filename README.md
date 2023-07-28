@@ -8,24 +8,24 @@ TODO
 
 This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
 
-| Opcode        |        | Opcode           |        | Opcode           |        | Opcode            |        |
-| ------------- | ------ | ---------------- | ------ | ---------------- | ------ | ----------------  | ------ |
-| `COPY`        | ✅     | `INT_SLESS`      | ✅     | `INT_LESS`       | ⬜     | `FLOAT_LESS`      | ⬜     |
-| `LOAD`        | ✅     | `INT_SLESSEQUAL` | ⬜     | `INT_LESSEQUAL`  | ⬜     | `FLOAT_LESSEQUAL` | ⬜     |
-| `STORE`       | ✅     | `INT_SCARRY`     | ✅     | `INT_CARRY`      | ✅     | `FLOAT_ABS`       | ⬜     |
-| `BOOL_NEGATE` | ✅     | `INT_NEGATE`     | ✅     | `INT_2COMP`      | ✅     | `FLOAT_NEG`       | ⬜     |
-| `BOOL_XOR`    | ✅     | `INT_XOR`        | ✅     | `INT_ADD`        | ✅     | `FLOAT_ADD`       | ⬜     |
-| `BOOL_AND`    | ✅     | `INT_OR`         | ✅     | `INT_SUB`        | ✅     | `FLOAT_SUB`       | ⬜     |
-| `BOOL_OR`     | ✅     | `INT_AND`        | ✅     | `INT_MULT`       | ⬜     | `FLOAT_MULT`      | ⬜     |
-| `BRANCH`      | ⬜     | `INT_SDIV`       | ⬜     | `INT_DIV`        | ⬜     | `FLOAT_DIV`       | ⬜     |
-| `CBRANCH`     | ⬜     | `INT_EQUAL`      | ✅     | `INT_NOTEQUAL`   | ✅     | `FLOAT_SQRT`      | ⬜     |
-| `BRANCHIND`   | ✅     | `INT_SREM`       | ⬜     | `INT_REM`        | ⬜     | `FLOAT_CEIL`      | ⬜     |
-| `CALL`        | ⬜     | `INT_SEXT`       | ✅     | `INT_ZEXT`       | ✅     | `FLOAT_FLOOR`     | ⬜     |
-| `CALLIND`     | ⬜     | `INT_SBORROW`    | ⬜     | `INT_LEFT`       | ⬜     | `FLOAT_ROUND`     | ⬜     |
-| `RETURN`      | ✅     | `INT_SRIGHT`     | ⬜     | `INT_RIGHT`      | ⬜     | `FLOAT_NAN`       | ⬜     |
-| `PIECE`       | ⬜     |                  |        |                  |        | `INT2FLOAT`       | ⬜     |
-| `SUBPIECE`    | ✅     |                  |        |                  |        | `FLOAT2INT`       | ⬜     |
-| `POPCOUNT`    | ✅     |                  |        |                  |        | `TRUNC`           | ⬜     |
+|        | Opcode        |        | Opcode           |        | Opcode           |        | Opcode            |
+| ------ | ------------- | ------ | ---------------- | ------ | ---------------- | ------ | ----------------  |
+| ✅     | `COPY`        | ✅     | `INT_SLESS`      | ⬜     | `INT_LESS`       | ⬜     | `FLOAT_LESS`      |
+| ✅     | `LOAD`        | ⬜     | `INT_SLESSEQUAL` | ⬜     | `INT_LESSEQUAL`  | ⬜     | `FLOAT_LESSEQUAL` |
+| ✅     | `STORE`       | ✅     | `INT_SCARRY`     | ✅     | `INT_CARRY`      | ⬜     | `FLOAT_ABS`       |
+| ✅     | `BOOL_NEGATE` | ✅     | `INT_NEGATE`     | ✅     | `INT_2COMP`      | ⬜     | `FLOAT_NEG`       |
+| ✅     | `BOOL_XOR`    | ✅     | `INT_XOR`        | ✅     | `INT_ADD`        | ⬜     | `FLOAT_ADD`       |
+| ✅     | `BOOL_AND`    | ✅     | `INT_OR`         | ✅     | `INT_SUB`        | ⬜     | `FLOAT_SUB`       |
+| ✅     | `BOOL_OR`     | ✅     | `INT_AND`        | ⬜     | `INT_MULT`       | ⬜     | `FLOAT_MULT`      |
+| ⬜     | `BRANCH`      | ⬜     | `INT_SDIV`       | ⬜     | `INT_DIV`        | ⬜     | `FLOAT_DIV`       |
+| ⬜     | `CBRANCH`     | ✅     | `INT_EQUAL`      | ✅     | `INT_NOTEQUAL`   | ⬜     | `FLOAT_SQRT`      |
+| ✅     | `BRANCHIND`   | ⬜     | `INT_SREM`       | ⬜     | `INT_REM`        | ⬜     | `FLOAT_CEIL`      |
+| ⬜     | `CALL`        | ✅     | `INT_SEXT`       | ✅     | `INT_ZEXT`       | ⬜     | `FLOAT_FLOOR`     |
+| ⬜     | `CALLIND`     | ⬜     | `INT_SBORROW`    | ⬜     | `INT_LEFT`       | ⬜     | `FLOAT_ROUND`     |
+| ✅     | `RETURN`      | ⬜     | `INT_SRIGHT`     | ⬜     | `INT_RIGHT`      | ⬜     | `FLOAT_NAN`       |
+| ⬜     | `PIECE`       |        |                  |        |                  | ⬜     | `INT2FLOAT`       |
+| ✅     | `SUBPIECE`    |        |                  |        |                  | ⬜     | `FLOAT2INT`       |
+| ✅     | `POPCOUNT`    |        |                  |        |                  | ⬜     | `TRUNC`           |
 
 # How it works
 
