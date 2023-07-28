@@ -158,6 +158,7 @@ impl PcodeEmulator {
                 instruction.output.as_ref().unwrap(),
             )?,
             OpCode::CPUI_RETURN => return self.return_instruction(&instruction).map(Option::Some),
+            OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction).map(Option::Some),
             _ => unimplemented!("Operation not yet implemented: {:?}", instruction.op_code),
         }
 
@@ -1026,7 +1027,9 @@ mod tests {
             inputs: vec![data_input.clone()],
             output: None,
         };
-        let branch_addr = emulator.branch_ind(&instruction)?;
+        let branch_addr = emulator
+            .emulate(&instruction)?
+            .expect("branch indirect did not return address");
         let expected_addr = Address {
             address_space: processor_address_space(),
             offset: 0xDEADBEEF,
