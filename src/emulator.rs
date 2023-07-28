@@ -256,6 +256,8 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This operation performs a Logical-And on the bits of input0 and input1. Both inputs and
+    /// output must be the same size.
     pub fn int_and(
         &mut self,
         input_0: &VarnodeData,
@@ -354,6 +356,10 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// Zero-extend the data in input0 and store the result in output. Copy all the data from input0
+    /// into the least significant positions of output. Fill out any remaining space in the most
+    /// significant bytes of output with zero. The size of output must be strictly bigger than the
+    /// size of input.
     pub fn int_zext(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
         assert!(output.size > input_0.size);
         let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
@@ -363,6 +369,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// Sign-extend the data in input0 and store the result in output. Copy all the data from input0
+    /// into the least significant positions of output. Fill out any remaining space in the most
+    /// significant bytes of output with either zero or all ones (0xff) depending on the most
+    /// significant bit of input0. The size of output must be strictly bigger than the size of
+    /// input0.
     pub fn int_sext(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
         assert!(output.size > input_0.size);
         let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
@@ -372,6 +383,9 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is the integer equality operator. Output is assigned true, if input0 equals input1. It
+    /// works for signed, unsigned, or any contiguous data where the match must be down to the bit.
+    /// Both inputs must be the same size, and the output must have a size of 1.
     pub fn int_equal(
         &mut self,
         input_0: &VarnodeData,
@@ -388,6 +402,9 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is the integer inequality operator. Output is assigned true, if input0 does not equal
+    /// input1. It works for signed, unsigned, or any contiguous data where the match must be down
+    /// to the bit. Both inputs must be the same size, and the output must have a size of 1.
     pub fn int_not_equal(
         &mut self,
         input_0: &VarnodeData,
@@ -424,6 +441,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is a bit count (population count) operator. Within the binary representation of the
+    /// value contained in the input varnode, the number of 1 bits are counted and then returned
+    /// in the output varnode. A value of 0 returns 0, a 4-byte varnode containing the value
+    /// 2<sup>32</sup>-1 (all bits set) returns 32, for instance. The input and output varnodes can
+    /// have any size. The resulting count is zero extended into the output varnode.
     pub fn popcount(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
         let value: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let result = value.popcount();
@@ -441,6 +463,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is a truncation operator that understands the endianess of the data. Input1 indicates
+    /// the number of least significant bytes of input0 to be thrown away. Output is then filled
+    /// with any remaining bytes of input0 up to the size of output. If the size of output is
+    /// smaller than the size of input0 minus the constant input1, then the additional most
+    /// significant bytes of input0 will also be truncated.
     pub fn subpiece(
         &mut self,
         input_0: &VarnodeData,
@@ -504,6 +531,15 @@ impl PcodeEmulator {
         })
     }
 
+    /// This instruction is semantically equivalent to the BRANCHIND instruction. It does not
+    /// perform a return from subroutine in the usual sense of the term. It merely indicates that
+    /// the original machine instruction is intended to be a return from subroutine. See the
+    /// discussion for the CALL instruction.
+    ///
+    /// Similarly to CALL and CALLIND, this operation may take an additional input when not in raw
+    /// form. If input1 is present it represents the value being returned by this operation. This is
+    /// used by analysis algorithms to hold the value logically flowing back to the parent
+    /// subroutine.
     pub fn return_instruction(&mut self, instruction: &PcodeInstruction) -> Result<Address> {
         self.branch_ind(instruction)
     }
