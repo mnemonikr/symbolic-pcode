@@ -8,7 +8,7 @@ TODO
 
 This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
 
-| Opcode        | Status | Opcode           | Status | Opcode           | Status | Opcode            | Status |
+| Opcode        |        | Opcode           |        | Opcode           |        | Opcode            |        |
 | ------------- | ------ | ---------------- | ------ | ---------------- | ------ | ----------------  | ------ |
 | `COPY`        | ✅     | `INT_SLESS`      | ✅     | `INT_LESS`       | ⬜     | `FLOAT_LESS`      | ⬜     |
 | `LOAD`        | ✅     | `INT_SLESSEQUAL` | ⬜     | `INT_LESSEQUAL`  | ⬜     | `FLOAT_LESSEQUAL` | ⬜     |
