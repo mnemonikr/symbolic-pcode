@@ -8,24 +8,24 @@ TODO
 
 This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
 
-|        | Opcode        |        | Opcode           |        | Opcode           |        | Opcode            |
-| ------ | ------------- | ------ | ---------------- | ------ | ---------------- | ------ | ----------------  |
-| ✅     | `COPY`        | ✅     | `INT_SLESS`      | ⬜     | `INT_LESS`       | ⬜     | `FLOAT_LESS`      |
-| ✅     | `LOAD`        | ⬜     | `INT_SLESSEQUAL` | ⬜     | `INT_LESSEQUAL`  | ⬜     | `FLOAT_LESSEQUAL` |
-| ✅     | `STORE`       | ✅     | `INT_SCARRY`     | ✅     | `INT_CARRY`      | ⬜     | `FLOAT_ABS`       |
-| ✅     | `BOOL_NEGATE` | ✅     | `INT_NEGATE`     | ✅     | `INT_2COMP`      | ⬜     | `FLOAT_NEG`       |
-| ✅     | `BOOL_XOR`    | ✅     | `INT_XOR`        | ✅     | `INT_ADD`        | ⬜     | `FLOAT_ADD`       |
-| ✅     | `BOOL_AND`    | ✅     | `INT_OR`         | ✅     | `INT_SUB`        | ⬜     | `FLOAT_SUB`       |
-| ✅     | `BOOL_OR`     | ✅     | `INT_AND`        | ⬜     | `INT_MULT`       | ⬜     | `FLOAT_MULT`      |
-| ⬜     | `BRANCH`      | ⬜     | `INT_SDIV`       | ⬜     | `INT_DIV`        | ⬜     | `FLOAT_DIV`       |
-| ⬜     | `CBRANCH`     | ✅     | `INT_EQUAL`      | ✅     | `INT_NOTEQUAL`   | ⬜     | `FLOAT_SQRT`      |
-| ✅     | `BRANCHIND`   | ⬜     | `INT_SREM`       | ⬜     | `INT_REM`        | ⬜     | `FLOAT_CEIL`      |
-| ⬜     | `CALL`        | ✅     | `INT_SEXT`       | ✅     | `INT_ZEXT`       | ⬜     | `FLOAT_FLOOR`     |
-| ⬜     | `CALLIND`     | ⬜     | `INT_SBORROW`    | ⬜     | `INT_LEFT`       | ⬜     | `FLOAT_ROUND`     |
-| ✅     | `RETURN`      | ⬜     | `INT_SRIGHT`     | ⬜     | `INT_RIGHT`      | ⬜     | `FLOAT_NAN`       |
-| ⬜     | `PIECE`       |        |                  |        |                  | ⬜     | `INT2FLOAT`       |
-| ✅     | `SUBPIECE`    |        |                  |        |                  | ⬜     | `FLOAT2INT`       |
-| ✅     | `POPCOUNT`    |        |                  |        |                  | ⬜     | `TRUNC`           |
+| Opcode                             | Opcode                                  | Opcode                                 | Opcode                                  |
+| ---------------------------------- | --------------------------------------- | -------------------------------------- | --------------------------------------  |
+| :white_check_box:    `COPY`        | :white_check_box:      `INT_SLESS`      | :white_large_square:  `INT_LESS`       | :white_large_square:  `FLOAT_LESS`      |
+| :white_check_box:    `LOAD`        | :white_large_square:   `INT_SLESSEQUAL` | :white_large_square:  `INT_LESSEQUAL`  | :white_large_square:  `FLOAT_LESSEQUAL` |
+| :white_check_box:    `STORE`       | :white_check_box:      `INT_SCARRY`     | :white_check_box:     `INT_CARRY`      | :white_large_square:  `FLOAT_ABS`       |
+| :white_check_box:    `BOOL_NEGATE` | :white_check_box:      `INT_NEGATE`     | :white_check_box:     `INT_2COMP`      | :white_large_square:  `FLOAT_NEG`       |
+| :white_check_box:    `BOOL_XOR`    | :white_check_box:      `INT_XOR`        | :white_check_box:     `INT_ADD`        | :white_large_square:  `FLOAT_ADD`       |
+| :white_check_box:    `BOOL_AND`    | :white_check_box:      `INT_OR`         | :white_check_box:     `INT_SUB`        | :white_large_square:  `FLOAT_SUB`       |
+| :white_check_box:    `BOOL_OR`     | :white_check_box:      `INT_AND`        | :white_large_square:  `INT_MULT`       | :white_large_square:  `FLOAT_MULT`      |
+| :white_large_square: `BRANCH`      | :white_large_square:   `INT_SDIV`       | :white_large_square:  `INT_DIV`        | :white_large_square:  `FLOAT_DIV`       |
+| :white_large_square: `CBRANCH`     | :white_check_box:      `INT_EQUAL`      | :white_check_box:     `INT_NOTEQUAL`   | :white_large_square:  `FLOAT_SQRT`      |
+| :white_check_box:    `BRANCHIND`   | :white_large_square:   `INT_SREM`       | :white_large_square:  `INT_REM`        | :white_large_square:  `FLOAT_CEIL`      |
+| :white_large_square: `CALL`        | :white_check_box:      `INT_SEXT`       | :white_check_box:     `INT_ZEXT`       | :white_large_square:  `FLOAT_FLOOR`     |
+| :white_large_square: `CALLIND`     | :white_large_square:   `INT_SBORROW`    | :white_large_square:  `INT_LEFT`       | :white_large_square:  `FLOAT_ROUND`     |
+| :white_check_box:    `RETURN`      | :white_large_square:   `INT_SRIGHT`     | :white_large_square:  `INT_RIGHT`      | :white_large_square:  `FLOAT_NAN`       |
+| :white_large_square: `PIECE`       |                                         | :white_large_square:  `INT2FLOAT`      |
+| :white_check_box:    `SUBPIECE`    |                                         | :white_large_square:  `FLOAT2INT`      |
+| :white_check_box:    `POPCOUNT`    |                                         | :white_large_square:  `TRUNC`          |
 
 # How it works
 
