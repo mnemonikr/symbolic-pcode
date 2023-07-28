@@ -79,6 +79,10 @@ fn check_input_sizes_match(instruction: &PcodeInstruction) -> Result<()> {
     check_input_sizes_equal(instruction, (&instruction.inputs[0]).size)
 }
 
+fn check_input_sizes_match_output(instruction: &PcodeInstruction) -> Result<()> {
+    check_input_sizes_equal(instruction, instruction.output.as_ref().unwrap().size)
+}
+
 fn check_input_sizes_equal(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
     for (index, input) in instruction.inputs.iter().enumerate() {
         if input.size != expected_size {
@@ -137,6 +141,9 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
+            OpCode::CPUI_INT_OR => self.int_or(&instruction)?,
+            OpCode::CPUI_INT_XOR => self.int_xor(&instruction)?,
+            OpCode::CPUI_INT_NEGATE => self.int_negate(&instruction)?,
             OpCode::CPUI_INT_ADD => self.int_add(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
@@ -304,6 +311,67 @@ impl PcodeEmulator {
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let value = lhs & rhs;
         self.memory.write_bytes(value.into_parts(8), &output)?;
+
+        Ok(())
+    }
+
+    /// This operation performs a Logical-Or on the bits of input0 and input1. Both inputs and
+    /// output must be the same size.
+    fn int_or(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+
+        let or = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(lhs, rhs)| lhs | rhs)
+            .collect();
+
+        self.memory
+            .write_bytes(or, &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This operation performs a logical Exclusive-Or on the bits of input0 and input1. Both
+    /// inputs and output must be the same size.
+    fn int_xor(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+
+        let xor = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(lhs, rhs)| lhs ^ rhs)
+            .collect();
+
+        self.memory
+            .write_bytes(xor, &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This is the bitwise negation operation. Output is the result of taking every bit of input0
+    /// and flipping it. Both input0 and output must be the same size.
+    fn int_negate(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 1)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+
+        let negation = lhs.into_iter().map(|value| !value).collect();
+
+        self.memory
+            .write_bytes(negation, &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1400,6 +1468,152 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_negate() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs = 0b1010_0101;
+        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 1,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_NEGATE,
+            inputs: vec![lhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u8>(&output)?,
+            !lhs,
+            "failed !{lhs}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_and() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs = 0b0011_1100;
+        let rhs = 0b1010_0101;
+        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+        let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 1,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_AND,
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u8>(&output)?,
+            lhs & rhs,
+            "failed {lhs} & {rhs}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_or() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs = 0b0011_1100;
+        let rhs = 0b1010_0101;
+        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+        let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 1,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_OR,
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u8>(&output)?,
+            lhs | rhs,
+            "failed {lhs} | {rhs}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_xor() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs = 0b0011_1100;
+        let rhs = 0b1010_0101;
+        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+        let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 1,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_XOR,
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u8>(&output)?,
+            lhs ^ rhs,
+            "failed {lhs} ^ {rhs}"
+        );
 
         Ok(())
     }

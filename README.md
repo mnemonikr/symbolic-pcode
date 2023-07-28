@@ -54,10 +54,10 @@ This section document which p-code operations are currently supported by the emu
 | `INT_SCARRY`     | ✅     |
 | `INT_SBORROW`    | ⬜     |
 | `INT_2COMP`      | ✅     |
-| `INT_NEGATE`     | ⬜     |
-| `INT_XOR`        | ⬜     |
+| `INT_NEGATE`     | ✅     |
+| `INT_XOR`        | ✅     |
 | `INT_AND`        | ✅     |
-| `INT_OR`         | ⬜     |
+| `INT_OR`         | ✅     |
 | `INT_LEFT`       | ⬜     |
 | `INT_RIGHT`      | ⬜     |
 | `INT_SRIGHT`     | ⬜     |
