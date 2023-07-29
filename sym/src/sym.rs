@@ -430,30 +430,6 @@ impl SymbolicBitVec {
         result
     }
 
-    pub fn shift_left(self, rhs: Self) -> Self {
-        let mut bit_shift_value = 1;
-        let mut result = self;
-        for bit in rhs.bits {
-            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), true);
-            result = shifted_value.mux(result, bit);
-            bit_shift_value <<= 1;
-        }
-
-        result
-    }
-
-    pub fn shift_right(self, rhs: Self) -> Self {
-        let mut bit_shift_value = 1;
-        let mut result = self;
-        for bit in rhs.bits {
-            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), false);
-            result = shifted_value.mux(result, bit);
-            bit_shift_value <<= 1;
-        }
-
-        result
-    }
-
     pub fn signed_shift_right(self, rhs: Self) -> Self {
         let sign_bit = self.bits.last().unwrap().clone();
         let mut bit_shift_value = 1;
@@ -564,6 +540,39 @@ impl std::ops::Shl<usize> for SymbolicBitVec {
         bits.append(&mut self.bits[..num_bits - rhs].to_vec());
 
         Self { bits }
+    }
+}
+
+impl std::ops::Shl for SymbolicBitVec {
+    type Output = Self;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        let mut bit_shift_value = 1;
+        let mut result = self;
+        for bit in rhs.bits {
+            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), true);
+            result = shifted_value.mux(result, bit);
+            bit_shift_value <<= 1;
+        }
+
+        result
+    }
+}
+
+/// Performs an _unsigned_ right shift.
+impl std::ops::Shr for SymbolicBitVec {
+    type Output = Self;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        let mut bit_shift_value = 1;
+        let mut result = self;
+        for bit in rhs.bits {
+            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), false);
+            result = shifted_value.mux(result, bit);
+            bit_shift_value <<= 1;
+        }
+
+        result
     }
 }
 
@@ -1021,8 +1030,7 @@ mod tests {
             let value = SymbolicBitVec::constant(0b0000_0001, 8);
             let shift_amount = SymbolicBitVec::constant(n, 8);
             let expected = if n < 8 { 1 << n } else { 0 };
-            let result: u8 = value
-                .shift_left(shift_amount)
+            let result: u8 = (value << shift_amount)
                 .try_into()
                 .expect("failed conversion");
             assert_eq!(result, expected, "failed 1 << {n}");
@@ -1035,8 +1043,7 @@ mod tests {
             let value = SymbolicBitVec::constant(0b1000_0000, 8);
             let shift_amount = SymbolicBitVec::constant(n, 8);
             let expected = if n < 8 { 0x80 >> n } else { 0 };
-            let result: u8 = value
-                .shift_right(shift_amount)
+            let result: u8 = (value >> shift_amount)
                 .try_into()
                 .expect("failed conversion");
             assert_eq!(result, expected, "failed 0x80 >> {n}");
