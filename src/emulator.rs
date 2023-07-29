@@ -545,6 +545,9 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is a signed integer comparison operator. If the signed integer input0 is less than or
+    /// equal to the signed integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
     fn int_signed_less_than_eq(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -562,6 +565,9 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is strictly
+    /// less than the unsigned integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
     fn int_less_than(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -579,6 +585,9 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is less than
+    /// or equal to the unsigned integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
     fn int_less_than_eq(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
