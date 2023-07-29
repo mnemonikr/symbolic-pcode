@@ -464,6 +464,10 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This operation checks for signed subtraction overflow or borrow conditions. If the result of
+    /// subtracting input1 from input0 as signed integers overflows the size of the varnodes, output
+    /// is assigned true. Both inputs must be the same size, and output must be size 1. Note that
+    /// the equivalent unsigned subtraction overflow condition is INT_LESS.
     fn int_sub_borrow(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
