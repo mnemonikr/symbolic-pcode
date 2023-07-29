@@ -193,6 +193,9 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
+            OpCode::CPUI_INT_SLESSEQUAL => self.int_signed_less_than_eq(&instruction)?,
+            OpCode::CPUI_INT_LESS => self.int_less_than(&instruction)?,
+            OpCode::CPUI_INT_LESSEQUAL => self.int_less_than_eq(&instruction)?,
             OpCode::CPUI_BOOL_NEGATE => self.bool_negate(&instruction)?,
             OpCode::CPUI_BOOL_AND => self.bool_and(&instruction)?,
             OpCode::CPUI_BOOL_OR => self.bool_or(&instruction)?,
@@ -538,6 +541,66 @@ impl PcodeEmulator {
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let bit: sym::SymbolicBitVec = vec![lhs.signed_less_than(rhs)].into();
         self.memory.write_bytes(vec![bit.zero_extend(7)], &output)?;
+
+        Ok(())
+    }
+
+    /// This is a signed integer comparison operator. If the signed integer input0 is less than or
+    /// equal to the signed integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
+    fn int_signed_less_than_eq(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match(&instruction)?;
+        check_output_size_equals(&instruction, 1)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let bit: sym::SymbolicBitVec = vec![lhs.signed_less_than_eq(rhs)].into();
+        self.memory.write_bytes(
+            vec![bit.zero_extend(7)],
+            instruction.output.as_ref().unwrap(),
+        )?;
+
+        Ok(())
+    }
+
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is strictly
+    /// less than the unsigned integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
+    fn int_less_than(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match(&instruction)?;
+        check_output_size_equals(&instruction, 1)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let bit: sym::SymbolicBitVec = vec![lhs.less_than(rhs)].into();
+        self.memory.write_bytes(
+            vec![bit.zero_extend(7)],
+            instruction.output.as_ref().unwrap(),
+        )?;
+
+        Ok(())
+    }
+
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is less than
+    /// or equal to the unsigned integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
+    fn int_less_than_eq(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match(&instruction)?;
+        check_output_size_equals(&instruction, 1)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let bit: sym::SymbolicBitVec = vec![lhs.less_than_eq(rhs)].into();
+        self.memory.write_bytes(
+            vec![bit.zero_extend(7)],
+            instruction.output.as_ref().unwrap(),
+        )?;
 
         Ok(())
     }
@@ -1614,6 +1677,182 @@ mod tests {
             lhs ^ rhs,
             "failed {lhs} ^ {rhs}"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_less_than() -> Result<()> {
+        let test_data: Vec<(u8, u8, bool)> = vec![
+            (0x00, 0x00, false),
+            (0x00, 0x01, true),
+            (0x01, 0x80, true),
+            (0x80, 0xFF, true),
+        ];
+        for (lhs, rhs, expected_result) in test_data {
+            let expected_result = if expected_result { 1 } else { 0 };
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_LESS,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed {lhs} < {rhs}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_less_than_eq() -> Result<()> {
+        let test_data: Vec<(u8, u8, bool)> = vec![
+            (0x00, 0x00, true),
+            (0x00, 0x01, true),
+            (0x01, 0x80, true),
+            (0x80, 0xFF, true),
+        ];
+        for (lhs, rhs, expected_result) in test_data {
+            let expected_result = if expected_result { 1 } else { 0 };
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_LESSEQUAL,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed {lhs} <= {rhs}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_signed_less_than() -> Result<()> {
+        let test_data: Vec<(u8, u8, bool)> = vec![
+            (0x00, 0x00, false),
+            (0x00, 0x01, true),
+            (0x01, 0x80, false),
+            (0x80, 0xFF, true),
+        ];
+        for (lhs, rhs, expected_result) in test_data {
+            let expected_result = if expected_result { 1 } else { 0 };
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_SLESS,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed signed comparison {lhs} < {rhs}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_signed_less_than_eq() -> Result<()> {
+        let test_data: Vec<(u8, u8, bool)> = vec![
+            (0x00, 0x00, true),
+            (0x00, 0x01, true),
+            (0x01, 0x80, false),
+            (0x80, 0xFF, true),
+        ];
+        for (lhs, rhs, expected_result) in test_data {
+            let expected_result = if expected_result { 1 } else { 0 };
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_SLESSEQUAL,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed signed comparison {lhs} <= {rhs}"
+            );
+        }
 
         Ok(())
     }

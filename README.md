@@ -10,8 +10,8 @@ This section document which p-code operations are currently supported by the emu
 
 | Opcode                             | Opcode                                | Opcode                               | Opcode                                 |
 | ---------------------------------- | ------------------------------------- | -------------------------------------| -------------------------------------  |
-| :white_check_mark:   `COPY`        | :white_check_mark:   `INT_SLESS`      | :white_large_square: `INT_LESS`      | :white_large_square: `FLOAT_LESS`      |
-| :white_check_mark:   `LOAD`        | :white_large_square: `INT_SLESSEQUAL` | :white_large_square: `INT_LESSEQUAL` | :white_large_square: `FLOAT_LESSEQUAL` |
+| :white_check_mark:   `COPY`        | :white_check_mark:   `INT_SLESS`      | :white_check_mark:   `INT_LESS`      | :white_large_square: `FLOAT_LESS`      |
+| :white_check_mark:   `LOAD`        | :white_check_mark:   `INT_SLESSEQUAL` | :white_check_mark:   `INT_LESSEQUAL` | :white_large_square: `FLOAT_LESSEQUAL` |
 | :white_check_mark:   `STORE`       | :white_check_mark:   `INT_SCARRY`     | :white_check_mark:   `INT_CARRY`     | :white_large_square: `FLOAT_ABS`       |
 | :white_check_mark:   `BOOL_NEGATE` | :white_check_mark:   `INT_NEGATE`     | :white_check_mark:   `INT_2COMP`     | :white_large_square: `FLOAT_NEG`       |
 | :white_check_mark:   `BOOL_XOR`    | :white_check_mark:   `INT_XOR`        | :white_check_mark:   `INT_ADD`       | :white_large_square: `FLOAT_ADD`       |
