@@ -350,6 +350,23 @@ impl SymbolicBitVec {
         positive_overflow | negative_overflow
     }
 
+    pub fn subtraction_borrows(self, rhs: Self) -> SymbolicBit {
+        let diff = self.clone() - rhs.clone();
+
+        // Positive overflow occurs if sign bits are (0, 1) but 1 in sum
+        let positive_overflow = !self.bits.last().cloned().unwrap()
+            & rhs.bits.last().cloned().unwrap()
+            & diff.bits.last().cloned().unwrap();
+
+        // Negative overflow occurs if sign bits are (1, 0) but 0 in sum
+        let negative_overflow = self.bits.last().cloned().unwrap()
+            & !rhs.bits.last().cloned().unwrap()
+            & !diff.bits.last().cloned().unwrap();
+
+        // Overflow occurs if either positive or negative overflow occurs
+        positive_overflow | negative_overflow
+    }
+
     pub fn less_than(self, rhs: Self) -> SymbolicBit {
         assert_eq!(self.len(), rhs.len());
         let mut result = SymbolicBit::Literal(false);
@@ -746,6 +763,30 @@ mod tests {
             let y: SymbolicBitVec = n.into();
             let diff: u8 = (x - y).try_into().expect("failed byte converison");
             assert_eq!(diff, 0);
+        }
+    }
+
+    #[test]
+    fn subtraction_borrows() {
+        let test_data = (u8::MIN..=u8::MAX)
+            .map(|value| (value, value, false))
+            .chain(vec![
+                (0x00, 0x80, true),  // 0 - (-128) != -128
+                (0x01, 0x81, true),  // 1 - (-127) != -128
+                (0x80, 0x00, false), // -128 - 0 = -128
+                (0x80, 0x01, true),  // -128 - 1 != 127
+            ])
+            .collect::<Vec<_>>();
+
+        for (lhs, rhs, expected_result) in test_data {
+            let x: SymbolicBitVec = lhs.into();
+            let y: SymbolicBitVec = rhs.into();
+            let borrows = x.subtraction_borrows(y);
+            assert_eq!(
+                borrows,
+                SymbolicBit::Literal(expected_result),
+                "expected {lhs:#02x} - {rhs:#02x} borrow to be {expected_result}"
+            );
         }
     }
 
