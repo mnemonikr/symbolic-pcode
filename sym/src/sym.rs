@@ -25,13 +25,16 @@ pub enum SymbolicBit {
 pub enum ConcretizationError<T>
 where
     T: TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: std::error::Error,
+    <T as TryFrom<usize>>::Error: std::error::Error + 'static,
 {
     #[error("Non-literal bit at index {0}")]
     NonLiteralBit(usize),
 
-    #[error("Failed to convert {0} to specified type: {1}")]
-    ConversionError(usize, <T as TryFrom<usize>>::Error),
+    #[error("Failed to convert {value} to type: {source}")]
+    ConversionError {
+        value: usize,
+        source: <T as TryFrom<usize>>::Error,
+    },
 }
 
 pub fn concretize_bit_iter<'a, T, I>(iter: I) -> Result<T, ConcretizationError<T>>
@@ -58,7 +61,10 @@ where
 
     result
         .try_into()
-        .map_err(|err| ConcretizationError::ConversionError(result, err))
+        .map_err(|err| ConcretizationError::ConversionError {
+            value: result,
+            source: err,
+        })
 }
 
 impl SymbolicBit {
