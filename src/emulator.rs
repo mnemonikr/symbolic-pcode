@@ -164,6 +164,7 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
+            OpCode::CPUI_INT_SBORROW => self.int_sub_borrow(&instruction)?,
             OpCode::CPUI_INT_SEXT => {
                 self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
@@ -459,6 +460,28 @@ impl PcodeEmulator {
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let diff = lhs - rhs;
         self.memory.write_bytes(diff.into_parts(8), &output)?;
+
+        Ok(())
+    }
+
+    /// This operation checks for signed subtraction overflow or borrow conditions. If the result of
+    /// subtracting input1 from input0 as signed integers overflows the size of the varnodes, output
+    /// is assigned true. Both inputs must be the same size, and output must be size 1. Note that
+    /// the equivalent unsigned subtraction overflow condition is INT_LESS.
+    fn int_sub_borrow(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match(&instruction)?;
+        check_output_size_equals(&instruction, 1)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let overflow: sym::SymbolicBitVec = vec![lhs.subtraction_borrows(rhs)].into();
+
+        self.memory.write_bytes(
+            vec![overflow.zero_extend(7)],
+            instruction.output.as_ref().unwrap(),
+        )?;
 
         Ok(())
     }
@@ -1141,6 +1164,54 @@ mod tests {
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEAD0000
         );
+        Ok(())
+    }
+
+    #[test]
+    fn int_sborrow() -> Result<()> {
+        let test_data = (u8::MIN..=u8::MAX)
+            .map(|value| (value, value, false))
+            .chain(vec![
+                (0x00, 0x80, true),  // 0 - (-128) != -128
+                (0x01, 0x81, true),  // 1 - (-127) != -128
+                (0x80, 0x00, false), // -128 - 0 = -128
+                (0x80, 0x01, true),  // -128 - 1 != 127
+            ])
+            .collect::<Vec<_>>();
+
+        for (lhs, rhs, expected_result) in test_data {
+            let expected_result = if expected_result { 1 } else { 0 };
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_SBORROW,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed borrow of {lhs} - {rhs}"
+            );
+        }
+
         Ok(())
     }
 
