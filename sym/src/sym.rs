@@ -429,6 +429,44 @@ impl SymbolicBitVec {
         }
         result
     }
+
+    pub fn signed_shift_right(self, rhs: Self) -> Self {
+        let sign_bit = self.bits.last().unwrap().clone();
+        let mut bit_shift_value = 1;
+        let mut result = self;
+        for bit in rhs.bits {
+            let shifted_value = result.shift(bit_shift_value, sign_bit.clone(), false);
+            result = shifted_value.mux(result, bit);
+            bit_shift_value <<= 1;
+        }
+
+        result
+    }
+
+    fn shift(&self, amount: usize, shift_in: SymbolicBit, is_left_shift: bool) -> Self {
+        let size = self.len();
+        let shift_in = std::iter::repeat(shift_in).take(usize::min(size, amount));
+        let bits = if is_left_shift {
+            shift_in
+                .chain(self.bits.iter().take(size.saturating_sub(amount)).cloned())
+                .collect()
+        } else {
+            self.bits
+                .iter()
+                .skip(amount)
+                .cloned()
+                .chain(shift_in)
+                .collect()
+        };
+
+        Self { bits }
+    }
+
+    fn mux(self, rhs: Self, selector: SymbolicBit) -> Self {
+        let positive = vec![selector.clone(); self.len()].into();
+        let negative = vec![!selector; self.len()].into();
+        (self & positive) | (rhs & negative)
+    }
 }
 
 impl std::ops::Not for SymbolicBitVec {
@@ -502,6 +540,39 @@ impl std::ops::Shl<usize> for SymbolicBitVec {
         bits.append(&mut self.bits[..num_bits - rhs].to_vec());
 
         Self { bits }
+    }
+}
+
+impl std::ops::Shl for SymbolicBitVec {
+    type Output = Self;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        let mut bit_shift_value = 1;
+        let mut result = self;
+        for bit in rhs.bits {
+            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), true);
+            result = shifted_value.mux(result, bit);
+            bit_shift_value <<= 1;
+        }
+
+        result
+    }
+}
+
+/// Performs an _unsigned_ right shift.
+impl std::ops::Shr for SymbolicBitVec {
+    type Output = Self;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        let mut bit_shift_value = 1;
+        let mut result = self;
+        for bit in rhs.bits {
+            let shifted_value = result.shift(bit_shift_value, SymbolicBit::Literal(false), false);
+            result = shifted_value.mux(result, bit);
+            bit_shift_value <<= 1;
+        }
+
+        result
     }
 }
 
@@ -950,6 +1021,60 @@ mod tests {
             let popcount = value.popcount();
             let popcount: u8 = popcount.try_into().expect("failed converison");
             assert_eq!(popcount, n);
+        }
+    }
+
+    #[test]
+    fn shift_left() {
+        for n in 0..=8 {
+            let value = SymbolicBitVec::constant(0b0000_0001, 8);
+            let shift_amount = SymbolicBitVec::constant(n, 8);
+            let expected = if n < 8 { 1 << n } else { 0 };
+            let result: u8 = (value << shift_amount)
+                .try_into()
+                .expect("failed conversion");
+            assert_eq!(result, expected, "failed 1 << {n}");
+        }
+    }
+
+    #[test]
+    fn shift_right() {
+        for n in 0..=8 {
+            let value = SymbolicBitVec::constant(0b1000_0000, 8);
+            let shift_amount = SymbolicBitVec::constant(n, 8);
+            let expected = if n < 8 { 0x80 >> n } else { 0 };
+            let result: u8 = (value >> shift_amount)
+                .try_into()
+                .expect("failed conversion");
+            assert_eq!(result, expected, "failed 0x80 >> {n}");
+        }
+    }
+
+    #[test]
+    fn signed_shift_right_negative() {
+        for n in 0..=8 {
+            let value = SymbolicBitVec::constant(0b1000_0000, 8);
+            let shift_amount = SymbolicBitVec::constant(n, 8);
+            let expected = if n < 8 { (-128 as i8 >> n) as u8 } else { 0xFF };
+            let result: u8 = value
+                .signed_shift_right(shift_amount)
+                .try_into()
+                .expect("failed conversion");
+            assert_eq!(result, expected, "failed signed shift 0x80 >> {n}");
+        }
+    }
+
+    #[test]
+    fn signed_shift_right_positive() {
+        for n in 0..=8 {
+            let value = SymbolicBitVec::constant(0b0111_1111, 8);
+            let shift_amount = SymbolicBitVec::constant(n, 8);
+            let expected = if n < 8 { 0x7F >> n } else { 0 };
+            let result: u8 = value
+                .signed_shift_right(shift_amount)
+                .try_into()
+                .expect("failed conversion");
+            assert_eq!(result, expected, "failed signed shift 0x7F >> {n}");
         }
     }
 }
