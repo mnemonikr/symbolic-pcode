@@ -856,6 +856,12 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This operation performs an unsigned (logical) right shift on input0. The value given by
+    /// input1, interpreted as an unsigned integer, indicates the number of bits to shift. The
+    /// vacated (most significant) bits are filled with zero. If input1 is zero, no shift is
+    /// performed and input0 is copied into output. If input1 is larger than the number of bits in
+    /// output, the result is zero. Both input0 and output must be the same size. Input1 can be any
+    /// size.
     fn shift_right(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -871,6 +877,13 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This operation performs a signed (arithmetic) right shift on input0. The value given by
+    /// input1, interpreted as an unsigned integer, indicates the number of bits to shift. The
+    /// vacated bits are filled with the original value of the most significant (sign) bit of
+    /// input0. If input1 is zero, no shift is performed and input0 is copied into output. If input1
+    /// is larger than the number of bits in output, the result is zero or all 1-bits (-1),
+    /// depending on the original sign of input0. Both input0 and output must be the same size.
+    /// Input1 can be any size.
     fn signed_shift_right(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
