@@ -196,6 +196,9 @@ impl PcodeEmulator {
             OpCode::CPUI_INT_SLESSEQUAL => self.int_signed_less_than_eq(&instruction)?,
             OpCode::CPUI_INT_LESS => self.int_less_than(&instruction)?,
             OpCode::CPUI_INT_LESSEQUAL => self.int_less_than_eq(&instruction)?,
+            OpCode::CPUI_INT_LEFT => self.shift_left(&instruction)?,
+            OpCode::CPUI_INT_RIGHT => self.shift_right(&instruction)?,
+            OpCode::CPUI_INT_SRIGHT => self.signed_shift_right(&instruction)?,
             OpCode::CPUI_BOOL_NEGATE => self.bool_negate(&instruction)?,
             OpCode::CPUI_BOOL_AND => self.bool_and(&instruction)?,
             OpCode::CPUI_BOOL_OR => self.bool_or(&instruction)?,
@@ -829,6 +832,69 @@ impl PcodeEmulator {
 
         self.memory
             .write_bytes(vec![or], &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This operation performs a left shift on input0. The value given by input1, interpreted as an
+    /// unsigned integer, indicates the number of bits to shift. The vacated (least significant)
+    /// bits are filled with zero. If input1 is zero, no shift is performed and input0 is copied
+    /// into output. If input1 is larger than the number of bits in output, the result is zero. Both
+    /// input0 and output must be the same size. Input1 can be any size.
+    fn shift_left(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_output_size_equals(&instruction, instruction.inputs[0].size)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let result = (lhs << rhs).into_parts(8);
+
+        self.memory
+            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This operation performs an unsigned (logical) right shift on input0. The value given by
+    /// input1, interpreted as an unsigned integer, indicates the number of bits to shift. The
+    /// vacated (most significant) bits are filled with zero. If input1 is zero, no shift is
+    /// performed and input0 is copied into output. If input1 is larger than the number of bits in
+    /// output, the result is zero. Both input0 and output must be the same size. Input1 can be any
+    /// size.
+    fn shift_right(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_output_size_equals(&instruction, instruction.inputs[0].size)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let result = (lhs >> rhs).into_parts(8);
+
+        self.memory
+            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This operation performs a signed (arithmetic) right shift on input0. The value given by
+    /// input1, interpreted as an unsigned integer, indicates the number of bits to shift. The
+    /// vacated bits are filled with the original value of the most significant (sign) bit of
+    /// input0. If input1 is zero, no shift is performed and input0 is copied into output. If input1
+    /// is larger than the number of bits in output, the result is zero or all 1-bits (-1),
+    /// depending on the original sign of input0. Both input0 and output must be the same size.
+    /// Input1 can be any size.
+    fn signed_shift_right(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_output_size_equals(&instruction, instruction.inputs[0].size)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let result = lhs.signed_shift_right(rhs).into_parts(8);
+
+        self.memory
+            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1851,6 +1917,120 @@ mod tests {
                 emulator.memory.read_concrete_value::<u8>(&output)?,
                 expected_result,
                 "failed signed comparison {lhs} <= {rhs}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn shift_left() -> Result<()> {
+        for n in 0..=8u8 {
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![0x01u8.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![n.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_LEFT,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+            let expected_result = if n < 8 { 1 << n } else { 0 };
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed 1 << {n}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn shift_right() -> Result<()> {
+        for n in 0..=8u8 {
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![0x80u8.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![n.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_RIGHT,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+            let expected_result = if n < 8 { 0x80 >> n } else { 0 };
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed 0x80 >> {n}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn signed_shift_right() -> Result<()> {
+        for n in 0..=8u8 {
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![0x80u8.into()])?;
+            let rhs_input = write_bytes(&mut emulator, 1, vec![n.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_INT_SRIGHT,
+                inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+            let expected_result = if n < 8 { (-128i8 >> n) as u8 } else { 0xFF };
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed signed shift 0x80 >> {n}"
             );
         }
 

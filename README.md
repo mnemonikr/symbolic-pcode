@@ -21,8 +21,8 @@ This section document which p-code operations are currently supported by the emu
 | :white_large_square: `CBRANCH`     | :white_check_mark:   `INT_EQUAL`      | :white_check_mark:   `INT_NOTEQUAL`  | :white_large_square: `FLOAT_SQRT`      |
 | :white_check_mark:   `BRANCHIND`   | :white_large_square: `INT_SREM`       | :white_large_square: `INT_REM`       | :white_large_square: `FLOAT_CEIL`      |
 | :white_large_square: `CALL`        | :white_check_mark:   `INT_SEXT`       | :white_check_mark:   `INT_ZEXT`      | :white_large_square: `FLOAT_FLOOR`     |
-| :white_large_square: `CALLIND`     | :white_large_square: `INT_SBORROW`    | :white_large_square: `INT_LEFT`      | :white_large_square: `FLOAT_ROUND`     |
-| :white_check_mark:   `RETURN`      | :white_large_square: `INT_SRIGHT`     | :white_large_square: `INT_RIGHT`     | :white_large_square: `FLOAT_NAN`       |
+| :white_large_square: `CALLIND`     | :white_large_square: `INT_SBORROW`    | :white_check_mark:   `INT_LEFT`      | :white_large_square: `FLOAT_ROUND`     |
+| :white_check_mark:   `RETURN`      | :white_check_mark:   `INT_SRIGHT`     | :white_check_mark:   `INT_RIGHT`     | :white_large_square: `FLOAT_NAN`       |
 | :white_large_square: `PIECE`       |                                       |                                      | :white_large_square: `INT2FLOAT`       |
 | :white_check_mark:   `SUBPIECE`    |                                       |                                      | :white_large_square: `FLOAT2INT`       |
 | :white_check_mark:   `POPCOUNT`    |                                       |                                      | :white_large_square: `TRUNC`           |
