@@ -30,7 +30,12 @@ impl LoadImage for PcodeEmulator {
         let bytes = match bytes {
             Err(mem::Error::UndefinedData(addr)) => {
                 let input = VarnodeData {
-                    size: addr.offset - input.address.offset,
+                    // SAFETY: This new size MUST be less than the existing input size
+                    size: unsafe {
+                        (addr.offset - input.address.offset)
+                            .try_into()
+                            .unwrap_unchecked()
+                    },
                     address: input.address.clone(),
                 };
                 self.memory.read_bytes(&input)
@@ -63,7 +68,25 @@ fn check_num_inputs(instruction: &PcodeInstruction, num_inputs: usize) -> Result
 
 fn check_has_output(instruction: &PcodeInstruction, has_output: bool) -> Result<()> {
     if instruction.output.is_some() == has_output {
-        Ok(())
+        if has_output
+            && instruction
+                .output
+                .as_ref()
+                .unwrap()
+                .address
+                .address_space
+                .is_constant()
+        {
+            Err(Error::IllegalInstruction(
+                instruction.clone(),
+                format!(
+                    "instruction output address space is constant: {:?}",
+                    instruction.output
+                ),
+            ))
+        } else {
+            Ok(())
+        }
     } else {
         Err(Error::IllegalInstruction(
             instruction.clone(),
@@ -108,6 +131,19 @@ fn check_output_size_equals(instruction: &PcodeInstruction, expected_size: usize
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    MachineAddress(Address),
+    PcodeAddress(i64),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlFlow {
+    NextInstruction,
+    Jump(Destination),
+    ConditionalBranch(sym::SymbolicBit, Destination),
+}
+
 impl PcodeEmulator {
     pub fn new(address_spaces: Vec<AddressSpace>) -> Self {
         Self {
@@ -123,7 +159,7 @@ impl PcodeEmulator {
         &mut self.memory
     }
 
-    pub fn emulate(&mut self, instruction: &PcodeInstruction) -> Result<Option<Address>> {
+    pub fn emulate(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         match instruction.op_code {
             OpCode::CPUI_COPY => self.copy(&instruction)?,
             OpCode::CPUI_LOAD => self.load(
@@ -204,12 +240,13 @@ impl PcodeEmulator {
             OpCode::CPUI_BOOL_AND => self.bool_and(&instruction)?,
             OpCode::CPUI_BOOL_OR => self.bool_or(&instruction)?,
             OpCode::CPUI_BOOL_XOR => self.bool_xor(&instruction)?,
-            OpCode::CPUI_RETURN => return self.return_instruction(&instruction).map(Option::Some),
-            OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction).map(Option::Some),
+            OpCode::CPUI_RETURN => return self.return_instruction(&instruction),
+            OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction),
+            OpCode::CPUI_BRANCH => return self.branch(&instruction),
             _ => unimplemented!("Operation not yet implemented: {:?}", instruction.op_code),
         }
 
-        Ok(None)
+        Ok(ControlFlow::NextInstruction)
     }
 
     /// Copy a sequence of contiguous bytes from anywhere to anywhere. Size of input0 and output
@@ -300,6 +337,64 @@ impl PcodeEmulator {
         self.memory
             .write_bytes(self.memory.read_bytes_owned(&input_2)?, &output)?;
 
+        Ok(())
+    }
+
+    /// This is an absolute jump instruction. The varnode parameter input0 encodes the destination
+    /// address (address space and offset) of the jump. The varnode is not treated as a variable for
+    /// this instruction and does not store the destination. Its address space and offset are the
+    /// destination. The size of input0 is irrelevant.
+    ///
+    /// Confusion about the meaning of this instruction can result because of the translation from
+    /// machine instructions to p-code. The destination of the jump is a machine address and refers
+    /// to the machine instruction at that address. When attempting to determine which p-code
+    /// instruction is executed next, the rule is: execute the first p-code instruction resulting
+    /// from the translation of the machine instruction(s) at that address. The resulting p-code
+    /// instruction may not be attached directly to the indicated address due to NOP instruction
+    /// s and delay slots.
+    ///
+    /// If input0 is constant, i.e. its address space is the constant address space, then it encodes
+    /// a p-code relative branch. In this case, the offset of input0 is considered a relative offset
+    /// into the indexed list of p-code operations corresponding to the translation of the current
+    /// machine instruction. This allows branching within the operations forming a single
+    /// instruction. For example, if the BRANCH occurs as the pcode operation with index 5 for the
+    /// instruction, it can branch to operation with index 8 by specifying a constant destination
+    /// "address" of 3. Negative constants can be used for backward branches.
+    fn branch(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+        check_num_inputs(&instruction, 1)?;
+        check_has_output(&instruction, false)?;
+        let destination = &instruction.inputs[0].address;
+        if destination.address_space.space_type == AddressSpaceType::Constant {
+            // The p-code relative branch is permitted to be negative. The commentary for this
+            // function is that the size of the input is irrelevant. I have double checked the
+            // Ghidra p-code generator and confirmed that the relative offset is assigned to an
+            // unsigned 64-bit value through the subtraction of two unsigned 64-bit values.
+            // Therefore any negative offset interpretation would be determined by treating this
+            // value as a *signed* 64-bit offset.
+            //
+            // See: PcodeCacher::resolveRelatives(void) in sleigh.cc
+            //
+            // For this reason it is absolutely paramount that the offset received from Ghidra be
+            // preserved as a 64-bit value and *NOT* converted at any point. Since this value may
+            // be either signed or unsigned depending on context, any conversion would necessarily
+            // fail to preserve the correct value in all contexts.
+            Ok(ControlFlow::Jump(Destination::PcodeAddress(
+                destination.offset as i64,
+            )))
+        } else {
+            Ok(ControlFlow::Jump(Destination::MachineAddress(
+                destination.clone(),
+            )))
+        }
+    }
+
+    /// This is a conditional branch instruction where the dynamic condition for taking the branch
+    /// is determined by the 1 byte variable input1. If this variable is non-zero, the condition is
+    /// considered true and the branch is taken. As in the BRANCH instruction the parameter input0
+    /// is not treated as a variable but as an address and is interpreted in the same way.
+    /// Furthermore, a constant space address is also interpreted as a relative address so that a
+    /// CBRANCH can do p-code relative branching. See the discussion for the BRANCH operation.
+    fn conditional_branch(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         Ok(())
     }
 
@@ -670,8 +765,9 @@ impl PcodeEmulator {
         );
         let mut data = self.memory.read_bytes_owned(input_0)?;
 
-        // Remove this number of least significant bytes
-        data.drain(..input_1.address.offset);
+        // Remove this number of least significant bytes. If for some reason the offset exceeds
+        // the maximum usize value, then by definition all of the data would be drained anyway.
+        data.drain(..input_1.address.offset.try_into().unwrap_or(usize::MAX));
 
         // Remove any excess from most significant bytes
         data.drain(output.size..);
@@ -687,7 +783,7 @@ impl PcodeEmulator {
     /// instruction itself. So execution can only branch within the same address space via this
     /// instruction. The size of the variable input0 must match the size of offsets for the current
     /// address space. P-code relative branching is not possible with BRANCHIND.
-    pub fn branch_ind(&mut self, instruction: &PcodeInstruction) -> Result<Address> {
+    pub fn branch_ind(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         check_num_inputs(&instruction, 1)?;
         check_has_output(&instruction, false)?;
 
@@ -697,8 +793,8 @@ impl PcodeEmulator {
             return Err(Error::IllegalInstruction(
                 instruction.clone(),
                 format!(
-                    "Branch target offset size {} does not match address space size {}",
-                    input_0.size, instruction.address.address_space.address_size
+                    "Branch target offset size {target_size} does not match address space size {space_size}",
+                    target_size=input_0.size, space_size=instruction.address.address_space.address_size
                 ),
             ));
         }
@@ -715,10 +811,10 @@ impl PcodeEmulator {
 
         // TODO Enforce restriction that this is not P-code relative branch
 
-        Ok(Address {
+        Ok(ControlFlow::Jump(Destination::MachineAddress(Address {
             address_space: instruction.address.address_space.clone(),
-            offset: self.memory.read_concrete_value::<usize>(input_0)?,
-        })
+            offset: self.memory.read_concrete_value::<u64>(input_0)?,
+        })))
     }
 
     /// This instruction is semantically equivalent to the BRANCHIND instruction. It does not
@@ -730,7 +826,7 @@ impl PcodeEmulator {
     /// form. If input1 is present it represents the value being returned by this operation. This is
     /// used by analysis algorithms to hold the value logically flowing back to the parent
     /// subroutine.
-    pub fn return_instruction(&mut self, instruction: &PcodeInstruction) -> Result<Address> {
+    pub fn return_instruction(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         self.branch_ind(instruction)
     }
 
@@ -964,7 +1060,7 @@ mod tests {
 
     fn write_bytes(
         emulator: &mut PcodeEmulator,
-        offset: usize,
+        offset: u64,
         bytes: Vec<SymbolicBitVec>,
     ) -> Result<VarnodeData> {
         let varnode = VarnodeData {
@@ -1051,7 +1147,7 @@ mod tests {
         let addr_space_input = VarnodeData {
             address: Address {
                 address_space: constant_address_space(),
-                offset: processor_address_space().id,
+                offset: processor_address_space().id as u64,
             },
             size: 8, // This value doesn't really matter
         };
@@ -1105,7 +1201,7 @@ mod tests {
         let addr_space_input = VarnodeData {
             address: Address {
                 address_space: constant_address_space(),
-                offset: processor_address_space().id,
+                offset: processor_address_space().id as u64,
             },
             size: 8, // This value doesn't really matter
         };
@@ -1508,13 +1604,11 @@ mod tests {
             inputs: vec![data_input.clone()],
             output: None,
         };
-        let branch_addr = emulator
-            .emulate(&instruction)?
-            .expect("branch indirect did not return address");
-        let expected_addr = Address {
+        let branch_addr = emulator.emulate(&instruction)?;
+        let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
             address_space: processor_address_space(),
             offset: 0xDEADBEEF,
-        };
+        }));
         assert_eq!(branch_addr, expected_addr);
         Ok(())
     }
@@ -2105,6 +2199,65 @@ mod tests {
             );
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn branch_absolute() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let data_input = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xDEADBEEF,
+            },
+            size: 0, // This value is irrelevant
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_BRANCH,
+            inputs: vec![data_input.clone()],
+            output: None,
+        };
+
+        let branch_addr = emulator.emulate(&instruction)?;
+        let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }));
+
+        assert_eq!(branch_addr, expected_addr);
+        Ok(())
+    }
+
+    #[test]
+    fn branch_pcode_relative() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let data_input = VarnodeData {
+            address: Address {
+                address_space: constant_address_space(),
+                offset: u64::MAX,
+            },
+            size: 0, // This value is irrelevant
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_BRANCH,
+            inputs: vec![data_input.clone()],
+            output: None,
+        };
+
+        let branch_addr = emulator.emulate(&instruction)?;
+        let expected_addr = ControlFlow::Jump(Destination::PcodeAddress(-1));
+
+        assert_eq!(branch_addr, expected_addr);
         Ok(())
     }
 }
