@@ -210,6 +210,7 @@ impl PcodeEmulator {
             OpCode::CPUI_POPCOUNT => {
                 self.popcount(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
+            OpCode::CPUI_PIECE => self.piece(&instruction)?,
             OpCode::CPUI_SUBPIECE => self.subpiece(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
@@ -773,6 +774,25 @@ impl PcodeEmulator {
         self.memory.write_bytes(
             result.zero_extend(requested_bits - num_bits).into_parts(8),
             &output,
+        )?;
+
+        Ok(())
+    }
+
+    fn piece(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_output_size_equals(
+            &instruction,
+            instruction.inputs[0].size + instruction.inputs[1].size,
+        )?;
+
+        let msb: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let lsb: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+
+        self.memory.write_bytes(
+            lsb.concat(msb).into_parts(8),
+            instruction.output.as_ref().unwrap(),
         )?;
 
         Ok(())
@@ -1557,6 +1577,39 @@ mod tests {
             emulator.memory.read_concrete_value::<u8>(&output)?,
             0x1,
             "Expected 0xDEADBEEF != 0x0 to be 1"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn piece() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let msb_input = write_bytes(&mut emulator, 0, vec![0xADu8.into(), 0xDEu8.into()])?;
+        let lsb_input = write_bytes(&mut emulator, 2, vec![0xEFu8.into(), 0xBEu8.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 4,
+            },
+            size: 4,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_PIECE,
+            inputs: vec![msb_input.clone(), lsb_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u32>(&output)?,
+            0xDEADBEEF
         );
         Ok(())
     }
