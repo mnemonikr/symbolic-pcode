@@ -243,6 +243,8 @@ impl PcodeEmulator {
             OpCode::CPUI_RETURN => return self.return_instruction(&instruction),
             OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction),
             OpCode::CPUI_BRANCH => return self.branch(&instruction),
+            OpCode::CPUI_CALL => return self.call(&instruction),
+            OpCode::CPUI_CALLIND => return self.call_ind(&instruction),
             _ => unimplemented!("Operation not yet implemented: {:?}", instruction.op_code),
         }
 
@@ -386,6 +388,34 @@ impl PcodeEmulator {
                 destination.clone(),
             )))
         }
+    }
+
+    /// This instruction is semantically equivalent to the BRANCH instruction. Beware: This
+    /// instruction does not behave like a typical function call. In particular, there is no
+    /// internal stack in p-code for saving the return address. Use of this instruction instead of
+    /// BRANCH is intended to provide a hint to algorithms that try to follow code flow. It
+    /// indicates that the original machine instruction, of which this p-code instruction is only a
+    /// part, is intended to be a function call. The p-code instruction does not implement the full
+    /// semantics of the call itself; it only implements the final branch.
+    ///
+    /// In the raw p-code translation process, this operation can only take input0, but in follow-on
+    /// analysis, it can take arbitrary additional inputs. These represent (possibly partial)
+    /// recovery of the parameters being passed to the logical call represented by this operation.
+    /// These additional parameters have no effect on the original semantics of the raw p-code but
+    /// naturally hold the varnode values flowing into the call.
+    fn call(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+        self.branch(instruction)
+    }
+
+    /// This instruction is semantically equivalent to the BRANCHIND instruction. It does not
+    /// perform a function call in the usual sense of the term. It merely indicates that the
+    /// original machine instruction is intended to be an indirect call. See the discussion for the
+    /// CALL instruction.
+    ///
+    /// As with the CALL instruction, this operation may take additional inputs when not in raw
+    /// form, representing the parameters being passed to the logical call.
+    fn call_ind(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+        self.branch_ind(instruction)
     }
 
     /// This is a conditional branch instruction where the dynamic condition for taking the branch
@@ -1614,6 +1644,38 @@ mod tests {
     }
 
     #[test]
+    fn call_ind() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data_input = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0,
+            },
+            size: 4,
+        };
+
+        emulator.memory.write_bytes(data, &data_input)?;
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_CALLIND,
+            inputs: vec![data_input.clone()],
+            output: None,
+        };
+        let branch_addr = emulator.emulate(&instruction)?;
+        let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }));
+        assert_eq!(branch_addr, expected_addr);
+        Ok(())
+    }
+
+    #[test]
     fn bool_negate() -> Result<()> {
         for value in 0..=1u8 {
             let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
@@ -2199,6 +2261,37 @@ mod tests {
             );
         }
 
+        Ok(())
+    }
+
+    #[test]
+    fn call() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let data_input = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xDEADBEEF,
+            },
+            size: 0, // This value is irrelevant
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_CALL,
+            inputs: vec![data_input.clone()],
+            output: None,
+        };
+
+        let branch_addr = emulator.emulate(&instruction)?;
+        let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }));
+
+        assert_eq!(branch_addr, expected_addr);
         Ok(())
     }
 
