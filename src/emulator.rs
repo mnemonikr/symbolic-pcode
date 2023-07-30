@@ -201,6 +201,7 @@ impl PcodeEmulator {
                 instruction.output.as_ref().unwrap(),
             )?,
             OpCode::CPUI_INT_SBORROW => self.int_sub_borrow(&instruction)?,
+            OpCode::CPUI_INT_MULT => self.int_multiply(&instruction)?,
             OpCode::CPUI_INT_SEXT => {
                 self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
@@ -608,6 +609,21 @@ impl PcodeEmulator {
             vec![overflow.zero_extend(7)],
             instruction.output.as_ref().unwrap(),
         )?;
+
+        Ok(())
+    }
+
+    fn int_multiply(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let output = instruction.output.as_ref().unwrap();
+
+        let product = lhs.multiply(rhs, 8 * output.size);
+        self.memory.write_bytes(product.into_parts(8), output)?;
 
         Ok(())
     }
@@ -1399,6 +1415,92 @@ mod tests {
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEADBEEF
         );
+        Ok(())
+    }
+
+    #[test]
+    fn int_multiply() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 0..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_value = lhs_value.zero_extend(4);
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_value = rhs_value.zero_extend(4);
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    op_code: OpCode::CPUI_INT_MULT,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)?,
+                    lhs * rhs,
+                    "failed {lhs} * {rhs}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_multiply_multibyte() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs: u8 = 0xFF;
+        let lhs_value: SymbolicBitVec = lhs.into();
+        let lhs_value = lhs_value.zero_extend(8);
+        let lhs_input = write_bytes(&mut emulator, 0, lhs_value.into_parts(8))?;
+
+        let rhs: u8 = 0x80;
+        let rhs_value: SymbolicBitVec = rhs.into();
+        let rhs_value = rhs_value.zero_extend(8);
+        let rhs_input = write_bytes(&mut emulator, 1, rhs_value.into_parts(8))?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 2,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_MULT,
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u16>(&output)?,
+            lhs as u16 * rhs as u16,
+            "failed {lhs} * {rhs}"
+        );
+
         Ok(())
     }
 

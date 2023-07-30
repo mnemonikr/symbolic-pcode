@@ -312,6 +312,117 @@ impl SymbolicBitVec {
         self.concat(extension)
     }
 
+    pub fn addition_with_carry(self, rhs: Self) -> (Self, SymbolicBit) {
+        let mut carry = self.clone().addition_carry_bits(rhs.clone());
+        let overflow = carry.bits.pop().unwrap();
+        let sum = self ^ rhs ^ carry;
+        (sum, overflow)
+    }
+
+    /// Multiply two integers together. When multiplying unsigned integers together, the number of
+    /// output bits should be the sum of input sizes unless a lesser size is known in advance.
+    ///
+    /// # Unsigned Example
+    ///
+    /// ```
+    /// # use sym::SymbolicBitVec;
+    /// let x = SymbolicBitVec::constant(2, 4);
+    /// let y = SymbolicBitVec::constant(15, 4);
+    ///
+    /// let output_bits = x.len() + y.len();
+    /// let product: u8 = x.multiply(y, output_bits).try_into().unwrap();
+    /// assert_eq!(product, 30);
+    /// ```
+    ///
+    /// When multiplying signed integers, both inputs should be sign-extended to the requisite
+    /// output size. The `output_bits` argument should be set to this size as well.
+    ///
+    /// # Signed Example
+    ///
+    /// ```
+    /// # use sym::SymbolicBitVec;
+    /// let x = SymbolicBitVec::constant(0x2, 4); // Positive 2
+    /// let y = SymbolicBitVec::constant(0xF, 4); // Negative 1
+    ///
+    /// // Need 8 bits to represent the product of 4-bit numbers
+    /// let output_bits = x.len() + y.len();
+    ///
+    /// // Sign extend both x and y to match output length
+    /// let x = x.sign_extend(output_bits - 4);
+    /// let y = y.sign_extend(output_bits - 4);
+    ///
+    /// // Multiply the values, but only keep 8 bits of output
+    /// let product: u8 = x.multiply(y, output_bits).try_into().unwrap();
+    /// let product = product as i8;
+    /// assert_eq!(product, -2);
+    /// ```
+    pub fn multiply(self, rhs: Self, output_bits: usize) -> Self {
+        let rhs_size = rhs.len();
+
+        // The initial zero sum may need to be fewer bits than normal if the number of output bits
+        // is smaller than self. While additional zeros would not negatively impact the
+        // computation, this ensures that the final product has the expected number of output bits.
+        let zero = SymbolicBitVec::constant(0, usize::min(self.len(), output_bits));
+        let mut product = rhs.concat(zero.clone());
+
+        for n in 0..rhs_size {
+            let selector = product.bits[0].clone();
+
+            // The number of bits to sum depends on the number of output bits requested.
+            // We can avoid unnecessary additions in this manner. Consider the following
+            // where only 4 output bits are requested:
+            //
+            // a0 a1 a2 a3
+            // b0 b1 b2 b3
+            // -----------
+            //  0  0  0  0 |           [initial sum]
+            // y0 y1 y2 y3 |           [b0]
+            //    y0 y1 y2 | y3        [b1]
+            //       y0 y1 | y2 y3     [b2]
+            //          y0 | y1 y2 y3  [b3]
+            // ----------------------
+            //
+            // Everything to the right of the | separator does not need to be computed.
+            let max_sum_bits = output_bits.saturating_sub(n);
+            let num_sum_bits = usize::min(self.len(), max_sum_bits);
+            let carry = if num_sum_bits > 0 {
+                // Select the bits to sum, truncating the most significant bits as necessary
+
+                // TODO All of the bits placed into x will be overwritten. It could improve
+                // performance if these bits were extracted instead of cloned.
+                let x: Self = product.bits[rhs_size..rhs_size + num_sum_bits]
+                    .to_vec()
+                    .into();
+                let y = self
+                    .clone()
+                    .truncate_msb(self.len() - num_sum_bits)
+                    .mux(SymbolicBitVec::constant(0, num_sum_bits), selector);
+
+                let (sum, carry) = x.addition_with_carry(y);
+                for (i, bit) in sum.bits.into_iter().enumerate() {
+                    product.bits[rhs_size + i] = bit;
+                }
+
+                Some(carry)
+            } else {
+                None
+            };
+
+            // Remove the current least significant bit corresponding to the RHS and shift
+            // everything down.
+            product.bits.remove(0);
+
+            // The carry bit should only be added if the next iteration would not result in a
+            // truncated addition. This is to ensure the number of product bits at the conclusion
+            // of this loop contains the expected number of output bits.
+            if max_sum_bits > self.len() {
+                product.bits.push(carry.unwrap());
+            }
+        }
+
+        product
+    }
+
     pub fn addition_carry_bits(self, rhs: Self) -> Self {
         assert_eq!(self.bits.len(), rhs.bits.len());
         let mut carry = Vec::with_capacity(self.bits.len() + 1);
@@ -600,11 +711,8 @@ impl std::ops::Add for SymbolicBitVec {
         assert_eq!(self.bits.len(), rhs.bits.len());
         // The carry bit size is actually N+1 in order to track whether an overflow has occurred.
         // The addition does not care about the overflow so remove this bit
-        let carry = self
-            .clone()
-            .addition_carry_bits(rhs.clone())
-            .truncate_msb(1);
-        self ^ rhs ^ carry
+        let (sum, _) = self.addition_with_carry(rhs);
+        sum
     }
 }
 
@@ -623,6 +731,15 @@ impl std::ops::Sub for SymbolicBitVec {
     fn sub(self, rhs: Self) -> Self::Output {
         assert_eq!(self.bits.len(), rhs.bits.len());
         self + (-rhs)
+    }
+}
+
+impl std::ops::Mul for SymbolicBitVec {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let output_size = self.len() + rhs.len();
+        self.multiply(rhs, output_size)
     }
 }
 
@@ -1116,6 +1233,64 @@ mod tests {
                 .try_into()
                 .expect("failed conversion");
             assert_eq!(result, expected, "failed signed shift 0x7F >> {n}");
+        }
+    }
+
+    #[test]
+    fn multiply() {
+        let output_bits = 8;
+        for n in 0..16u8 {
+            let value = SymbolicBitVec::constant(n.into(), 4);
+            let square = value.clone() * value;
+            assert_eq!(
+                square.bits.len(),
+                output_bits,
+                "expected {output_bits} bits in result"
+            );
+
+            let square: u8 = square.try_into().expect("failed conversion");
+            assert_eq!(square, n * n, "failed {n} * {n}");
+        }
+    }
+
+    #[test]
+    fn signed_multiply() {
+        let output_bits = 8;
+        for n in 0..16u8 {
+            let value = SymbolicBitVec::constant(n.into(), 4);
+            let value = value.sign_extend(4);
+            let n: u8 = value.clone().try_into().expect("failed conversion");
+            let square = value.clone().multiply(value, output_bits);
+            assert_eq!(
+                square.bits.len(),
+                output_bits,
+                "expected {output_bits} bits in result"
+            );
+
+            let square: u8 = square.try_into().expect("failed conversion");
+
+            let n = n as i8;
+            assert_eq!(square as i8, n * n, "failed {n} * {n}");
+        }
+    }
+
+    #[test]
+    fn single_bit_multiply() {
+        let output_bits = 1;
+        for n in 0..16u8 {
+            let expected = (n * n) & 1;
+            let value = SymbolicBitVec::constant(n.into(), 4);
+            let value = value.sign_extend(4);
+            let n: u8 = value.clone().try_into().expect("failed conversion");
+            let result = value.clone().multiply(value, output_bits);
+            assert_eq!(
+                result.bits.len(),
+                output_bits,
+                "expected {output_bits} bits in result"
+            );
+
+            let result: u8 = result.try_into().expect("failed conversion");
+            assert_eq!(result, expected, "failed to select lsb of {n} * {n}");
         }
     }
 }

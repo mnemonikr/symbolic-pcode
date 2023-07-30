@@ -16,7 +16,7 @@ This section document which p-code operations are currently supported by the emu
 | :white_check_mark:   `BOOL_NEGATE` | :white_check_mark:   `INT_NEGATE`     | :white_check_mark:   `INT_2COMP`     | :white_large_square: `FLOAT_NEG`       |
 | :white_check_mark:   `BOOL_XOR`    | :white_check_mark:   `INT_XOR`        | :white_check_mark:   `INT_ADD`       | :white_large_square: `FLOAT_ADD`       |
 | :white_check_mark:   `BOOL_AND`    | :white_check_mark:   `INT_OR`         | :white_check_mark:   `INT_SUB`       | :white_large_square: `FLOAT_SUB`       |
-| :white_check_mark:   `BOOL_OR`     | :white_check_mark:   `INT_AND`        | :white_large_square: `INT_MULT`      | :white_large_square: `FLOAT_MULT`      |
+| :white_check_mark:   `BOOL_OR`     | :white_check_mark:   `INT_AND`        | :white_check_mark:   `INT_MULT`      | :white_large_square: `FLOAT_MULT`      |
 | :white_check_mark:   `BRANCH`      | :white_large_square: `INT_SDIV`       | :white_large_square: `INT_DIV`       | :white_large_square: `FLOAT_DIV`       |
 | :white_large_square: `CBRANCH`     | :white_large_square: `INT_SREM`       | :white_large_square: `INT_REM`       | :white_large_square: `FLOAT_SQRT`      |
 | :white_check_mark:   `BRANCHIND`   | :white_check_mark:   `INT_SCARRY`     | :white_check_mark:   `INT_CARRY`     | :white_large_square: `FLOAT_CEIL`      |
