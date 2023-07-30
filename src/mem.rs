@@ -12,6 +12,12 @@ pub enum Error {
     #[error("space id {0:0width$x} does not refer to a known address space", width = 2 * std::mem::size_of::<usize>())]
     UnknownAddressSpace(usize),
 
+    #[error("space id {space_id:0width$x} is not a valid address space id", width = 2 * std::mem::size_of::<u64>())]
+    InvalidAddressSpaceId {
+        space_id: u64,
+        source: <u64 as TryFrom<usize>>::Error,
+    },
+
     #[error("address space for {address} does not match expected: {expected:?}")]
     InvalidAddressSpaceType {
         address: Address,
@@ -33,7 +39,7 @@ pub enum Error {
 
 struct AddressSpaceData {
     address_space: AddressSpace,
-    data: BTreeMap<usize, SymbolicBitVec>,
+    data: BTreeMap<u64, SymbolicBitVec>,
 }
 
 impl AddressSpaceData {
@@ -46,8 +52,8 @@ impl AddressSpaceData {
 
     pub fn read_bytes(
         &self,
-        range: impl std::ops::RangeBounds<usize>,
-    ) -> impl Iterator<Item = (&usize, &SymbolicBitVec)> {
+        range: impl std::ops::RangeBounds<u64>,
+    ) -> impl Iterator<Item = (&u64, &SymbolicBitVec)> {
         self.data.range(range)
     }
 }
@@ -74,11 +80,11 @@ impl Memory {
             .ok_or(Error::UnknownAddressSpace(space_id))?;
 
         // Collect into a Vec or return the first undefined offset
-        let result: std::result::Result<Vec<&SymbolicBitVec>, &usize> = memory
+        let result: std::result::Result<Vec<&SymbolicBitVec>, &u64> = memory
             .read_bytes(input.range())
             .enumerate()
             .map(|(i, (offset, v))| {
-                if *offset == i + input.address.offset {
+                if *offset == i as u64 + input.address.offset {
                     Ok(v)
                 } else {
                     // Undefined offset
@@ -116,7 +122,16 @@ impl Memory {
     }
 
     fn read_const(&self, input: &VarnodeData) -> Vec<SymbolicBitVec> {
-        SymbolicBitVec::constant(input.address.offset, 8 * input.size).into_parts(8)
+        SymbolicBitVec::constant(
+            input.address.offset.try_into().unwrap_or_else(|err| {
+                panic!(
+                    "unable to represent {offset} as symbolic constant: {err}",
+                    offset = input.address.offset
+                )
+            }),
+            8 * input.size,
+        )
+        .into_parts(8)
     }
 
     pub fn read_bytes_owned(&self, input: &VarnodeData) -> Result<Vec<SymbolicBitVec>> {
@@ -131,11 +146,11 @@ impl Memory {
             .ok_or(Error::UnknownAddressSpace(space_id))?;
 
         // Collect into a Vec or return the first undefined offset
-        let result: std::result::Result<Vec<SymbolicBitVec>, &usize> = memory
+        let result: std::result::Result<Vec<SymbolicBitVec>, &u64> = memory
             .read_bytes(input.range())
             .enumerate()
             .map(|(i, (offset, v))| {
-                if *offset == i + input.address.offset {
+                if *offset == i as u64 + input.address.offset {
                     Ok(v.clone())
                 } else {
                     // Undefined offset
@@ -184,7 +199,16 @@ impl Memory {
             });
         }
 
-        let space_id = input.address.offset;
+        let space_id =
+            input
+                .address
+                .offset
+                .try_into()
+                .map_err(|err| Error::InvalidAddressSpaceId {
+                    space_id: input.address.offset,
+                    source: err,
+                })?;
+
         self.data
             .get(&space_id)
             .ok_or(Error::UnknownAddressSpace(space_id))

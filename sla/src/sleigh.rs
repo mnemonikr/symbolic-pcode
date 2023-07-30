@@ -12,7 +12,11 @@ pub type OpCode = sys::OpCode;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
-    pub offset: usize,
+    /// The standard interpretation of the offset is an index into the associated address space.
+    /// However, when used in conjunction with the constant address space, the offset is the actual
+    /// value. In some contexts this value may be signed, in which case the offset should be
+    /// considered an `i64` value.
+    pub offset: u64,
     pub address_space: AddressSpace,
 }
 
@@ -32,7 +36,7 @@ impl std::fmt::Display for Address {
 impl From<&sys::Address> for Address {
     fn from(address: &sys::Address) -> Self {
         Self {
-            offset: address.offset() as usize,
+            offset: address.offset(),
             address_space: unsafe { &*address.address_space() }.into(),
         }
     }
@@ -51,17 +55,25 @@ impl std::fmt::Display for VarnodeData {
 }
 
 impl VarnodeData {
-    pub fn range(&self) -> std::ops::Range<usize> {
-        let offset = self.address.offset * self.address.address_space.word_size;
-        offset..offset + self.size
+    pub fn range(&self) -> std::ops::Range<u64> {
+        let offset = self.address.offset * self.address.address_space.word_size as u64;
+        let size: u64 = self
+            .size
+            .try_into()
+            .unwrap_or_else(|err| panic!("invalid varnode size {size}: {err}", size = self.size));
+
+        offset..offset + size
     }
 }
 
 impl From<&sys::VarnodeData> for VarnodeData {
     fn from(varnode: &sys::VarnodeData) -> Self {
+        let size = sys::varnode_size(&varnode);
         Self {
             address: sys::varnode_address(&varnode).as_ref().unwrap().into(),
-            size: sys::varnode_size(&varnode) as usize,
+            size: size.try_into().unwrap_or_else(|err| {
+                panic!("unable to convert Ghidra varnode size: {size}. {err}")
+            }),
         }
     }
 }
@@ -74,6 +86,12 @@ pub struct AddressSpace {
     pub address_size: usize,
     pub space_type: AddressSpaceType,
     pub big_endian: bool,
+}
+
+impl AddressSpace {
+    pub fn is_constant(&self) -> bool {
+        self.space_type == AddressSpaceType::Constant
+    }
 }
 
 impl std::fmt::Display for AddressSpace {
@@ -350,9 +368,13 @@ impl<'a> Sleigh<'a> {
             .one_instruction(&mut emitter, address.as_ref().unwrap())
             .map_err(|err| format!("Failed to decode instruction: {err}"))?;
 
+        let bytes_consumed: usize = bytes_consumed
+            .try_into()
+            .map_err(|err| format!("Invalid number of bytes consumed: {bytes_consumed}: {err}"))?;
+
         let source = VarnodeData {
             address: (&*address).into(),
-            size: bytes_consumed as usize,
+            size: bytes_consumed,
         };
 
         if !inner_loader.readable(&source) {
@@ -360,11 +382,6 @@ impl<'a> Sleigh<'a> {
         }
 
         inner_loader.0 = None;
-
-        if bytes_consumed < 0 {
-            return Err("Consumed negative bytes".to_string());
-        }
-
         pcode.num_bytes_consumed = bytes_consumed as usize;
         Ok(pcode)
     }
@@ -373,7 +390,7 @@ impl<'a> Sleigh<'a> {
         &self,
         loader: std::ptr::NonNull<dyn LoadImage>,
         address: u64,
-    ) -> Result<DecodeResponse<AssemblyInstruction>, &'static str> {
+    ) -> Result<DecodeResponse<AssemblyInstruction>, String> {
         let address = unsafe { sys::new_address(self.sleigh.default_code_space(), address) };
         let mut response: DecodeResponse<AssemblyInstruction> = Default::default();
         let mut emitter = rust::RustAssemblyEmit(&mut response);
@@ -386,21 +403,20 @@ impl<'a> Sleigh<'a> {
             .print_assembly(&mut emitter, address.as_ref().unwrap())
             .map_err(|_err| "Failed to decode instruction")?;
 
+        let bytes_consumed: usize = bytes_consumed
+            .try_into()
+            .map_err(|err| format!("Invalid number of bytes consumed: {bytes_consumed}: {err}"))?;
+
         let data_read = VarnodeData {
             address: (&*address).into(),
-            size: bytes_consumed as usize,
+            size: bytes_consumed,
         };
 
         if !inner_loader.readable(&data_read) {
-            return Err("Out-of-bounds read while decoding instruction");
+            return Err("Out-of-bounds read while decoding instruction".to_string());
         }
 
         inner_loader.0 = None;
-
-        if bytes_consumed < 0 {
-            return Err("Consumed negative bytes");
-        }
-
         response.num_bytes_consumed = bytes_consumed as usize;
         Ok(response)
     }
@@ -416,7 +432,7 @@ mod tests {
 
     impl LoadImage for LoadImageImpl {
         fn instruction_bytes(&self, data: &VarnodeData) -> Result<Vec<u8>, String> {
-            let start = data.address.offset;
+            let start: usize = data.address.offset.try_into().expect("invalid offset");
             if start >= self.0.len() {
                 return Err("Requested fill outside image".to_string());
             }

@@ -1,6 +1,6 @@
 use std::fs;
 
-use pcode::emulator::PcodeEmulator;
+use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 use sla::{Address, Sleigh, VarnodeData};
 use sym::SymbolicBitVec;
 
@@ -29,7 +29,7 @@ impl<'a> Processor<'a> {
             .expect("failed to read value")
     }
 
-    pub fn write_memory(&mut self, offset: usize, data: impl AsRef<[u8]>) {
+    pub fn write_memory(&mut self, offset: u64, data: impl AsRef<[u8]>) {
         let ram = self
             .sleigh
             .address_spaces()
@@ -62,7 +62,7 @@ impl<'a> Processor<'a> {
             .expect("failed to write data");
     }
 
-    pub fn write_instructions(&mut self, base_address: usize, instructions: impl AsRef<[u8]>) {
+    pub fn write_instructions(&mut self, base_address: u64, instructions: impl AsRef<[u8]>) {
         let output = VarnodeData {
             address: Address {
                 offset: base_address,
@@ -74,11 +74,11 @@ impl<'a> Processor<'a> {
         self.write_data(output, instructions);
     }
 
-    pub fn emulate(&mut self, offset: usize) -> Result<usize, String> {
+    pub fn emulate(&mut self, offset: u64) -> Result<u64, String> {
         let pcode = self
             .sleigh
             .pcode(std::ptr::NonNull::from(&self.emulator), offset as u64)?;
-        let next_addr = offset + pcode.num_bytes_consumed;
+        let next_addr = offset + pcode.num_bytes_consumed as u64;
         println!("Bytes consumed: {}", pcode.num_bytes_consumed);
         println!("Next address: {:016x}", next_addr);
 
@@ -92,8 +92,18 @@ impl<'a> Processor<'a> {
                 return Err(err.to_string());
             }
 
-            if let Some(next_addr) = result.unwrap() {
-                return Ok(next_addr.offset);
+            match result.unwrap() {
+                ControlFlow::Jump(destination) => match destination {
+                    Destination::MachineAddress(addr) => {
+                        assert_eq!(addr.address_space, self.sleigh.default_code_space());
+                        return Ok(addr.offset);
+                    }
+                    Destination::PcodeAddress(offset) => {
+                        todo!("handle p-code relative branch: {offset}")
+                    }
+                },
+                ControlFlow::ConditionalBranch(_, _) => todo!("handle condition branch"),
+                ControlFlow::NextInstruction => (),
             }
         }
 
