@@ -671,6 +671,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is a signed integer division operation. The resulting integer is the one closest to
+    /// the rational value input0/input1 but which is still smaller in absolute value. Both inputs
+    /// and output must be the same size. There is no handling of division by zero. To simulate a
+    /// processor's handling of a division-by-zero trap, other operations must be used before the
+    /// INT_SDIV.
     fn int_signed_divide(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -686,6 +691,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is a signed integer remainder operation. The remainder of performing the signed
+    /// integer division of input0 and input1 is put in output. Both inputs and output must be the
+    /// same size. If q = input0 s/ input1, using the INT_SDIV operation defined above, then output
+    /// satisfies the equation q*input1 + output = input0, using the INT_MULT and INT_ADD
+    /// operations.
     fn int_signed_remainder(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
