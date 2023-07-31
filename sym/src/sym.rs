@@ -423,6 +423,48 @@ impl SymbolicBitVec {
         product
     }
 
+    /// Computes the unsigned integer division of `dividend` / `self` and returns
+    /// `(quotient, remainder)`.
+    ///
+    /// # Division by zero
+    ///
+    /// Division by zero is undefined. It is the responsibility of the caller to ensure the divisor
+    /// is non-zero.
+    pub fn unsigned_divide(self, dividend: Self) -> (Self, Self) {
+        // Zero extend so self and rhs are the same length
+        let divisor = match dividend.len().saturating_sub(self.len()) {
+            0 => self,
+            n => self.zero_extend(n),
+        };
+
+        let dividend = match divisor.len().saturating_sub(dividend.len()) {
+            0 => dividend,
+            n => dividend.zero_extend(n),
+        };
+
+        let mut quotient = SymbolicBitVec::constant(0, dividend.len());
+        let mut remainder = SymbolicBitVec::constant(0, dividend.len());
+        //println!("Divisor: {divisor:?}");
+        for next_bit in dividend.bits.into_iter().rev() {
+            // TODO If we had a VecDeque then this would be constant time instead of O(n)
+            remainder.bits.rotate_right(1);
+            remainder.bits[0] = next_bit;
+
+            // Check if RHS is less than working set
+            let selector = remainder.clone().less_than(divisor.clone());
+            let diff = remainder.clone() - divisor.clone();
+            remainder = remainder.mux(diff, selector.clone());
+
+            //println!("Selector: {selector:?}. Remainder: {remainder:?}");
+
+            // TODO If we had a VecDeque then this would be constant time instead of O(n)
+            quotient.bits.rotate_right(1);
+            quotient.bits[0] = !selector;
+        }
+
+        (quotient, remainder)
+    }
+
     pub fn addition_carry_bits(self, rhs: Self) -> Self {
         assert_eq!(self.bits.len(), rhs.bits.len());
         let mut carry = Vec::with_capacity(self.bits.len() + 1);
@@ -1305,6 +1347,31 @@ mod tests {
 
             let result: u8 = result.try_into().expect("failed conversion");
             assert_eq!(result, expected, "failed to select lsb of {n} * {n}");
+        }
+    }
+
+    #[test]
+    fn unsigned_divide() {
+        for dividend in 0..16u8 {
+            for divisor in 1..16u8 {
+                let sym_dividend = SymbolicBitVec::constant(dividend.into(), 4);
+                let sym_divisor = SymbolicBitVec::constant(divisor.into(), 4);
+                let (quotient, remainder) = sym_divisor.unsigned_divide(sym_dividend);
+
+                let quotient: u8 = quotient.try_into().expect("failed quotient conversion");
+                let remainder: u8 = remainder.try_into().expect("failed remainder conversion");
+
+                let expected_quotient = dividend / divisor;
+                let expected_remainder = dividend % divisor;
+                assert_eq!(
+                    quotient, expected_quotient,
+                    "invalid quotient for {dividend} / {divisor}"
+                );
+                assert_eq!(
+                    remainder, expected_remainder,
+                    "invalid remainder for {dividend} / {divisor}"
+                );
+            }
         }
     }
 }
