@@ -480,13 +480,18 @@ impl SymbolicBitVec {
 
     pub fn less_than(self, rhs: Self) -> SymbolicBit {
         assert_eq!(self.len(), rhs.len());
-        let mut result = SymbolicBit::Literal(false);
-        for i in 0..self.len() {
-            result = result
-                | (self[i].clone().equals(SymbolicBit::Literal(false))
-                    & rhs[i].clone().equals(SymbolicBit::Literal(true)));
+        let mut lhs = self;
+        let mut rhs = rhs;
+        let lhs_msb = lhs.bits.pop().unwrap();
+        let rhs_msb = rhs.bits.pop().unwrap();
+        let less_than = lhs_msb.clone().equals(SymbolicBit::Literal(false))
+            & rhs_msb.clone().equals(SymbolicBit::Literal(true));
+
+        if lhs.bits.len() > 0 {
+            less_than | (lhs_msb.equals(rhs_msb) & lhs.less_than(rhs))
+        } else {
+            less_than
         }
-        result
     }
 
     pub fn less_than_eq(self, rhs: Self) -> SymbolicBit {
@@ -495,13 +500,18 @@ impl SymbolicBitVec {
 
     pub fn greater_than(self, rhs: Self) -> SymbolicBit {
         assert_eq!(self.len(), rhs.len());
-        let mut result = SymbolicBit::Literal(false);
-        for i in 0..self.len() {
-            result = result
-                | (self[i].clone().equals(SymbolicBit::Literal(true))
-                    & rhs[i].clone().equals(SymbolicBit::Literal(false)));
+        let mut lhs = self;
+        let mut rhs = rhs;
+        let lhs_msb = lhs.bits.pop().unwrap();
+        let rhs_msb = rhs.bits.pop().unwrap();
+        let greater_than = lhs_msb.clone().equals(SymbolicBit::Literal(true))
+            & rhs_msb.clone().equals(SymbolicBit::Literal(false));
+
+        if lhs.bits.len() > 0 {
+            greater_than | (lhs_msb.equals(rhs_msb) & lhs.greater_than(rhs))
+        } else {
+            greater_than
         }
-        result
     }
 
     pub fn greater_than_eq(self, rhs: Self) -> SymbolicBit {
@@ -1018,22 +1028,26 @@ mod tests {
 
     #[test]
     fn less_than() {
-        let x: SymbolicBitVec = 1u32.into();
-        let y: SymbolicBitVec = 0u32.into();
-        let less_than = y.clone().less_than(x);
-        let not_less_than = y.clone().less_than(y);
-        assert_eq!(less_than, SymbolicBit::Literal(true));
-        assert_eq!(not_less_than, SymbolicBit::Literal(false));
+        for x in 0..16u8 {
+            for y in 0..16u8 {
+                let sym_x = SymbolicBitVec::constant(x.into(), 4);
+                let sym_y = SymbolicBitVec::constant(y.into(), 4);
+                let result = sym_x.less_than(sym_y);
+                assert_eq!(result, SymbolicBit::Literal(x < y), "failed {x} < {y}");
+            }
+        }
     }
 
     #[test]
     fn greater_than() {
-        let x: SymbolicBitVec = 0u32.into();
-        let y: SymbolicBitVec = 1u32.into();
-        let greater_than = y.clone().greater_than(x);
-        let not_greater_than = y.clone().greater_than(y);
-        assert_eq!(greater_than, SymbolicBit::Literal(true));
-        assert_eq!(not_greater_than, SymbolicBit::Literal(false));
+        for x in 0..16u8 {
+            for y in 0..16u8 {
+                let sym_x = SymbolicBitVec::constant(x.into(), 4);
+                let sym_y = SymbolicBitVec::constant(y.into(), 4);
+                let result = sym_x.greater_than(sym_y);
+                assert_eq!(result, SymbolicBit::Literal(x > y), "failed {x} > {y}");
+            }
+        }
     }
 
     #[test]
