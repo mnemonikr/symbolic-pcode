@@ -1539,7 +1539,7 @@ mod tests {
     #[test]
     fn int_divide() -> Result<()> {
         for lhs in 0..16u8 {
-            for rhs in 0..16u8 {
+            for rhs in 1..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value: SymbolicBitVec = lhs.into();
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
@@ -1572,6 +1572,49 @@ mod tests {
                     emulator.memory.read_concrete_value::<u8>(&output)?,
                     lhs / rhs,
                     "failed {lhs} / {rhs}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_remainder() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 1..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    // This will compute LHS / RHS
+                    op_code: OpCode::CPUI_INT_REM,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)?,
+                    lhs % rhs,
+                    "failed {lhs} % {rhs}"
                 );
             }
         }
