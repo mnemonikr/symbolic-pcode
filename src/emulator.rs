@@ -630,6 +630,10 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is an unsigned integer division operation. Divide input0 by input1, truncating the
+    /// result to the nearest integer, and store the result in output. Both inputs and output must
+    /// be the same size. There is no handling of division by zero. To simulate a processor's
+    /// handling of a division-by-zero trap, other operations must be used before the INT_DIV.
     fn int_divide(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -645,6 +649,11 @@ impl PcodeEmulator {
         Ok(())
     }
 
+    /// This is an unsigned integer remainder operation. The remainder of performing the unsigned
+    /// integer division of input0 and input1 is put in output. Both inputs and output must be the
+    /// same size. If q = input0/input1, using the INT_DIV operation defined above, then output
+    /// satisfies the equation q*input1 + output = input0, using the INT_MULT and INT_ADD
+    /// operations.
     fn int_remainder(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
