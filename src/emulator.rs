@@ -202,6 +202,8 @@ impl PcodeEmulator {
             )?,
             OpCode::CPUI_INT_SBORROW => self.int_sub_borrow(&instruction)?,
             OpCode::CPUI_INT_MULT => self.int_multiply(&instruction)?,
+            OpCode::CPUI_INT_DIV => self.int_divide(&instruction)?,
+            OpCode::CPUI_INT_REM => self.int_remainder(&instruction)?,
             OpCode::CPUI_INT_SEXT => {
                 self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
@@ -624,6 +626,45 @@ impl PcodeEmulator {
 
         let product = lhs.multiply(rhs, 8 * output.size);
         self.memory.write_bytes(product.into_parts(8), output)?;
+
+        Ok(())
+    }
+
+    /// This is an unsigned integer division operation. Divide input0 by input1, truncating the
+    /// result to the nearest integer, and store the result in output. Both inputs and output must
+    /// be the same size. There is no handling of division by zero. To simulate a processor's
+    /// handling of a division-by-zero trap, other operations must be used before the INT_DIV.
+    fn int_divide(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let output = instruction.output.as_ref().unwrap();
+
+        let (quotient, _) = rhs.unsigned_divide(lhs);
+        self.memory.write_bytes(quotient.into_parts(8), output)?;
+
+        Ok(())
+    }
+
+    /// This is an unsigned integer remainder operation. The remainder of performing the unsigned
+    /// integer division of input0 and input1 is put in output. Both inputs and output must be the
+    /// same size. If q = input0/input1, using the INT_DIV operation defined above, then output
+    /// satisfies the equation q*input1 + output = input0, using the INT_MULT and INT_ADD
+    /// operations.
+    fn int_remainder(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let output = instruction.output.as_ref().unwrap();
+
+        let (_, remainder) = rhs.unsigned_divide(lhs);
+        self.memory.write_bytes(remainder.into_parts(8), output)?;
 
         Ok(())
     }
@@ -1500,6 +1541,92 @@ mod tests {
             lhs as u16 * rhs as u16,
             "failed {lhs} * {rhs}"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_divide() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 1..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    // This will compute LHS / RHS
+                    op_code: OpCode::CPUI_INT_DIV,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)?,
+                    lhs / rhs,
+                    "failed {lhs} / {rhs}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_remainder() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 1..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    // This will compute LHS / RHS
+                    op_code: OpCode::CPUI_INT_REM,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)?,
+                    lhs % rhs,
+                    "failed {lhs} % {rhs}"
+                );
+            }
+        }
 
         Ok(())
     }
