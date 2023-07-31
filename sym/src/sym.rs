@@ -319,6 +319,23 @@ impl SymbolicBitVec {
         (sum, overflow)
     }
 
+    pub fn subtraction_with_borrow(self, rhs: Self) -> (Self, SymbolicBit) {
+        let diff = self.clone() - rhs.clone();
+
+        // Positive overflow occurs if sign bits are (0, 1) but 1 in sum
+        let positive_overflow = !self.bits.last().cloned().unwrap()
+            & rhs.bits.last().cloned().unwrap()
+            & diff.bits.last().cloned().unwrap();
+
+        // Negative overflow occurs if sign bits are (1, 0) but 0 in sum
+        let negative_overflow = self.bits.last().cloned().unwrap()
+            & !rhs.bits.last().cloned().unwrap()
+            & !diff.bits.last().cloned().unwrap();
+
+        // Overflow occurs if either positive or negative overflow occurs
+        (diff, positive_overflow | negative_overflow)
+    }
+
     /// Multiply two integers together. When multiplying unsigned integers together, the number of
     /// output bits should be the sum of input sizes unless a lesser size is known in advance.
     ///
@@ -456,23 +473,6 @@ impl SymbolicBitVec {
         // Negative overflow occurs if sign bit is 1 for LHS and RHS but 0 in sum
         let negative_overflow =
             self[self.len() - 1].clone() & rhs[rhs.len() - 1].clone() & !sum[sum.len() - 1].clone();
-
-        // Overflow occurs if either positive or negative overflow occurs
-        positive_overflow | negative_overflow
-    }
-
-    pub fn subtraction_borrows(self, rhs: Self) -> SymbolicBit {
-        let diff = self.clone() - rhs.clone();
-
-        // Positive overflow occurs if sign bits are (0, 1) but 1 in sum
-        let positive_overflow = !self.bits.last().cloned().unwrap()
-            & rhs.bits.last().cloned().unwrap()
-            & diff.bits.last().cloned().unwrap();
-
-        // Negative overflow occurs if sign bits are (1, 0) but 0 in sum
-        let negative_overflow = self.bits.last().cloned().unwrap()
-            & !rhs.bits.last().cloned().unwrap()
-            & !diff.bits.last().cloned().unwrap();
 
         // Overflow occurs if either positive or negative overflow occurs
         positive_overflow | negative_overflow
@@ -898,7 +898,7 @@ mod tests {
         for (lhs, rhs, expected_result) in test_data {
             let x: SymbolicBitVec = lhs.into();
             let y: SymbolicBitVec = rhs.into();
-            let borrows = x.subtraction_borrows(y);
+            let (_, borrows) = x.subtraction_with_borrow(y);
             assert_eq!(
                 borrows,
                 SymbolicBit::Literal(expected_result),
