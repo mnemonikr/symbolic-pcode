@@ -71,6 +71,10 @@ impl SymbolicBit {
     fn equals(self, rhs: Self) -> Self {
         (self.clone() & rhs.clone()) | (!self & !rhs)
     }
+
+    fn select(self, lhs: Self, rhs: Self) -> Self {
+        (self.clone() & lhs) | (!self & rhs)
+    }
 }
 
 impl std::ops::Not for SymbolicBit {
@@ -235,6 +239,24 @@ impl SymbolicBitVec {
         }
 
         Self { bits }
+    }
+
+    pub fn signed_minimum_value(num_bits: usize) -> Self {
+        Self {
+            bits: std::iter::repeat(SymbolicBit::Literal(false))
+                .take(num_bits - 1)
+                .chain(std::iter::once(SymbolicBit::Literal(true)))
+                .collect(),
+        }
+    }
+
+    pub fn signed_maximum_value(num_bits: usize) -> Self {
+        Self {
+            bits: std::iter::repeat(SymbolicBit::Literal(true))
+                .take(num_bits - 1)
+                .chain(std::iter::once(SymbolicBit::Literal(false)))
+                .collect(),
+        }
     }
 
     pub fn contains_variable(&self) -> bool {
@@ -465,6 +487,24 @@ impl SymbolicBitVec {
         (quotient, remainder)
     }
 
+    pub fn signed_divide(self, dividend: Self) -> (Self, Self) {
+        let divisor_msb = self.bits.last().cloned().unwrap();
+        let dividend_msb = dividend.bits.last().cloned().unwrap();
+
+        let unsigned_divisor = self.clone().mux(-self, !divisor_msb.clone());
+        let unsigned_dividend = dividend.clone().mux(-dividend, !dividend_msb.clone());
+        let (quotient, remainder) = unsigned_divisor.unsigned_divide(unsigned_dividend);
+
+        let quotient = Self::select(
+            divisor_msb.clone() ^ dividend_msb.clone(),
+            -quotient.clone(),
+            quotient,
+        );
+        let remainder = Self::select(dividend_msb, -remainder.clone(), remainder);
+
+        (quotient, remainder)
+    }
+
     pub fn addition_carry_bits(self, rhs: Self) -> Self {
         assert_eq!(self.bits.len(), rhs.bits.len());
         let mut carry = Vec::with_capacity(self.bits.len() + 1);
@@ -640,6 +680,18 @@ impl SymbolicBitVec {
         };
 
         Self { bits }
+    }
+
+    fn select(selector: SymbolicBit, lhs: Self, rhs: Self) -> Self {
+        assert_eq!(lhs.len(), rhs.len());
+        Self {
+            bits: lhs
+                .bits
+                .into_iter()
+                .zip(rhs.bits)
+                .map(|(lhs, rhs)| selector.clone().select(lhs, rhs))
+                .collect(),
+        }
     }
 
     fn mux(self, rhs: Self, selector: SymbolicBit) -> Self {
@@ -1360,6 +1412,38 @@ mod tests {
 
                 let quotient: u8 = quotient.try_into().expect("failed quotient conversion");
                 let remainder: u8 = remainder.try_into().expect("failed remainder conversion");
+
+                let expected_quotient = dividend / divisor;
+                let expected_remainder = dividend % divisor;
+                assert_eq!(
+                    quotient, expected_quotient,
+                    "invalid quotient for {dividend} / {divisor}"
+                );
+                assert_eq!(
+                    remainder, expected_remainder,
+                    "invalid remainder for {dividend} / {divisor}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn signed_divide() {
+        for dividend in 0..16u8 {
+            for divisor in 1..16u8 {
+                let sym_dividend = SymbolicBitVec::constant(dividend.into(), 4).sign_extend(4);
+                let sym_divisor = SymbolicBitVec::constant(divisor.into(), 4).sign_extend(4);
+                let dividend: u8 = sym_dividend.clone().try_into().unwrap();
+                let dividend = dividend as i8;
+                let divisor: u8 = sym_divisor.clone().try_into().unwrap();
+                let divisor = divisor as i8;
+
+                let (quotient, remainder) = sym_divisor.signed_divide(sym_dividend);
+
+                let quotient: u8 = quotient.try_into().expect("failed quotient conversion");
+                let quotient = quotient as i8;
+                let remainder: u8 = remainder.try_into().expect("failed remainder conversion");
+                let remainder = remainder as i8;
 
                 let expected_quotient = dividend / divisor;
                 let expected_remainder = dividend % divisor;

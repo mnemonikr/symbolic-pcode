@@ -204,6 +204,8 @@ impl PcodeEmulator {
             OpCode::CPUI_INT_MULT => self.int_multiply(&instruction)?,
             OpCode::CPUI_INT_DIV => self.int_divide(&instruction)?,
             OpCode::CPUI_INT_REM => self.int_remainder(&instruction)?,
+            OpCode::CPUI_INT_SDIV => self.int_signed_divide(&instruction)?,
+            OpCode::CPUI_INT_SREM => self.int_signed_remainder(&instruction)?,
             OpCode::CPUI_INT_SEXT => {
                 self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
@@ -664,6 +666,46 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let (_, remainder) = rhs.unsigned_divide(lhs);
+        self.memory.write_bytes(remainder.into_parts(8), output)?;
+
+        Ok(())
+    }
+
+    /// This is a signed integer division operation. The resulting integer is the one closest to
+    /// the rational value input0/input1 but which is still smaller in absolute value. Both inputs
+    /// and output must be the same size. There is no handling of division by zero. To simulate a
+    /// processor's handling of a division-by-zero trap, other operations must be used before the
+    /// INT_SDIV.
+    fn int_signed_divide(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let output = instruction.output.as_ref().unwrap();
+
+        let (quotient, _) = rhs.signed_divide(lhs);
+        self.memory.write_bytes(quotient.into_parts(8), output)?;
+
+        Ok(())
+    }
+
+    /// This is a signed integer remainder operation. The remainder of performing the signed
+    /// integer division of input0 and input1 is put in output. Both inputs and output must be the
+    /// same size. If q = input0 s/ input1, using the INT_SDIV operation defined above, then output
+    /// satisfies the equation q*input1 + output = input0, using the INT_MULT and INT_ADD
+    /// operations.
+    fn int_signed_remainder(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let output = instruction.output.as_ref().unwrap();
+
+        let (_, remainder) = rhs.signed_divide(lhs);
         self.memory.write_bytes(remainder.into_parts(8), output)?;
 
         Ok(())
@@ -1622,6 +1664,100 @@ mod tests {
 
                 assert_eq!(
                     emulator.memory.read_concrete_value::<u8>(&output)?,
+                    lhs % rhs,
+                    "failed {lhs} % {rhs}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_signed_divide() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 1..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4).sign_extend(4);
+                let lhs: u8 = lhs_value.clone().try_into().unwrap();
+                let lhs = lhs as i8;
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4).sign_extend(4);
+                let rhs: u8 = rhs_value.clone().try_into().unwrap();
+                let rhs = rhs as i8;
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    // This will compute LHS / RHS
+                    op_code: OpCode::CPUI_INT_SDIV,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)? as i8,
+                    lhs / rhs,
+                    "failed {lhs} / {rhs}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_signed_remainder() -> Result<()> {
+        for lhs in 0..16u8 {
+            for rhs in 1..16u8 {
+                let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4).sign_extend(4);
+                let lhs: u8 = lhs_value.clone().try_into().unwrap();
+                let lhs = lhs as i8;
+                let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
+
+                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4).sign_extend(4);
+                let rhs: u8 = rhs_value.clone().try_into().unwrap();
+                let rhs = rhs as i8;
+                let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
+
+                let output = VarnodeData {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 2,
+                    },
+                    size: 1,
+                };
+
+                let instruction = PcodeInstruction {
+                    address: Address {
+                        address_space: processor_address_space(),
+                        offset: 0xFF00000000,
+                    },
+                    // This will compute LHS % RHS
+                    op_code: OpCode::CPUI_INT_SREM,
+                    inputs: vec![lhs_input.clone(), rhs_input.clone()],
+                    output: Some(output.clone()),
+                };
+
+                emulator.emulate(&instruction)?;
+
+                assert_eq!(
+                    emulator.memory.read_concrete_value::<u8>(&output)? as i8,
                     lhs % rhs,
                     "failed {lhs} % {rhs}"
                 );
