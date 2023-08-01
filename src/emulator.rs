@@ -107,16 +107,28 @@ fn check_input_sizes_match_output(instruction: &PcodeInstruction) -> Result<()> 
 }
 
 fn check_input_sizes_equal(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
-    for (index, input) in instruction.inputs.iter().enumerate() {
-        if input.size != expected_size {
-            return Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!("input[{index}] size {} != {expected_size}", input.size),
-            ));
-        }
-    }
+    (0..instruction.inputs.len())
+        .map(|i| check_input_size_equals(instruction, i, expected_size))
+        .collect()
+}
 
-    Ok(())
+fn check_input_size_equals(
+    instruction: &PcodeInstruction,
+    input_index: usize,
+    expected_size: usize,
+) -> Result<()> {
+    let input = &instruction.inputs[input_index];
+    if input.size != expected_size {
+        Err(Error::IllegalInstruction(
+            instruction.clone(),
+            format!(
+                "input[{input_index}] size {} != {expected_size}",
+                input.size
+            ),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn check_output_size_equals(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
@@ -249,6 +261,7 @@ impl PcodeEmulator {
             OpCode::CPUI_RETURN => return self.return_instruction(&instruction),
             OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction),
             OpCode::CPUI_BRANCH => return self.branch(&instruction),
+            OpCode::CPUI_CBRANCH => return self.conditional_branch(&instruction),
             OpCode::CPUI_CALL => return self.call(&instruction),
             OpCode::CPUI_CALLIND => return self.call_ind(&instruction),
             _ => unimplemented!("Operation not yet implemented: {:?}", instruction.op_code),
@@ -371,8 +384,14 @@ impl PcodeEmulator {
     fn branch(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         check_num_inputs(&instruction, 1)?;
         check_has_output(&instruction, false)?;
-        let destination = &instruction.inputs[0].address;
-        if destination.address_space.space_type == AddressSpaceType::Constant {
+        Ok(ControlFlow::Jump(Self::branch_destination(
+            &instruction.inputs[0],
+        )))
+    }
+
+    /// Determine the destination of a branch instruction based on its input address.
+    fn branch_destination(destination: &VarnodeData) -> Destination {
+        if destination.address.address_space.space_type == AddressSpaceType::Constant {
             // The p-code relative branch is permitted to be negative. The commentary for this
             // function is that the size of the input is irrelevant. I have double checked the
             // Ghidra p-code generator and confirmed that the relative offset is assigned to an
@@ -386,13 +405,9 @@ impl PcodeEmulator {
             // preserved as a 64-bit value and *NOT* converted at any point. Since this value may
             // be either signed or unsigned depending on context, any conversion would necessarily
             // fail to preserve the correct value in all contexts.
-            Ok(ControlFlow::Jump(Destination::PcodeAddress(
-                destination.offset as i64,
-            )))
+            Destination::PcodeAddress(destination.address.offset as i64)
         } else {
-            Ok(ControlFlow::Jump(Destination::MachineAddress(
-                destination.clone(),
-            )))
+            Destination::MachineAddress(destination.address.clone())
         }
     }
 
@@ -430,8 +445,24 @@ impl PcodeEmulator {
     /// is not treated as a variable but as an address and is interpreted in the same way.
     /// Furthermore, a constant space address is also interpreted as a relative address so that a
     /// CBRANCH can do p-code relative branching. See the discussion for the BRANCH operation.
-    fn conditional_branch(&mut self, instruction: &PcodeInstruction) -> Result<()> {
-        Ok(())
+    fn conditional_branch(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+        check_num_inputs(&instruction, 2)?;
+        check_has_output(&instruction, false)?;
+        check_input_size_equals(&instruction, 1, 1)?;
+
+        let selector: sym::SymbolicBit = self
+            .memory
+            .read_bytes_owned(&instruction.inputs[1])?
+            .pop()
+            .unwrap()
+            .truncate_msb(7)
+            .try_into()
+            .unwrap();
+
+        Ok(ControlFlow::ConditionalBranch(
+            selector,
+            Self::branch_destination(&instruction.inputs[0]),
+        ))
     }
 
     /// This operation performs a Logical-And on the bits of input0 and input1. Both inputs and
@@ -2769,6 +2800,85 @@ mod tests {
         let expected_addr = ControlFlow::Jump(Destination::PcodeAddress(-1));
 
         assert_eq!(branch_addr, expected_addr);
+        Ok(())
+    }
+
+    #[test]
+    fn conditional_branch_absolute() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let destination_input = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xDEADBEEF,
+            },
+            size: 0, // This value is irrelevant
+        };
+
+        let condition_input = write_bytes(&mut emulator, 1, vec![0x1u8.into()])?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_CBRANCH,
+            inputs: vec![destination_input.clone(), condition_input.clone()],
+            output: None,
+        };
+
+        let control_flow = emulator.emulate(&instruction)?;
+        let expected_destination = Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        });
+        match control_flow {
+            ControlFlow::ConditionalBranch(condition, destination) => {
+                assert_eq!(condition, sym::SymbolicBit::Literal(true));
+                assert_eq!(
+                    destination, expected_destination,
+                    "invalid branch destination"
+                );
+            }
+            _ => panic!("unexpected control flow instruction: {control_flow:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn conditional_branch_pcode_relative() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let destination_input = VarnodeData {
+            address: Address {
+                address_space: constant_address_space(),
+                offset: u64::MAX,
+            },
+            size: 0, // This value is irrelevant
+        };
+
+        let condition_input = write_bytes(&mut emulator, 1, vec![0x1u8.into()])?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_CBRANCH,
+            inputs: vec![destination_input.clone(), condition_input.clone()],
+            output: None,
+        };
+
+        let control_flow = emulator.emulate(&instruction)?;
+        let expected_destination = Destination::PcodeAddress(-1);
+        match control_flow {
+            ControlFlow::ConditionalBranch(condition, destination) => {
+                assert_eq!(condition, sym::SymbolicBit::Literal(true));
+                assert_eq!(
+                    destination, expected_destination,
+                    "invalid branch destination"
+                );
+            }
+            _ => panic!("unexpected control flow instruction: {control_flow:?}"),
+        }
+
         Ok(())
     }
 }
