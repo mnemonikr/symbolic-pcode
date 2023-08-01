@@ -140,6 +140,18 @@ impl<const N: usize> std::ops::Deref for SymbolicBitBuf<N> {
     }
 }
 
+impl TryFrom<SymbolicBitVec> for SymbolicBit {
+    type Error = String;
+
+    fn try_from(mut value: SymbolicBitVec) -> Result<Self, Self::Error> {
+        if value.len() == 1 {
+            Ok(value.bits.pop().unwrap())
+        } else {
+            Err(format!("value has {num_bits} bits", num_bits = value.len()))
+        }
+    }
+}
+
 impl From<&[SymbolicBit]> for SymbolicBitVec {
     fn from(bits: &[SymbolicBit]) -> Self {
         Self {
