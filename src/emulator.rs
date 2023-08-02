@@ -638,7 +638,7 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let overflow: sym::SymbolicBitVec = vec![lhs.subtraction_borrows(rhs)].into();
+        let overflow: sym::SymbolicBitVec = vec![lhs.subtraction_with_borrow(rhs).1].into();
 
         self.memory.write_bytes(
             vec![overflow.zero_extend(7)],
