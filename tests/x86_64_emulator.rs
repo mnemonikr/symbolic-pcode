@@ -1,5 +1,60 @@
 mod common;
 
+/// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
+#[test]
+fn x86_64_registers() {
+    let mut processor = common::Processor::new();
+
+    let registers = vec!['A', 'B', 'C', 'D'];
+    for register in registers {
+        processor.write_register(
+            format!("R{register}X"),
+            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+        );
+        let rax: u64 = processor.read_register(format!("R{register}X"));
+        assert_eq!(rax, 0x8877665544332211);
+        let eax: u32 = processor.read_register(format!("E{register}X"));
+        assert_eq!(eax, 0x44332211);
+        let ax: u16 = processor.read_register(format!("{register}X"));
+        assert_eq!(ax, 0x2211);
+        let ah: u8 = processor.read_register(format!("{register}H"));
+        assert_eq!(ah, 0x22);
+        let al: u8 = processor.read_register(format!("{register}L"));
+        assert_eq!(al, 0x11);
+    }
+
+    let registers = vec!["SI", "DI", "BP", "SP"];
+    for register in registers {
+        processor.write_register(
+            format!("R{register}"),
+            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+        );
+        let r: u64 = processor.read_register(format!("R{register}"));
+        assert_eq!(r, 0x8877665544332211);
+        let e: u32 = processor.read_register(format!("E{register}"));
+        assert_eq!(e, 0x44332211);
+        let b: u16 = processor.read_register(format!("{register}"));
+        assert_eq!(b, 0x2211);
+        let l: u8 = processor.read_register(format!("{register}L"));
+        assert_eq!(l, 0x11);
+    }
+
+    for register in 8..=15 {
+        processor.write_register(
+            format!("R{register}"),
+            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
+        );
+        let r: u64 = processor.read_register(format!("R{register}"));
+        assert_eq!(r, 0x8877665544332211);
+        let rd: u32 = processor.read_register(format!("R{register}D"));
+        assert_eq!(rd, 0x44332211);
+        let rw: u16 = processor.read_register(format!("R{register}W"));
+        assert_eq!(rw, 0x2211);
+        let rb: u8 = processor.read_register(format!("R{register}B"));
+        assert_eq!(rb, 0x11);
+    }
+}
+
 /// Emulates the following x86-64 instructions:
 ///
 /// ram:0000000000000000 | PUSH RBP
