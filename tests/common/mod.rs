@@ -21,7 +21,11 @@ impl<'a> Processor<'a> {
         self.write_data(output, data);
     }
 
-    pub fn read_register<T: From<usize>>(&mut self, register_name: impl AsRef<str>) -> T {
+    pub fn read_register<T>(&mut self, register_name: impl AsRef<str>) -> T
+    where
+        T: TryFrom<usize>,
+        <T as TryFrom<usize>>::Error: std::error::Error + 'static,
+    {
         let input = self.sleigh.register_from_name(register_name);
         self.emulator
             .memory()
