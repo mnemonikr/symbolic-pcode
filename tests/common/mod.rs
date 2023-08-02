@@ -102,7 +102,26 @@ impl<'a> Processor<'a> {
                         todo!("handle p-code relative branch: {offset}")
                     }
                 },
-                ControlFlow::ConditionalBranch(_, _) => todo!("handle condition branch"),
+                ControlFlow::ConditionalBranch(condition, destination) => {
+                    if let sym::SymbolicBit::Literal(condition) = condition {
+                        if condition {
+                            match destination {
+                                Destination::MachineAddress(addr) => {
+                                    assert_eq!(
+                                        addr.address_space,
+                                        self.sleigh.default_code_space()
+                                    );
+                                    return Ok(addr.offset);
+                                }
+                                Destination::PcodeAddress(offset) => {
+                                    todo!("handle p-code relative branch: {offset}")
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("symbolic condition in branch: {condition:?}");
+                    }
+                }
                 ControlFlow::NextInstruction => (),
             }
         }
