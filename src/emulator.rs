@@ -212,6 +212,7 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
+            OpCode::CPUI_INT_2COMP => self.int_2comp(&instruction)?,
             OpCode::CPUI_INT_SBORROW => self.int_sub_borrow(&instruction)?,
             OpCode::CPUI_INT_MULT => self.int_multiply(&instruction)?,
             OpCode::CPUI_INT_DIV => self.int_divide(&instruction)?,
@@ -524,6 +525,26 @@ impl PcodeEmulator {
 
         self.memory
             .write_bytes(xor, &instruction.output.as_ref().unwrap())?;
+
+        Ok(())
+    }
+
+    /// This is the twos complement or arithmetic negation operation. Treating input0 as a signed
+    /// integer, the result is the same integer value but with the opposite sign. This is equivalent
+    /// to doing a bitwise negation of input0 and then adding one. Both input0 and output must be
+    /// the same size.
+    fn int_2comp(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        check_num_inputs(&instruction, 1)?;
+        check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let negative = -lhs;
+
+        self.memory.write_bytes(
+            negative.into_parts(8),
+            &instruction.output.as_ref().unwrap(),
+        )?;
 
         Ok(())
     }
@@ -2307,6 +2328,41 @@ mod tests {
             emulator.memory.read_concrete_value::<u8>(&output)?,
             !lhs,
             "failed !{lhs}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn int_2comp() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let lhs = 1u8;
+        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
+
+        let output = VarnodeData {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 2,
+            },
+            size: 1,
+        };
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::CPUI_INT_2COMP,
+            inputs: vec![lhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
+
+        assert_eq!(
+            emulator.memory.read_concrete_value::<u8>(&output)?,
+            0xFF, // Negative 1
+            "failed -{lhs}"
         );
 
         Ok(())
