@@ -634,10 +634,9 @@ impl SymbolicBitVec {
         let len = if self.len() == 0 {
             // This special case is needed to avoid taking log2 of 0
             1
-        } else if self.len().is_power_of_two() {
-            self.len().ilog2() as usize
         } else {
-            // Add 1 if not power of 2 since ilog2 rounds down
+            // ilog2 rounds down. If it rounds down, need to add 1. If it is a power of 2 then also
+            // need to add 1 to account for if all bits are set
             self.len().ilog2() as usize + 1
         };
 
@@ -1282,7 +1281,7 @@ mod tests {
 
     #[test]
     fn popcount() {
-        for n in 0..8 {
+        for n in 0..=8 {
             let value = SymbolicBitVec::constant((1 << n) - 1, 8);
             let popcount = value.popcount();
             let popcount: u8 = popcount.try_into().expect("failed converison");

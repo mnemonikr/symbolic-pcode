@@ -2937,4 +2937,42 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn popcount() -> Result<()> {
+        for n in 0..=8u8 {
+            let value: u8 = ((1u16 << n) - 1) as u8;
+            let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+            let lhs_input = write_bytes(&mut emulator, 0, vec![value.into()])?;
+
+            let output = VarnodeData {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 2,
+                },
+                size: 1,
+            };
+
+            let instruction = PcodeInstruction {
+                address: Address {
+                    address_space: processor_address_space(),
+                    offset: 0xFF00000000,
+                },
+                op_code: OpCode::CPUI_POPCOUNT,
+                inputs: vec![lhs_input.clone()],
+                output: Some(output.clone()),
+            };
+
+            emulator.emulate(&instruction)?;
+            let expected_result = n;
+
+            assert_eq!(
+                emulator.memory.read_concrete_value::<u8>(&output)?,
+                expected_result,
+                "failed popcount of {value:#02x}"
+            );
+        }
+
+        Ok(())
+    }
 }
