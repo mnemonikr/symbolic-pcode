@@ -8,8 +8,6 @@ use cxx::{let_cxx_string, UniquePtr};
 
 static INIT: Once = Once::new();
 
-pub type OpCode = sys::OpCode;
-
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
@@ -146,6 +144,189 @@ impl From<sys::spacetype> for AddressSpaceType {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum OpCode {
+    Copy,
+    Load,
+    Store,
+    Branch,
+    BranchConditional,
+    BranchIndirect,
+    Call,
+    CallIndirect,
+    CallOther,
+    Return,
+    Piece,
+    Subpiece,
+    Popcount,
+    Bool(BoolOp),
+    Int(IntOp),
+    Float(FloatOp),
+    Pseudo(PseudoOp),
+    Analysis(AnalysisOp),
+    Unknown(i32),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum IntSign {
+    Signed,
+    Unsigned,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum IntOp {
+    Add,
+    Negate,
+    Subtract,
+    Multiply,
+    Divide(IntSign),
+    Remainder(IntSign),
+    Equal,
+    NotEqual,
+    LessThan(IntSign),
+    LessThanOrEqual(IntSign),
+    Extension(IntSign),
+    Carry(IntSign),
+    Borrow,
+    ShiftLeft,
+    ShiftRight(IntSign),
+    Bitwise(BoolOp),
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum FloatOp {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    IsNaN,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Negate,
+    AbsoluteValue,
+    SquareRoot,
+    IntToFloat,
+    FloatToFloat,
+    Truncate,
+    Ceiling,
+    Floor,
+    Round,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum BoolOp {
+    Negate,
+    And,
+    Or,
+    Xor,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum PseudoOp {
+    UserDefined,
+    ConstantPoolRef,
+    New,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum AnalysisOp {
+    MultiEqual,
+    CopyIndirect,
+    PointerAdd,
+    PointerSubcomponent,
+    Cast,
+    Insert,
+    Extract,
+    SegmentOp,
+}
+
+impl From<sys::OpCode> for OpCode {
+    fn from(value: sys::OpCode) -> Self {
+        match value {
+            sys::OpCode::CPUI_COPY => OpCode::Copy,
+            sys::OpCode::CPUI_LOAD => OpCode::Load,
+            sys::OpCode::CPUI_STORE => OpCode::Store,
+            sys::OpCode::CPUI_BRANCH => OpCode::Branch,
+            sys::OpCode::CPUI_CBRANCH => OpCode::BranchConditional,
+            sys::OpCode::CPUI_BRANCHIND => OpCode::BranchIndirect,
+            sys::OpCode::CPUI_CALL => OpCode::Call,
+            sys::OpCode::CPUI_CALLIND => OpCode::CallIndirect,
+            sys::OpCode::CPUI_CALLOTHER => OpCode::CallOther,
+            sys::OpCode::CPUI_RETURN => OpCode::Return,
+            sys::OpCode::CPUI_INT_EQUAL => OpCode::Int(IntOp::Equal),
+            sys::OpCode::CPUI_INT_NOTEQUAL => OpCode::Int(IntOp::NotEqual),
+            sys::OpCode::CPUI_INT_SLESS => OpCode::Int(IntOp::LessThan(IntSign::Signed)),
+            sys::OpCode::CPUI_INT_SLESSEQUAL => {
+                OpCode::Int(IntOp::LessThanOrEqual(IntSign::Signed))
+            }
+            sys::OpCode::CPUI_INT_LESS => OpCode::Int(IntOp::LessThan(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_LESSEQUAL => {
+                OpCode::Int(IntOp::LessThanOrEqual(IntSign::Unsigned))
+            }
+            sys::OpCode::CPUI_INT_ZEXT => OpCode::Int(IntOp::Extension(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_SEXT => OpCode::Int(IntOp::Extension(IntSign::Signed)),
+            sys::OpCode::CPUI_INT_ADD => OpCode::Int(IntOp::Add),
+            sys::OpCode::CPUI_INT_SUB => OpCode::Int(IntOp::Subtract),
+            sys::OpCode::CPUI_INT_CARRY => OpCode::Int(IntOp::Carry(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_SCARRY => OpCode::Int(IntOp::Carry(IntSign::Signed)),
+            sys::OpCode::CPUI_INT_SBORROW => OpCode::Int(IntOp::Borrow),
+            sys::OpCode::CPUI_INT_2COMP => OpCode::Int(IntOp::Negate),
+            sys::OpCode::CPUI_INT_NEGATE => OpCode::Int(IntOp::Bitwise(BoolOp::Negate)),
+            sys::OpCode::CPUI_INT_XOR => OpCode::Int(IntOp::Bitwise(BoolOp::Xor)),
+            sys::OpCode::CPUI_INT_AND => OpCode::Int(IntOp::Bitwise(BoolOp::And)),
+            sys::OpCode::CPUI_INT_OR => OpCode::Int(IntOp::Bitwise(BoolOp::Or)),
+            sys::OpCode::CPUI_INT_LEFT => OpCode::Int(IntOp::ShiftLeft),
+            sys::OpCode::CPUI_INT_RIGHT => OpCode::Int(IntOp::ShiftRight(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_SRIGHT => OpCode::Int(IntOp::ShiftRight(IntSign::Signed)),
+            sys::OpCode::CPUI_INT_MULT => OpCode::Int(IntOp::Multiply),
+            sys::OpCode::CPUI_INT_DIV => OpCode::Int(IntOp::Divide(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_SDIV => OpCode::Int(IntOp::Divide(IntSign::Signed)),
+            sys::OpCode::CPUI_INT_REM => OpCode::Int(IntOp::Remainder(IntSign::Unsigned)),
+            sys::OpCode::CPUI_INT_SREM => OpCode::Int(IntOp::Remainder(IntSign::Signed)),
+            sys::OpCode::CPUI_BOOL_NEGATE => OpCode::Bool(BoolOp::Negate),
+            sys::OpCode::CPUI_BOOL_XOR => OpCode::Bool(BoolOp::Xor),
+            sys::OpCode::CPUI_BOOL_AND => OpCode::Bool(BoolOp::And),
+            sys::OpCode::CPUI_BOOL_OR => OpCode::Bool(BoolOp::Or),
+            sys::OpCode::CPUI_FLOAT_EQUAL => OpCode::Float(FloatOp::Equal),
+            sys::OpCode::CPUI_FLOAT_NOTEQUAL => OpCode::Float(FloatOp::NotEqual),
+            sys::OpCode::CPUI_FLOAT_LESS => OpCode::Float(FloatOp::LessThan),
+            sys::OpCode::CPUI_FLOAT_LESSEQUAL => OpCode::Float(FloatOp::LessThanOrEqual),
+            sys::OpCode::CPUI_FLOAT_NAN => OpCode::Float(FloatOp::IsNaN),
+            sys::OpCode::CPUI_FLOAT_ADD => OpCode::Float(FloatOp::Add),
+            sys::OpCode::CPUI_FLOAT_DIV => OpCode::Float(FloatOp::Divide),
+            sys::OpCode::CPUI_FLOAT_MULT => OpCode::Float(FloatOp::Multiply),
+            sys::OpCode::CPUI_FLOAT_SUB => OpCode::Float(FloatOp::Subtract),
+            sys::OpCode::CPUI_FLOAT_NEG => OpCode::Float(FloatOp::Negate),
+            sys::OpCode::CPUI_FLOAT_ABS => OpCode::Float(FloatOp::AbsoluteValue),
+            sys::OpCode::CPUI_FLOAT_SQRT => OpCode::Float(FloatOp::SquareRoot),
+            sys::OpCode::CPUI_FLOAT_INT2FLOAT => OpCode::Float(FloatOp::IntToFloat),
+            sys::OpCode::CPUI_FLOAT_FLOAT2FLOAT => OpCode::Float(FloatOp::FloatToFloat),
+            sys::OpCode::CPUI_FLOAT_TRUNC => OpCode::Float(FloatOp::Truncate),
+            sys::OpCode::CPUI_FLOAT_CEIL => OpCode::Float(FloatOp::Ceiling),
+            sys::OpCode::CPUI_FLOAT_FLOOR => OpCode::Float(FloatOp::Floor),
+            sys::OpCode::CPUI_FLOAT_ROUND => OpCode::Float(FloatOp::Round),
+
+            sys::OpCode::CPUI_MULTIEQUAL => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_INDIRECT => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_PIECE => OpCode::Subpiece,
+            sys::OpCode::CPUI_SUBPIECE => OpCode::Piece,
+
+            sys::OpCode::CPUI_CAST => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_PTRADD => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_PTRSUB => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_SEGMENTOP => OpCode::Analysis(AnalysisOp::SegmentOp),
+            sys::OpCode::CPUI_CPOOLREF => OpCode::Pseudo(PseudoOp::ConstantPoolRef),
+            sys::OpCode::CPUI_NEW => OpCode::Pseudo(PseudoOp::New),
+            sys::OpCode::CPUI_INSERT => OpCode::Analysis(AnalysisOp::Insert),
+            sys::OpCode::CPUI_EXTRACT => OpCode::Analysis(AnalysisOp::Extract),
+            sys::OpCode::CPUI_POPCOUNT => OpCode::Popcount,
+            sys::OpCode { repr } => OpCode::Unknown(repr),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PcodeInstruction {
     pub address: Address,
@@ -209,7 +390,7 @@ impl api::PcodeEmit for PcodeResponse {
     ) {
         self.pcode_instructions.push(PcodeInstruction {
             address: address.into(),
-            op_code,
+            op_code: op_code.into(),
             inputs: input_variables
                 .into_iter()
                 .map(Into::<VarnodeData>::into)

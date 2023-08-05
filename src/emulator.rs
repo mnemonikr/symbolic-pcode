@@ -2,7 +2,8 @@ use thiserror;
 
 use crate::mem;
 use sla::{
-    Address, AddressSpace, AddressSpaceType, LoadImage, OpCode, PcodeInstruction, VarnodeData,
+    Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, LoadImage, OpCode,
+    PcodeInstruction, VarnodeData,
 };
 use sym;
 
@@ -173,98 +174,106 @@ impl PcodeEmulator {
 
     pub fn emulate(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         match instruction.op_code {
-            OpCode::CPUI_COPY => self.copy(&instruction)?,
-            OpCode::CPUI_LOAD => self.load(
+            OpCode::Copy => self.copy(&instruction)?,
+            OpCode::Load => self.load(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_STORE => self.store(
+            OpCode::Store => self.store(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 &instruction.inputs[2],
             )?,
-            OpCode::CPUI_INT_AND => self.int_and(
+            OpCode::Int(IntOp::Bitwise(BoolOp::And)) => self.int_and(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_OR => self.int_or(&instruction)?,
-            OpCode::CPUI_INT_XOR => self.int_xor(&instruction)?,
-            OpCode::CPUI_INT_NEGATE => self.int_negate(&instruction)?,
-            OpCode::CPUI_INT_ADD => self.int_add(
+            OpCode::Int(IntOp::Bitwise(BoolOp::Or)) => self.int_or(&instruction)?,
+            OpCode::Int(IntOp::Bitwise(BoolOp::Xor)) => self.int_xor(&instruction)?,
+            OpCode::Int(IntOp::Bitwise(BoolOp::Negate)) => self.int_negate(&instruction)?,
+            OpCode::Int(IntOp::Add) => self.int_add(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_CARRY => self.int_carry(
+            OpCode::Int(IntOp::Carry(IntSign::Unsigned)) => self.int_carry(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_SCARRY => self.int_scarry(
+            OpCode::Int(IntOp::Carry(IntSign::Signed)) => self.int_scarry(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_SUB => self.int_sub(
+            OpCode::Int(IntOp::Subtract) => self.int_sub(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_2COMP => self.int_2comp(&instruction)?,
-            OpCode::CPUI_INT_SBORROW => self.int_sub_borrow(&instruction)?,
-            OpCode::CPUI_INT_MULT => self.int_multiply(&instruction)?,
-            OpCode::CPUI_INT_DIV => self.int_divide(&instruction)?,
-            OpCode::CPUI_INT_REM => self.int_remainder(&instruction)?,
-            OpCode::CPUI_INT_SDIV => self.int_signed_divide(&instruction)?,
-            OpCode::CPUI_INT_SREM => self.int_signed_remainder(&instruction)?,
-            OpCode::CPUI_INT_SEXT => {
-                self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
+            OpCode::Int(IntOp::Negate) => self.int_2comp(&instruction)?,
+            OpCode::Int(IntOp::Borrow) => self.int_sub_borrow(&instruction)?,
+            OpCode::Int(IntOp::Multiply) => self.int_multiply(&instruction)?,
+            OpCode::Int(IntOp::Divide(IntSign::Unsigned)) => self.int_divide(&instruction)?,
+            OpCode::Int(IntOp::Divide(IntSign::Signed)) => self.int_signed_divide(&instruction)?,
+            OpCode::Int(IntOp::Remainder(IntSign::Unsigned)) => self.int_remainder(&instruction)?,
+            OpCode::Int(IntOp::Remainder(IntSign::Signed)) => {
+                self.int_signed_remainder(&instruction)?
             }
-            OpCode::CPUI_INT_ZEXT => {
+            OpCode::Int(IntOp::Extension(IntSign::Unsigned)) => {
                 self.int_zext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
-            OpCode::CPUI_POPCOUNT => {
+            OpCode::Int(IntOp::Extension(IntSign::Signed)) => {
+                self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
+            }
+            OpCode::Popcount => {
                 self.popcount(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
-            OpCode::CPUI_PIECE => self.piece(&instruction)?,
-            OpCode::CPUI_SUBPIECE => self.subpiece(
+            OpCode::Piece => self.piece(&instruction)?,
+            OpCode::Subpiece => self.subpiece(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_EQUAL => self.int_equal(
+            OpCode::Int(IntOp::Equal) => self.int_equal(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_NOTEQUAL => self.int_not_equal(
+            OpCode::Int(IntOp::NotEqual) => self.int_not_equal(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_SLESS => self.int_signed_less_than(
+            OpCode::Int(IntOp::LessThan(IntSign::Signed)) => self.int_signed_less_than(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::CPUI_INT_SLESSEQUAL => self.int_signed_less_than_eq(&instruction)?,
-            OpCode::CPUI_INT_LESS => self.int_less_than(&instruction)?,
-            OpCode::CPUI_INT_LESSEQUAL => self.int_less_than_eq(&instruction)?,
-            OpCode::CPUI_INT_LEFT => self.shift_left(&instruction)?,
-            OpCode::CPUI_INT_RIGHT => self.shift_right(&instruction)?,
-            OpCode::CPUI_INT_SRIGHT => self.signed_shift_right(&instruction)?,
-            OpCode::CPUI_BOOL_NEGATE => self.bool_negate(&instruction)?,
-            OpCode::CPUI_BOOL_AND => self.bool_and(&instruction)?,
-            OpCode::CPUI_BOOL_OR => self.bool_or(&instruction)?,
-            OpCode::CPUI_BOOL_XOR => self.bool_xor(&instruction)?,
-            OpCode::CPUI_RETURN => return self.return_instruction(&instruction),
-            OpCode::CPUI_BRANCHIND => return self.branch_ind(&instruction),
-            OpCode::CPUI_BRANCH => return self.branch(&instruction),
-            OpCode::CPUI_CBRANCH => return self.conditional_branch(&instruction),
-            OpCode::CPUI_CALL => return self.call(&instruction),
-            OpCode::CPUI_CALLIND => return self.call_ind(&instruction),
+            OpCode::Int(IntOp::LessThanOrEqual(IntSign::Signed)) => {
+                self.int_signed_less_than_eq(&instruction)?
+            }
+            OpCode::Int(IntOp::LessThan(IntSign::Unsigned)) => self.int_less_than(&instruction)?,
+            OpCode::Int(IntOp::LessThanOrEqual(IntSign::Unsigned)) => {
+                self.int_less_than_eq(&instruction)?
+            }
+            OpCode::Int(IntOp::ShiftLeft) => self.shift_left(&instruction)?,
+            OpCode::Int(IntOp::ShiftRight(IntSign::Unsigned)) => self.shift_right(&instruction)?,
+            OpCode::Int(IntOp::ShiftRight(IntSign::Signed)) => {
+                self.signed_shift_right(&instruction)?
+            }
+            OpCode::Bool(BoolOp::Negate) => self.bool_negate(&instruction)?,
+            OpCode::Bool(BoolOp::And) => self.bool_and(&instruction)?,
+            OpCode::Bool(BoolOp::Or) => self.bool_or(&instruction)?,
+            OpCode::Bool(BoolOp::Xor) => self.bool_xor(&instruction)?,
+            OpCode::Return => return self.return_instruction(&instruction),
+            OpCode::BranchIndirect => return self.branch_ind(&instruction),
+            OpCode::Branch => return self.branch(&instruction),
+            OpCode::BranchConditional => return self.conditional_branch(&instruction),
+            OpCode::Call => return self.call(&instruction),
+            OpCode::CallIndirect => return self.call_ind(&instruction),
             _ => unimplemented!("Operation not yet implemented: {:?}", instruction.op_code),
         }
 
@@ -1300,7 +1309,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_COPY,
+            op_code: OpCode::Copy,
             inputs: vec![input.clone()],
             output: Some(output.clone()),
         };
@@ -1495,7 +1504,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_SBORROW,
+                op_code: OpCode::Int(IntOp::Borrow),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -1579,7 +1588,7 @@ mod tests {
                         address_space: processor_address_space(),
                         offset: 0xFF00000000,
                     },
-                    op_code: OpCode::CPUI_INT_MULT,
+                    op_code: OpCode::Int(IntOp::Multiply),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -1623,7 +1632,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_MULT,
+            op_code: OpCode::Int(IntOp::Multiply),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -1664,7 +1673,7 @@ mod tests {
                         offset: 0xFF00000000,
                     },
                     // This will compute LHS / RHS
-                    op_code: OpCode::CPUI_INT_DIV,
+                    op_code: OpCode::Int(IntOp::Divide(IntSign::Unsigned)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -1707,7 +1716,7 @@ mod tests {
                         offset: 0xFF00000000,
                     },
                     // This will compute LHS / RHS
-                    op_code: OpCode::CPUI_INT_REM,
+                    op_code: OpCode::Int(IntOp::Remainder(IntSign::Unsigned)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -1754,7 +1763,7 @@ mod tests {
                         offset: 0xFF00000000,
                     },
                     // This will compute LHS / RHS
-                    op_code: OpCode::CPUI_INT_SDIV,
+                    op_code: OpCode::Int(IntOp::Divide(IntSign::Signed)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -1764,7 +1773,7 @@ mod tests {
                 assert_eq!(
                     emulator.memory.read_concrete_value::<u8>(&output)? as i8,
                     lhs / rhs,
-                    "failed {lhs} / {rhs}"
+                    "failed signed {lhs} / {rhs}"
                 );
             }
         }
@@ -1801,7 +1810,7 @@ mod tests {
                         offset: 0xFF00000000,
                     },
                     // This will compute LHS % RHS
-                    op_code: OpCode::CPUI_INT_SREM,
+                    op_code: OpCode::Int(IntOp::Remainder(IntSign::Signed)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -1811,7 +1820,7 @@ mod tests {
                 assert_eq!(
                     emulator.memory.read_concrete_value::<u8>(&output)? as i8,
                     lhs % rhs,
-                    "failed {lhs} % {rhs}"
+                    "failed signed {lhs} % {rhs}"
                 );
             }
         }
@@ -2017,7 +2026,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_PIECE,
+            op_code: OpCode::Piece,
             inputs: vec![msb_input.clone(), lsb_input.clone()],
             output: Some(output.clone()),
         };
@@ -2100,7 +2109,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_BRANCHIND,
+            op_code: OpCode::BranchIndirect,
             inputs: vec![data_input.clone()],
             output: None,
         };
@@ -2132,7 +2141,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_CALLIND,
+            op_code: OpCode::CallIndirect,
             inputs: vec![data_input.clone()],
             output: None,
         };
@@ -2164,7 +2173,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_BOOL_NEGATE,
+                op_code: OpCode::Bool(BoolOp::Negate),
                 inputs: vec![input.clone()],
                 output: Some(output.clone()),
             };
@@ -2202,7 +2211,7 @@ mod tests {
                         address_space: processor_address_space(),
                         offset: 0xFF00000000,
                     },
-                    op_code: OpCode::CPUI_BOOL_AND,
+                    op_code: OpCode::Bool(BoolOp::And),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -2241,7 +2250,7 @@ mod tests {
                         address_space: processor_address_space(),
                         offset: 0xFF00000000,
                     },
-                    op_code: OpCode::CPUI_BOOL_OR,
+                    op_code: OpCode::Bool(BoolOp::Or),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -2280,7 +2289,7 @@ mod tests {
                         address_space: processor_address_space(),
                         offset: 0xFF00000000,
                     },
-                    op_code: OpCode::CPUI_BOOL_XOR,
+                    op_code: OpCode::Bool(BoolOp::Xor),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
                 };
@@ -2317,7 +2326,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_NEGATE,
+            op_code: OpCode::Int(IntOp::Bitwise(BoolOp::Negate)),
             inputs: vec![lhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -2352,7 +2361,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_2COMP,
+            op_code: OpCode::Int(IntOp::Negate),
             inputs: vec![lhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -2389,7 +2398,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_AND,
+            op_code: OpCode::Int(IntOp::Bitwise(BoolOp::And)),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -2426,7 +2435,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_OR,
+            op_code: OpCode::Int(IntOp::Bitwise(BoolOp::Or)),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -2463,7 +2472,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_INT_XOR,
+            op_code: OpCode::Int(IntOp::Bitwise(BoolOp::Xor)),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
@@ -2506,7 +2515,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_LESS,
+                op_code: OpCode::Int(IntOp::LessThan(IntSign::Unsigned)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2550,7 +2559,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_LESSEQUAL,
+                op_code: OpCode::Int(IntOp::LessThanOrEqual(IntSign::Unsigned)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2594,7 +2603,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_SLESS,
+                op_code: OpCode::Int(IntOp::LessThan(IntSign::Signed)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2638,7 +2647,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_SLESSEQUAL,
+                op_code: OpCode::Int(IntOp::LessThanOrEqual(IntSign::Signed)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2675,7 +2684,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_LEFT,
+                op_code: OpCode::Int(IntOp::ShiftLeft),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2713,7 +2722,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_RIGHT,
+                op_code: OpCode::Int(IntOp::ShiftRight(IntSign::Unsigned)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2751,7 +2760,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_INT_SRIGHT,
+                op_code: OpCode::Int(IntOp::ShiftRight(IntSign::Signed)),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
             };
@@ -2785,7 +2794,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_CALL,
+            op_code: OpCode::Call,
             inputs: vec![data_input.clone()],
             output: None,
         };
@@ -2816,7 +2825,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_BRANCH,
+            op_code: OpCode::Branch,
             inputs: vec![data_input.clone()],
             output: None,
         };
@@ -2847,7 +2856,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_BRANCH,
+            op_code: OpCode::Branch,
             inputs: vec![data_input.clone()],
             output: None,
         };
@@ -2876,7 +2885,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_CBRANCH,
+            op_code: OpCode::BranchConditional,
             inputs: vec![destination_input.clone(), condition_input.clone()],
             output: None,
         };
@@ -2917,7 +2926,7 @@ mod tests {
                 address_space: processor_address_space(),
                 offset: 0xFF00000000,
             },
-            op_code: OpCode::CPUI_CBRANCH,
+            op_code: OpCode::BranchConditional,
             inputs: vec![destination_input.clone(), condition_input.clone()],
             output: None,
         };
@@ -2958,7 +2967,7 @@ mod tests {
                     address_space: processor_address_space(),
                     offset: 0xFF00000000,
                 },
-                op_code: OpCode::CPUI_POPCOUNT,
+                op_code: OpCode::Popcount,
                 inputs: vec![lhs_input.clone()],
                 output: Some(output.clone()),
             };
