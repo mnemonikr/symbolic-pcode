@@ -134,7 +134,9 @@ pub enum IntOp {
     /// The carry flag for an addition indicating an overflow would occur.
     Carry(IntSign),
 
-    /// The borrow flag for a subtraction indicating an overflow would occur.
+    /// The borrow flag for a subtraction indicating an overflow would occur. The inputs for this
+    /// operation are always signed. The equivalent unsigned check is
+    /// `LessThan(IntSign::Unsigned)`.
     Borrow,
 
     /// Shift the integer left by some number of bits: x << y.
