@@ -1,6 +1,10 @@
+//! The opcode for a p-code instruction determines the semantics of the instruction. The [OpCode]
+//! enum contains the full list of possible opcodes. However, the [AnalysisOp] opcodes are only
+//! ever emitted by analysis programs; they are not permitted in Sleigh processor specifications.
+//! The [PseudoOp] opcodes may be emitted but do not have fully defined semantics.
 use crate::ffi::sys;
 
-/// A representation of op-codes for p-code instructions.
+/// A representation of opcodes for p-code instructions.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum OpCode {
     /// Copy a sequence of bytes from one fixed location to another.
@@ -56,7 +60,7 @@ pub enum OpCode {
     /// An operation produced by analysis.
     Analysis(AnalysisOp),
 
-    /// An unknown operation that holds the raw op-code.
+    /// An unknown operation that holds the raw opcode.
     Unknown(i32),
 }
 
