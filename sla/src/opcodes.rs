@@ -212,9 +212,6 @@ pub enum PseudoOp {
     /// A call that cannot be semantically represented in p-code. For example, a syscall.
     CallOther,
 
-    /// A placeholder for a user-definable p-code instruction.
-    UserDefined,
-
     /// Returns specific run-time dependent values from the constant pool. Used by object-oriented
     /// instruction sets and other managed code environments.
     ConstantPoolRef,
@@ -323,13 +320,13 @@ impl From<sys::OpCode> for OpCode {
             sys::OpCode::CPUI_FLOAT_ROUND => OpCode::Float(FloatOp::Round),
 
             sys::OpCode::CPUI_MULTIEQUAL => OpCode::Analysis(AnalysisOp::MultiEqual),
-            sys::OpCode::CPUI_INDIRECT => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_INDIRECT => OpCode::Analysis(AnalysisOp::CopyIndirect),
             sys::OpCode::CPUI_PIECE => OpCode::Subpiece,
             sys::OpCode::CPUI_SUBPIECE => OpCode::Piece,
 
-            sys::OpCode::CPUI_CAST => OpCode::Analysis(AnalysisOp::MultiEqual),
-            sys::OpCode::CPUI_PTRADD => OpCode::Analysis(AnalysisOp::MultiEqual),
-            sys::OpCode::CPUI_PTRSUB => OpCode::Analysis(AnalysisOp::MultiEqual),
+            sys::OpCode::CPUI_CAST => OpCode::Analysis(AnalysisOp::Cast),
+            sys::OpCode::CPUI_PTRADD => OpCode::Analysis(AnalysisOp::PointerAdd),
+            sys::OpCode::CPUI_PTRSUB => OpCode::Analysis(AnalysisOp::PointerSubcomponent),
             sys::OpCode::CPUI_SEGMENTOP => OpCode::Analysis(AnalysisOp::SegmentOp),
             sys::OpCode::CPUI_CPOOLREF => OpCode::Pseudo(PseudoOp::ConstantPoolRef),
             sys::OpCode::CPUI_NEW => OpCode::Pseudo(PseudoOp::New),
@@ -337,6 +334,114 @@ impl From<sys::OpCode> for OpCode {
             sys::OpCode::CPUI_EXTRACT => OpCode::Analysis(AnalysisOp::Extract),
             sys::OpCode::CPUI_POPCOUNT => OpCode::Popcount,
             sys::OpCode { repr } => OpCode::Unknown(repr),
+        }
+    }
+}
+
+impl From<OpCode> for sys::OpCode {
+    fn from(value: OpCode) -> Self {
+        match value {
+            OpCode::Copy => sys::OpCode::CPUI_COPY,
+            OpCode::Load => sys::OpCode::CPUI_LOAD,
+            OpCode::Store => sys::OpCode::CPUI_STORE,
+            OpCode::Branch => sys::OpCode::CPUI_BRANCH,
+            OpCode::BranchConditional => sys::OpCode::CPUI_CBRANCH,
+            OpCode::BranchIndirect => sys::OpCode::CPUI_BRANCHIND,
+            OpCode::Call => sys::OpCode::CPUI_CALL,
+            OpCode::CallIndirect => sys::OpCode::CPUI_CALLIND,
+            OpCode::Return => sys::OpCode::CPUI_RETURN,
+            OpCode::Subpiece => sys::OpCode::CPUI_PIECE,
+            OpCode::Piece => sys::OpCode::CPUI_SUBPIECE,
+            OpCode::Popcount => sys::OpCode::CPUI_POPCOUNT,
+            OpCode::Bool(BoolOp::Negate) => sys::OpCode::CPUI_BOOL_NEGATE,
+            OpCode::Bool(BoolOp::Xor) => sys::OpCode::CPUI_BOOL_XOR,
+            OpCode::Bool(BoolOp::And) => sys::OpCode::CPUI_BOOL_AND,
+            OpCode::Bool(BoolOp::Or) => sys::OpCode::CPUI_BOOL_OR,
+            OpCode::Int(IntOp::Equal) => sys::OpCode::CPUI_INT_EQUAL,
+            OpCode::Int(IntOp::NotEqual) => sys::OpCode::CPUI_INT_NOTEQUAL,
+            OpCode::Int(IntOp::LessThan(IntSign::Signed)) => sys::OpCode::CPUI_INT_SLESS,
+            OpCode::Int(IntOp::LessThanOrEqual(IntSign::Signed)) => {
+                sys::OpCode::CPUI_INT_SLESSEQUAL
+            }
+            OpCode::Int(IntOp::LessThan(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_LESS,
+            OpCode::Int(IntOp::LessThanOrEqual(IntSign::Unsigned)) => {
+                sys::OpCode::CPUI_INT_LESSEQUAL
+            }
+            OpCode::Int(IntOp::Extension(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_ZEXT,
+            OpCode::Int(IntOp::Extension(IntSign::Signed)) => sys::OpCode::CPUI_INT_SEXT,
+            OpCode::Int(IntOp::Add) => sys::OpCode::CPUI_INT_ADD,
+            OpCode::Int(IntOp::Subtract) => sys::OpCode::CPUI_INT_SUB,
+            OpCode::Int(IntOp::Carry(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_CARRY,
+            OpCode::Int(IntOp::Carry(IntSign::Signed)) => sys::OpCode::CPUI_INT_SCARRY,
+            OpCode::Int(IntOp::Borrow) => sys::OpCode::CPUI_INT_SBORROW,
+            OpCode::Int(IntOp::Negate) => sys::OpCode::CPUI_INT_2COMP,
+            OpCode::Int(IntOp::Bitwise(BoolOp::Negate)) => sys::OpCode::CPUI_INT_NEGATE,
+            OpCode::Int(IntOp::Bitwise(BoolOp::Xor)) => sys::OpCode::CPUI_INT_XOR,
+            OpCode::Int(IntOp::Bitwise(BoolOp::And)) => sys::OpCode::CPUI_INT_AND,
+            OpCode::Int(IntOp::Bitwise(BoolOp::Or)) => sys::OpCode::CPUI_INT_OR,
+            OpCode::Int(IntOp::ShiftLeft) => sys::OpCode::CPUI_INT_LEFT,
+            OpCode::Int(IntOp::ShiftRight(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_RIGHT,
+            OpCode::Int(IntOp::ShiftRight(IntSign::Signed)) => sys::OpCode::CPUI_INT_SRIGHT,
+            OpCode::Int(IntOp::Multiply) => sys::OpCode::CPUI_INT_MULT,
+            OpCode::Int(IntOp::Divide(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_DIV,
+            OpCode::Int(IntOp::Divide(IntSign::Signed)) => sys::OpCode::CPUI_INT_SDIV,
+            OpCode::Int(IntOp::Remainder(IntSign::Unsigned)) => sys::OpCode::CPUI_INT_REM,
+            OpCode::Int(IntOp::Remainder(IntSign::Signed)) => sys::OpCode::CPUI_INT_SREM,
+            OpCode::Float(FloatOp::Equal) => sys::OpCode::CPUI_FLOAT_EQUAL,
+            OpCode::Float(FloatOp::NotEqual) => sys::OpCode::CPUI_FLOAT_NOTEQUAL,
+            OpCode::Float(FloatOp::LessThan) => sys::OpCode::CPUI_FLOAT_LESS,
+            OpCode::Float(FloatOp::LessThanOrEqual) => sys::OpCode::CPUI_FLOAT_LESSEQUAL,
+            OpCode::Float(FloatOp::IsNaN) => sys::OpCode::CPUI_FLOAT_NAN,
+            OpCode::Float(FloatOp::Add) => sys::OpCode::CPUI_FLOAT_ADD,
+            OpCode::Float(FloatOp::Divide) => sys::OpCode::CPUI_FLOAT_DIV,
+            OpCode::Float(FloatOp::Multiply) => sys::OpCode::CPUI_FLOAT_MULT,
+            OpCode::Float(FloatOp::Subtract) => sys::OpCode::CPUI_FLOAT_SUB,
+            OpCode::Float(FloatOp::Negate) => sys::OpCode::CPUI_FLOAT_NEG,
+            OpCode::Float(FloatOp::AbsoluteValue) => sys::OpCode::CPUI_FLOAT_ABS,
+            OpCode::Float(FloatOp::SquareRoot) => sys::OpCode::CPUI_FLOAT_SQRT,
+            OpCode::Float(FloatOp::IntToFloat) => sys::OpCode::CPUI_FLOAT_INT2FLOAT,
+            OpCode::Float(FloatOp::FloatToFloat) => sys::OpCode::CPUI_FLOAT_FLOAT2FLOAT,
+            OpCode::Float(FloatOp::Truncate) => sys::OpCode::CPUI_FLOAT_TRUNC,
+            OpCode::Float(FloatOp::Ceiling) => sys::OpCode::CPUI_FLOAT_CEIL,
+            OpCode::Float(FloatOp::Floor) => sys::OpCode::CPUI_FLOAT_FLOOR,
+            OpCode::Float(FloatOp::Round) => sys::OpCode::CPUI_FLOAT_ROUND,
+            OpCode::Pseudo(PseudoOp::CallOther) => sys::OpCode::CPUI_CALLOTHER,
+            OpCode::Pseudo(PseudoOp::ConstantPoolRef) => sys::OpCode::CPUI_CPOOLREF,
+            OpCode::Pseudo(PseudoOp::New) => sys::OpCode::CPUI_NEW,
+            OpCode::Analysis(AnalysisOp::MultiEqual) => sys::OpCode::CPUI_MULTIEQUAL,
+            OpCode::Analysis(AnalysisOp::CopyIndirect) => sys::OpCode::CPUI_INDIRECT,
+            OpCode::Analysis(AnalysisOp::Cast) => sys::OpCode::CPUI_CAST,
+            OpCode::Analysis(AnalysisOp::PointerAdd) => sys::OpCode::CPUI_PTRADD,
+            OpCode::Analysis(AnalysisOp::PointerSubcomponent) => sys::OpCode::CPUI_PTRSUB,
+            OpCode::Analysis(AnalysisOp::SegmentOp) => sys::OpCode::CPUI_SEGMENTOP,
+            OpCode::Analysis(AnalysisOp::Insert) => sys::OpCode::CPUI_INSERT,
+            OpCode::Analysis(AnalysisOp::Extract) => sys::OpCode::CPUI_EXTRACT,
+            OpCode::Unknown(_) => sys::OpCode::CPUI_MAX,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conversion_test() {
+        let min_opcode: i32 = unsafe { ::std::mem::transmute(sys::OpCode::CPUI_COPY) };
+        let max_opcode: i32 = unsafe { ::std::mem::transmute(sys::OpCode::CPUI_MAX) };
+        for opcode in min_opcode..max_opcode {
+            if opcode == 45 {
+                // opcode 45 is unused
+                continue;
+            }
+
+            let sys_opcode: sys::OpCode = unsafe { ::std::mem::transmute(opcode) };
+            let sla_opcode: OpCode = sys_opcode.into();
+            assert_eq!(
+                sys_opcode,
+                sla_opcode.into(),
+                "failed to convert {sla_opcode:?}"
+            );
         }
     }
 }
