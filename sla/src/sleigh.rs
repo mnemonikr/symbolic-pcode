@@ -159,7 +159,7 @@ pub enum OpCode {
     /// p-code address for the current instruction.
     Branch,
 
-    /// Jump to a fixed destination based on a condition. See [OpCode::Jump] for details on
+    /// Jump to a fixed destination based on a condition. See [OpCode::Branch] for details on
     /// an explanation on possible destinations.
     BranchConditional,
 
