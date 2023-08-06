@@ -323,8 +323,8 @@ impl From<sys::OpCode> for OpCode {
 
             sys::OpCode::CPUI_MULTIEQUAL => OpCode::Analysis(AnalysisOp::MultiEqual),
             sys::OpCode::CPUI_INDIRECT => OpCode::Analysis(AnalysisOp::CopyIndirect),
-            sys::OpCode::CPUI_PIECE => OpCode::Subpiece,
-            sys::OpCode::CPUI_SUBPIECE => OpCode::Piece,
+            sys::OpCode::CPUI_PIECE => OpCode::Piece,
+            sys::OpCode::CPUI_SUBPIECE => OpCode::Subpiece,
 
             sys::OpCode::CPUI_CAST => OpCode::Analysis(AnalysisOp::Cast),
             sys::OpCode::CPUI_PTRADD => OpCode::Analysis(AnalysisOp::PointerAdd),
@@ -352,8 +352,8 @@ impl From<OpCode> for sys::OpCode {
             OpCode::Call => sys::OpCode::CPUI_CALL,
             OpCode::CallIndirect => sys::OpCode::CPUI_CALLIND,
             OpCode::Return => sys::OpCode::CPUI_RETURN,
-            OpCode::Subpiece => sys::OpCode::CPUI_PIECE,
-            OpCode::Piece => sys::OpCode::CPUI_SUBPIECE,
+            OpCode::Subpiece => sys::OpCode::CPUI_SUBPIECE,
+            OpCode::Piece => sys::OpCode::CPUI_PIECE,
             OpCode::Popcount => sys::OpCode::CPUI_POPCOUNT,
             OpCode::Bool(BoolOp::Negate) => sys::OpCode::CPUI_BOOL_NEGATE,
             OpCode::Bool(BoolOp::Xor) => sys::OpCode::CPUI_BOOL_XOR,
