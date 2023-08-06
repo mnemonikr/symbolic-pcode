@@ -4,11 +4,10 @@ use std::sync::Once;
 use crate::ffi::api;
 use crate::ffi::rust;
 use crate::ffi::sys;
+pub use crate::opcodes::OpCode;
 use cxx::{let_cxx_string, UniquePtr};
 
 static INIT: Once = Once::new();
-
-pub type OpCode = sys::OpCode;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
@@ -209,7 +208,7 @@ impl api::PcodeEmit for PcodeResponse {
     ) {
         self.pcode_instructions.push(PcodeInstruction {
             address: address.into(),
-            op_code,
+            op_code: op_code.into(),
             inputs: input_variables
                 .into_iter()
                 .map(Into::<VarnodeData>::into)
