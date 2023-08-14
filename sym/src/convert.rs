@@ -1,4 +1,18 @@
-use crate::sym::*;
+use crate::{buf::SymbolicByte, sym::*};
+
+impl TryFrom<SymbolicByte> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+
+impl TryFrom<&SymbolicByte> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: &SymbolicByte) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.iter())
+    }
+}
 
 impl TryFrom<SymbolicBitVec> for u16 {
     type Error = ConcretizationError<u16>;
@@ -53,6 +67,19 @@ impl TryFrom<&SymbolicBitVec> for usize {
     type Error = ConcretizationError<usize>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
         concretize_bit_iter(value.iter())
+    }
+}
+
+impl From<u8> for SymbolicByte {
+    fn from(value: u8) -> Self {
+        let mut byte = SymbolicByte::default();
+        let mut mask = 1u8;
+        for i in 0..8 {
+            byte[i] = SymbolicBit::Literal(value & mask != 0u8);
+            mask <<= 1;
+        }
+
+        byte
     }
 }
 
@@ -132,14 +159,6 @@ impl std::ops::Deref for SymbolicBitVec {
     }
 }
 
-impl<const N: usize> std::ops::Deref for SymbolicBitBuf<N> {
-    type Target = [SymbolicBit];
-
-    fn deref(&self) -> &Self::Target {
-        &self.bits
-    }
-}
-
 impl TryFrom<SymbolicBitVec> for SymbolicBit {
     type Error = String;
 
@@ -177,5 +196,17 @@ impl TryFrom<&SymbolicBitVec> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
         concretize_bit_iter(value.iter())
+    }
+}
+
+impl From<Vec<SymbolicByte>> for SymbolicBitVec {
+    fn from(value: Vec<SymbolicByte>) -> Self {
+        Self {
+            bits: value
+                .into_iter()
+                .map(|byte| <[SymbolicBit; 8]>::from(byte).into_iter())
+                .flatten()
+                .collect(),
+        }
     }
 }
