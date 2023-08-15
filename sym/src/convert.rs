@@ -1,4 +1,66 @@
-use crate::{buf::SymbolicByte, sym::*};
+use crate::{buf::SymbolicByte, sym::*, SymbolicBitBuf};
+
+impl From<bool> for SymbolicBit {
+    fn from(value: bool) -> Self {
+        SymbolicBit::Literal(value)
+    }
+}
+
+impl TryFrom<SymbolicBit> for bool {
+    type Error = String;
+
+    fn try_from(value: SymbolicBit) -> Result<Self, Self::Error> {
+        if let SymbolicBit::Literal(value) = value {
+            Ok(value)
+        } else {
+            Err(format!("Symbolic bit is not a literal: {value:?}"))
+        }
+    }
+}
+
+impl TryFrom<SymbolicBitBuf<1>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<1>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+impl TryFrom<SymbolicBitBuf<2>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<2>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+impl TryFrom<SymbolicBitBuf<3>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<3>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+impl TryFrom<SymbolicBitBuf<4>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<4>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+impl TryFrom<SymbolicBitBuf<5>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<5>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+impl TryFrom<SymbolicBitBuf<6>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<6>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
+
+impl TryFrom<SymbolicBitBuf<7>> for u8 {
+    type Error = ConcretizationError<u8>;
+    fn try_from(value: SymbolicBitBuf<7>) -> Result<Self, Self::Error> {
+        concretize_bit_iter(value.into_inner().iter())
+    }
+}
 
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;

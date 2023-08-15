@@ -1,12 +1,15 @@
+//! Module for a collection of symbolic bits whose count are known at compile-time.
 use std::mem::MaybeUninit;
 
 use crate::SymbolicBit;
 
-#[derive(Clone)]
+/// An array of symbolic bits.
+#[derive(Debug, Clone)]
 pub struct SymbolicBitBuf<const N: usize> {
     bits: [SymbolicBit; N],
 }
 
+/// An 8-bit byte of symbolic bits.
 pub type SymbolicByte = SymbolicBitBuf<8>;
 
 impl<const N: usize> std::ops::Deref for SymbolicBitBuf<N> {
@@ -85,10 +88,12 @@ impl<const N: usize> SymbolicBitBuf<N> {
         Self { bits }
     }
 
+    #[must_use]
     pub fn into_inner(self) -> [SymbolicBit; N] {
         self.bits
     }
 
+    #[must_use]
     pub fn equals(self, rhs: Self) -> SymbolicBit {
         self.bits
             .into_iter()
@@ -97,6 +102,14 @@ impl<const N: usize> SymbolicBitBuf<N> {
             .fold(SymbolicBit::Literal(true), |lhs, rhs| lhs & rhs)
     }
 
+    /// Concatenates this buffer with another, resulting in a single buffer containing `[self:rhs]`.
+    ///
+    /// # Future
+    ///
+    /// Once [generic_const_exprs](https://github.com/rust-lang/rust/issues/76560) is stabilized,
+    /// the value of `O` can be computed from `N` and `M` and will no longer be part of the type
+    /// signature.
+    #[must_use]
     pub fn concat<const M: usize, const O: usize>(
         self,
         rhs: SymbolicBitBuf<M>,
@@ -124,7 +137,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
                 for i in (amount..N).rev() {
                     self.bits.swap(i, i - amount);
                 }
-                for i in 0..amount {
+                for i in 0..usize::min(N, amount) {
                     self.bits[i] = shift_in.clone();
                 }
             }
@@ -134,7 +147,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
                 for i in amount..N {
                     self.bits.swap(i, i - amount);
                 }
-                for i in 0..amount {
+                for i in 0..usize::min(N, amount) {
                     self.bits[N - 1 - i] = shift_in.clone();
                 }
             }
@@ -152,6 +165,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Not for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn not(mut self) -> Self::Output {
         for i in 0..N {
             let bit = std::mem::take(&mut self.bits[i]);
@@ -192,6 +206,7 @@ impl<const N: usize> std::ops::BitXorAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn bitand(mut self, rhs: Self) -> Self::Output {
         self &= rhs;
         self
@@ -201,6 +216,7 @@ impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitOr for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn bitor(mut self, rhs: Self) -> Self::Output {
         self |= rhs;
         self
@@ -210,6 +226,7 @@ impl<const N: usize> std::ops::BitOr for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitXor for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn bitxor(mut self, rhs: Self) -> Self::Output {
         self ^= rhs;
         self
@@ -221,7 +238,7 @@ impl<const N: usize> std::ops::ShlAssign for SymbolicBitBuf<N> {
         for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
             let mut shifted_value = self.clone();
             shifted_value.shift(1 << i, SymbolicBit::Literal(false), ShiftDirection::Left);
-            self.mux(shifted_value, shift_bit);
+            self.mux(shifted_value, !shift_bit);
         }
     }
 }
@@ -229,7 +246,24 @@ impl<const N: usize> std::ops::ShlAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shl for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn shl(mut self, rhs: Self) -> Self::Output {
+        self <<= rhs;
+        self
+    }
+}
+
+impl<const N: usize> std::ops::ShlAssign<usize> for SymbolicBitBuf<N> {
+    fn shl_assign(&mut self, rhs: usize) {
+        self.shift(rhs, SymbolicBit::Literal(false), ShiftDirection::Left);
+    }
+}
+
+impl<const N: usize> std::ops::Shl<usize> for SymbolicBitBuf<N> {
+    type Output = Self;
+
+    #[must_use]
+    fn shl(mut self, rhs: usize) -> Self::Output {
         self <<= rhs;
         self
     }
@@ -241,7 +275,7 @@ impl<const N: usize> std::ops::ShrAssign for SymbolicBitBuf<N> {
         for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
             let mut shifted_value = self.clone();
             shifted_value.shift(1 << i, SymbolicBit::Literal(false), ShiftDirection::Right);
-            self.mux(shifted_value, shift_bit);
+            self.mux(shifted_value, !shift_bit);
         }
     }
 }
@@ -249,8 +283,83 @@ impl<const N: usize> std::ops::ShrAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shr for SymbolicBitBuf<N> {
     type Output = Self;
 
+    #[must_use]
     fn shr(mut self, rhs: Self) -> Self::Output {
         self >>= rhs;
         self
+    }
+}
+
+impl<const N: usize> std::ops::ShrAssign<usize> for SymbolicBitBuf<N> {
+    fn shr_assign(&mut self, rhs: usize) {
+        self.shift(rhs, SymbolicBit::Literal(false), ShiftDirection::Right);
+    }
+}
+
+impl<const N: usize> std::ops::Shr<usize> for SymbolicBitBuf<N> {
+    type Output = Self;
+
+    #[must_use]
+    fn shr(mut self, rhs: usize) -> Self::Output {
+        self >>= rhs;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TRUE: SymbolicBit = SymbolicBit::Literal(true);
+    const FALSE: SymbolicBit = SymbolicBit::Literal(false);
+
+    #[test]
+    fn ops_not() {
+        let x: SymbolicBitBuf<1> = [FALSE].into();
+        assert_eq!(u8::try_from(!x.clone()).unwrap(), 0x1);
+        assert_eq!(u8::try_from(!!x).unwrap(), 0x0);
+    }
+
+    #[test]
+    fn ops_bitor() {
+        let x: SymbolicBitBuf<4> = [FALSE, FALSE, TRUE, TRUE].into();
+        let y: SymbolicBitBuf<4> = [FALSE, TRUE, FALSE, TRUE].into();
+        assert_eq!(u8::try_from(x | y).unwrap(), 0x0E);
+    }
+
+    #[test]
+    fn ops_bitand() {
+        let x: SymbolicBitBuf<4> = [FALSE, FALSE, TRUE, TRUE].into();
+        let y: SymbolicBitBuf<4> = [FALSE, TRUE, FALSE, TRUE].into();
+        assert_eq!(u8::try_from(x & y).unwrap(), 0x08);
+    }
+
+    #[test]
+    fn ops_shl_usize() {
+        let x: SymbolicBitBuf<4> = [TRUE, FALSE, FALSE, FALSE].into();
+        let result = u8::try_from(x << 1).unwrap();
+        assert_eq!(result, 0x2);
+    }
+
+    #[test]
+    fn ops_shl_sym() {
+        let x: SymbolicBitBuf<4> = [TRUE, FALSE, FALSE, FALSE].into();
+        let result = u8::try_from(x.clone() << x).unwrap();
+        assert_eq!(result, 0x2);
+    }
+
+    #[test]
+    fn ops_shr_usize() {
+        let x: SymbolicBitBuf<4> = [FALSE, TRUE, FALSE, FALSE].into();
+        let result = u8::try_from(x >> 1).unwrap();
+        assert_eq!(result, 0x1);
+    }
+
+    #[test]
+    fn ops_shr_sym() {
+        let x: SymbolicBitBuf<4> = [FALSE, TRUE, FALSE, FALSE].into();
+        let y: SymbolicBitBuf<4> = [TRUE, FALSE, FALSE, FALSE].into();
+        let result = u8::try_from(x >> y).unwrap();
+        assert_eq!(result, 0x1);
     }
 }
