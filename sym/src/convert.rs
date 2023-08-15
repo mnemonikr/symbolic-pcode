@@ -1,4 +1,5 @@
-use crate::{buf::SymbolicByte, sym::*, SymbolicBitBuf};
+use crate::buf::{SymbolicBitBuf, SymbolicByte};
+use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
@@ -21,114 +22,114 @@ impl TryFrom<SymbolicBit> for bool {
 impl TryFrom<SymbolicBitBuf<1>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<1>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<2>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<2>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<3>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<3>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<4>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<4>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<5>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<5>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<6>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<6>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 
 impl TryFrom<SymbolicBitBuf<7>> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitBuf<7>) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.into_inner().iter())
+        sym::concretize_bit_iter(value.into_inner().iter())
     }
 }
 
 impl TryFrom<&SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: &SymbolicByte) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u16 {
     type Error = ConcretizationError<u16>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u16 {
     type Error = ConcretizationError<u16>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u32 {
     type Error = ConcretizationError<u32>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u32 {
     type Error = ConcretizationError<u32>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u64 {
     type Error = ConcretizationError<u64>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u64 {
     type Error = ConcretizationError<u64>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for usize {
     type Error = ConcretizationError<usize>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for usize {
     type Error = ConcretizationError<usize>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
@@ -250,14 +251,14 @@ impl From<Vec<SymbolicBit>> for SymbolicBitVec {
 impl TryFrom<SymbolicBitVec> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bit_iter(value.iter())
+        sym::concretize_bit_iter(value.iter())
     }
 }
 
