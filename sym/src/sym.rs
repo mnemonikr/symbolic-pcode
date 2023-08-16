@@ -1,6 +1,9 @@
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use thiserror;
+
+use crate::buf::SymbolicByte;
 
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,12 +71,18 @@ where
 }
 
 impl SymbolicBit {
-    fn equals(self, rhs: Self) -> Self {
+    pub fn equals(self, rhs: Self) -> Self {
         (self.clone() & rhs.clone()) | (!self & !rhs)
     }
 
-    fn select(self, lhs: Self, rhs: Self) -> Self {
+    pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
+    }
+}
+
+impl Default for SymbolicBit {
+    fn default() -> Self {
+        SymbolicBit::Literal(false)
     }
 }
 
@@ -141,71 +150,40 @@ impl std::ops::BitXor for SymbolicBit {
     }
 }
 
-pub struct SymbolicBitBuf<const N: usize> {
-    pub(crate) bits: [SymbolicBit; N],
-}
-
-impl<const N: usize> SymbolicBitBuf<N> {
-    pub fn new(start_symbol: usize) -> Self {
-        // SAFETY: The `assume_init` call is on a MaybeUninit array holding MaybeUninits.
-        // It is safe to assume the outer array is initialized since the inner values
-        // are still appropriately marked as MaybeUninit.
-        let mut bits: [std::mem::MaybeUninit<SymbolicBit>; N] =
-            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-
-        for i in 0..N {
-            bits[i].write(SymbolicBit::Variable(start_symbol + i));
-        }
-
-        Self {
-            // SAFETY: Array values are initialized, now safe to convert from array of MaybeUninits
-            // to array of initialized values.
-            bits: unsafe { (&bits as *const _ as *const [SymbolicBit; N]).read() },
-        }
-    }
-}
-
-impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        let mut bits: [std::mem::MaybeUninit<SymbolicBit>; N] =
-            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-
-        self.bits
-            .into_iter()
-            .zip(rhs.bits.into_iter())
-            .enumerate()
-            .for_each(|(i, (lhs, rhs))| {
-                bits[i].write(lhs & rhs);
-            });
-
-        Self {
-            // SAFETY: Array values are initialized, now safe to convert from array of MaybeUninits
-            // to array of initialized values.
-            bits: unsafe { (&bits as *const _ as *const [SymbolicBit; N]).read() },
-        }
-    }
-}
-
-impl<const N: usize> From<[SymbolicBit; N]> for SymbolicBitBuf<N> {
-    fn from(bits: [SymbolicBit; N]) -> Self {
-        Self { bits }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SymbolicBitVec {
     pub(crate) bits: Vec<SymbolicBit>,
 }
 
+static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 impl SymbolicBitVec {
-    pub fn new(start_symbol: usize) -> Self {
-        let mut bits = Vec::with_capacity(8);
-        for i in 0..8 {
+    pub fn with_size(num_bits: usize) -> Self {
+        let start_symbol = START_SYMBOL.fetch_add(num_bits, Ordering::SeqCst);
+        let mut bits = Vec::with_capacity(num_bits);
+        for i in 0..num_bits {
             bits.push(SymbolicBit::Variable(start_symbol + i));
         }
+
         Self { bits }
+    }
+
+    pub fn into_bytes(self) -> Vec<SymbolicByte> {
+        assert_eq!(self.bits.len() % 8, 0);
+        let num_bytes = self.bits.len() / 8;
+
+        const FALSE: SymbolicBit = SymbolicBit::Literal(false);
+        let mut bits = [FALSE; 8];
+        let mut bytes = Vec::with_capacity(num_bytes);
+
+        for (i, bit) in self.bits.into_iter().enumerate() {
+            bits[i % 8] = bit;
+            if (i + 1) % 8 == 0 {
+                bytes.push(bits.into());
+                bits = [FALSE; 8];
+            }
+        }
+
+        bytes
     }
 
     pub fn into_parts(self, num_bits: usize) -> Vec<Self> {
