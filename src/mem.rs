@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
@@ -280,6 +280,70 @@ impl Memory {
 
             println!("End memory dump for {}", addr_space_data.address_space.name);
         }
+    }
+}
+
+struct MemoryTree {
+    predicate: SymbolicBit,
+    parent: Option<Rc<Self>>,
+    memory: Memory,
+}
+
+impl MemoryTree {
+    pub fn read(&self, input: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        let result = self.memory.read_bytes_owned(&input);
+        if let Some(ref parent) = self.parent {
+            if let Err(Error::UndefinedData(address)) = result {
+                let num_valid_bytes = (address.offset - input.address.offset) as usize;
+
+                // Read the known valid data
+                let valid_input = VarnodeData {
+                    address: Address {
+                        offset: input.address.offset,
+                        address_space: input.address.address_space.clone(),
+                    },
+                    size: num_valid_bytes,
+                };
+                let mut data = self.memory.read_bytes_owned(&valid_input)?;
+
+                // Read the missing data from parent
+                let parent_input = VarnodeData {
+                    address,
+                    size: input.size - num_valid_bytes,
+                };
+                let mut parent_data = parent.read(&parent_input)?;
+
+                // Combine the two and return the result
+                data.append(&mut parent_data);
+                return Ok(data);
+            }
+        }
+
+        result
+    }
+
+    pub fn branch(self, predicate: SymbolicBit) -> (Self, Self) {
+        let address_spaces = self
+            .memory
+            .data
+            .values()
+            .map(|data| data.address_space.clone())
+            .collect::<Vec<_>>();
+
+        let rc = Rc::new(self);
+        let positive = Self {
+            predicate: predicate.clone(),
+            parent: Some(Rc::clone(&rc)),
+            memory: Memory::new(address_spaces.clone()),
+        };
+
+        let negative = Self {
+            predicate: !predicate,
+            parent: Some(rc),
+            memory: Memory::new(address_spaces),
+        };
+
+        (positive, negative)
     }
 }
 
