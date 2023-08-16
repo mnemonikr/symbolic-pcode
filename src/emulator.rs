@@ -5,7 +5,7 @@ use sla::{
     Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, LoadImage, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use sym;
+use sym::{self, SymbolicByte};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -285,22 +285,12 @@ impl PcodeEmulator {
     pub fn copy(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 1)?;
         check_has_output(&instruction, true)?;
+        check_input_sizes_match_output(&instruction)?;
 
-        let input = &instruction.inputs[0];
+        let data = self.memory.read_bytes_owned(&instruction.inputs[0])?;
         let output = unsafe { instruction.output.as_ref().unwrap_unchecked() };
 
-        if input.size != output.size {
-            return Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!(
-                    "input varnode {} and output varnode {} sizes differ",
-                    input, output,
-                ),
-            ));
-        }
-
-        self.memory
-            .write_bytes(self.memory.read_bytes_owned(&input)?, &output)?;
+        self.memory.write_bytes(data, &output)?;
 
         Ok(())
     }
@@ -316,6 +306,11 @@ impl PcodeEmulator {
     /// confuse the address space of the output and input1 variables and the Address Space
     /// represented by the ID, which could all be different. Unlike many programming models, there
     /// are multiple spaces that a "pointer" can refer to, and so an extra ID is required.
+    ///
+    /// It is possible for the addressable unit of an address space to be bigger than a single byte.
+    /// If the wordsize attribute of the space given by the ID is bigger than one, the offset into
+    /// the space obtained from input1 must be multiplied by this value in order to obtain the
+    /// correct byte offset into the space.
     pub fn load(
         &mut self,
         input_0: &VarnodeData,
@@ -335,17 +330,17 @@ impl PcodeEmulator {
             size: output.size,
         };
 
-        self.memory
-            .write_bytes(self.memory.read_bytes_owned(&input)?, &output)?;
+        let data = self.memory.read_bytes_owned(&input)?;
+        self.memory.write_bytes(data, &output)?;
 
         Ok(())
     }
 
-    ///  This instruction is the complement of LOAD. The data in the variable input2 is stored at a
-    ///  dynamic location by dereferencing a pointer. As with LOAD, the “pointer” comes in two
-    ///  pieces: a space ID part, and an offset variable. The size of input1 must match the address
-    ///  space specified by the ID, and the amount of data stored is determined by the size of
-    ///  input2.
+    /// This instruction is the complement of LOAD. The data in the variable input2 is stored at a
+    /// dynamic location by dereferencing a pointer. As with LOAD, the “pointer” comes in two
+    /// pieces: a space ID part, and an offset variable. The size of input1 must match the address
+    /// space specified by the ID, and the amount of data stored is determined by the size of
+    /// input2.
     ///
     /// Its possible for the addressable unit of an address space to be bigger than a single byte.
     /// If the wordsize attribute of the space given by the ID is bigger than one, the offset into
@@ -365,8 +360,8 @@ impl PcodeEmulator {
             size: input_2.size,
         };
 
-        self.memory
-            .write_bytes(self.memory.read_bytes_owned(&input_2)?, &output)?;
+        let data = self.memory.read_bytes_owned(&input_2)?;
+        self.memory.write_bytes(data, &output)?;
 
         Ok(())
     }
@@ -460,14 +455,7 @@ impl PcodeEmulator {
         check_has_output(&instruction, false)?;
         check_input_size_equals(&instruction, 1, 1)?;
 
-        let selector: sym::SymbolicBit = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[1])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7)
-            .try_into()
-            .unwrap();
+        let selector: sym::SymbolicBit = self.memory.read_bit(&instruction.inputs[1])?;
 
         Ok(ControlFlow::ConditionalBranch(
             selector,
@@ -489,7 +477,7 @@ impl PcodeEmulator {
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let value = lhs & rhs;
-        self.memory.write_bytes(value.into_parts(8), &output)?;
+        self.memory.write_bytes(value.into_bytes(), &output)?;
 
         Ok(())
     }
@@ -550,10 +538,8 @@ impl PcodeEmulator {
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let negative = -lhs;
 
-        self.memory.write_bytes(
-            negative.into_parts(8),
-            &instruction.output.as_ref().unwrap(),
-        )?;
+        self.memory
+            .write_bytes(negative.into_bytes(), &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -590,7 +576,7 @@ impl PcodeEmulator {
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let sum = lhs + rhs;
-        self.memory.write_bytes(sum.into_parts(8), &output)?;
+        self.memory.write_bytes(sum.into_bytes(), &output)?;
 
         Ok(())
     }
@@ -609,9 +595,8 @@ impl PcodeEmulator {
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
 
-        let overflow: sym::SymbolicBitVec = vec![lhs.unsigned_addition_overflow(rhs)].into();
-        self.memory
-            .write_bytes(vec![overflow.zero_extend(7)], &output)?;
+        let overflow = lhs.unsigned_addition_overflow(rhs);
+        self.memory.write_bytes(vec![overflow.into()], &output)?;
 
         Ok(())
     }
@@ -629,9 +614,9 @@ impl PcodeEmulator {
         assert_eq!(output.size, 1);
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
-        let overflow: sym::SymbolicBitVec = vec![lhs.signed_addition_overflow(rhs)].into();
-        self.memory
-            .write_bytes(vec![overflow.zero_extend(7)], &output)?;
+        let overflow = lhs.signed_addition_overflow(rhs);
+
+        self.memory.write_bytes(vec![overflow.into()], &output)?;
 
         Ok(())
     }
@@ -651,7 +636,7 @@ impl PcodeEmulator {
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
         let diff = lhs - rhs;
-        self.memory.write_bytes(diff.into_parts(8), &output)?;
+        self.memory.write_bytes(diff.into_bytes(), &output)?;
 
         Ok(())
     }
@@ -668,12 +653,10 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let overflow: sym::SymbolicBitVec = vec![lhs.subtraction_with_borrow(rhs).1].into();
+        let overflow = lhs.subtraction_with_borrow(rhs).1;
 
-        self.memory.write_bytes(
-            vec![overflow.zero_extend(7)],
-            instruction.output.as_ref().unwrap(),
-        )?;
+        self.memory
+            .write_bytes(vec![overflow.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -688,7 +671,7 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let product = lhs.multiply(rhs, 8 * output.size);
-        self.memory.write_bytes(product.into_parts(8), output)?;
+        self.memory.write_bytes(product.into_bytes(), output)?;
 
         Ok(())
     }
@@ -707,7 +690,7 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let (quotient, _) = rhs.unsigned_divide(lhs);
-        self.memory.write_bytes(quotient.into_parts(8), output)?;
+        self.memory.write_bytes(quotient.into_bytes(), output)?;
 
         Ok(())
     }
@@ -727,7 +710,7 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let (_, remainder) = rhs.unsigned_divide(lhs);
-        self.memory.write_bytes(remainder.into_parts(8), output)?;
+        self.memory.write_bytes(remainder.into_bytes(), output)?;
 
         Ok(())
     }
@@ -747,7 +730,7 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let (quotient, _) = rhs.signed_divide(lhs);
-        self.memory.write_bytes(quotient.into_parts(8), output)?;
+        self.memory.write_bytes(quotient.into_bytes(), output)?;
 
         Ok(())
     }
@@ -767,7 +750,7 @@ impl PcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
 
         let (_, remainder) = rhs.signed_divide(lhs);
-        self.memory.write_bytes(remainder.into_parts(8), output)?;
+        self.memory.write_bytes(remainder.into_bytes(), output)?;
 
         Ok(())
     }
@@ -780,7 +763,7 @@ impl PcodeEmulator {
         assert!(output.size > input_0.size);
         let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let data = data.zero_extend(8 * (output.size - input_0.size) as usize);
-        self.memory.write_bytes(data.into_parts(8), &output)?;
+        self.memory.write_bytes(data.into_bytes(), &output)?;
 
         Ok(())
     }
@@ -794,7 +777,7 @@ impl PcodeEmulator {
         assert!(output.size > input_0.size);
         let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let data = data.sign_extend(8 * (output.size - input_0.size) as usize);
-        self.memory.write_bytes(data.into_parts(8), &output)?;
+        self.memory.write_bytes(data.into_bytes(), &output)?;
 
         Ok(())
     }
@@ -813,8 +796,8 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
-        let bit: sym::SymbolicBitVec = vec![lhs.equals(rhs)].into();
-        self.memory.write_bytes(vec![bit.zero_extend(7)], &output)?;
+        let bit = lhs.equals(rhs);
+        self.memory.write_bytes(vec![bit.into()], &output)?;
         Ok(())
     }
 
@@ -832,8 +815,8 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
-        let bit: sym::SymbolicBitVec = vec![!lhs.equals(rhs)].into();
-        self.memory.write_bytes(vec![bit.zero_extend(7)], &output)?;
+        let bit = !lhs.equals(rhs);
+        self.memory.write_bytes(vec![bit.into()], &output)?;
         Ok(())
     }
 
@@ -851,8 +834,8 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
-        let bit: sym::SymbolicBitVec = vec![lhs.signed_less_than(rhs)].into();
-        self.memory.write_bytes(vec![bit.zero_extend(7)], &output)?;
+        let bit = lhs.signed_less_than(rhs);
+        self.memory.write_bytes(vec![bit.into()], &output)?;
 
         Ok(())
     }
@@ -868,11 +851,9 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let bit: sym::SymbolicBitVec = vec![lhs.signed_less_than_eq(rhs)].into();
-        self.memory.write_bytes(
-            vec![bit.zero_extend(7)],
-            instruction.output.as_ref().unwrap(),
-        )?;
+        let bit = lhs.signed_less_than_eq(rhs);
+        self.memory
+            .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -888,11 +869,9 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let bit: sym::SymbolicBitVec = vec![lhs.less_than(rhs)].into();
-        self.memory.write_bytes(
-            vec![bit.zero_extend(7)],
-            instruction.output.as_ref().unwrap(),
-        )?;
+        let bit = lhs.less_than(rhs);
+        self.memory
+            .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -908,11 +887,9 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let bit: sym::SymbolicBitVec = vec![lhs.less_than_eq(rhs)].into();
-        self.memory.write_bytes(
-            vec![bit.zero_extend(7)],
-            instruction.output.as_ref().unwrap(),
-        )?;
+        let bit = lhs.less_than_eq(rhs);
+        self.memory
+            .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -932,13 +909,17 @@ impl PcodeEmulator {
         }
 
         self.memory.write_bytes(
-            result.zero_extend(requested_bits - num_bits).into_parts(8),
+            result.zero_extend(requested_bits - num_bits).into_bytes(),
             &output,
         )?;
 
         Ok(())
     }
 
+    /// This is a concatenation operator that understands the endianess of the data. The size of
+    /// input0 and input1 must add up to the size of output. The data from the inputs is
+    /// concatenated in such a way that, if the inputs and output are considered integers, the first
+    /// input makes up the most significant part of the output.
     fn piece(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         check_num_inputs(&instruction, 2)?;
         check_has_output(&instruction, true)?;
@@ -951,7 +932,7 @@ impl PcodeEmulator {
         let lsb: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
 
         self.memory.write_bytes(
-            lsb.concat(msb).into_parts(8),
+            lsb.concat(msb).into_bytes(),
             instruction.output.as_ref().unwrap(),
         )?;
 
@@ -1050,18 +1031,11 @@ impl PcodeEmulator {
         check_input_sizes_equal(&instruction, 1)?;
         check_output_size_equals(&instruction, 1)?;
 
-        let input = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[0])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
+        let input = self.memory.read_bit(&instruction.inputs[0])?;
         let negation = !input;
-        let negation = negation.zero_extend(7);
 
         self.memory
-            .write_bytes(vec![negation], &instruction.output.as_ref().unwrap())?;
+            .write_bytes(vec![negation.into()], &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1076,25 +1050,12 @@ impl PcodeEmulator {
         check_input_sizes_equal(&instruction, 1)?;
         check_output_size_equals(&instruction, 1)?;
 
-        let lhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[0])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
-        let rhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[1])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
+        let lhs = self.memory.read_bit(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bit(&instruction.inputs[1])?;
         let xor = lhs ^ rhs;
-        let xor = xor.zero_extend(7);
 
         self.memory
-            .write_bytes(vec![xor], &instruction.output.as_ref().unwrap())?;
+            .write_bytes(vec![xor.into()], &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1109,25 +1070,12 @@ impl PcodeEmulator {
         check_input_sizes_equal(&instruction, 1)?;
         check_output_size_equals(&instruction, 1)?;
 
-        let lhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[0])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
-        let rhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[1])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
+        let lhs = self.memory.read_bit(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bit(&instruction.inputs[1])?;
         let and = lhs & rhs;
-        let and = and.zero_extend(7);
 
         self.memory
-            .write_bytes(vec![and], &instruction.output.as_ref().unwrap())?;
+            .write_bytes(vec![and.into()], &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1142,25 +1090,12 @@ impl PcodeEmulator {
         check_input_sizes_equal(&instruction, 1)?;
         check_output_size_equals(&instruction, 1)?;
 
-        let lhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[0])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
-        let rhs = self
-            .memory
-            .read_bytes_owned(&instruction.inputs[1])?
-            .pop()
-            .unwrap()
-            .truncate_msb(7);
-
+        let lhs = self.memory.read_bit(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bit(&instruction.inputs[1])?;
         let or = lhs | rhs;
-        let or = or.zero_extend(7);
 
         self.memory
-            .write_bytes(vec![or], &instruction.output.as_ref().unwrap())?;
+            .write_bytes(vec![or.into()], &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1177,10 +1112,10 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let result = (lhs << rhs).into_parts(8);
+        let result = lhs << rhs;
 
         self.memory
-            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
+            .write_bytes(result.into_bytes(), &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1198,10 +1133,10 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let result = (lhs >> rhs).into_parts(8);
+        let result = lhs >> rhs;
 
         self.memory
-            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
+            .write_bytes(result.into_bytes(), &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1220,10 +1155,10 @@ impl PcodeEmulator {
 
         let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
-        let result = lhs.signed_shift_right(rhs).into_parts(8);
+        let result = lhs.signed_shift_right(rhs);
 
         self.memory
-            .write_bytes(result, &instruction.output.as_ref().unwrap())?;
+            .write_bytes(result.into_bytes(), &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1271,7 +1206,7 @@ mod tests {
     fn write_bytes(
         emulator: &mut PcodeEmulator,
         offset: u64,
-        bytes: Vec<SymbolicBitVec>,
+        bytes: Vec<SymbolicByte>,
     ) -> Result<VarnodeData> {
         let varnode = VarnodeData {
             address: Address {
@@ -1567,12 +1502,12 @@ mod tests {
         for lhs in 0..16u8 {
             for rhs in 0..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value: SymbolicBitVec = lhs.into();
-                let lhs_value = lhs_value.zero_extend(4);
+                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4);
+                let lhs_value = lhs_value.zero_extend(4).into_bytes().pop().unwrap();
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
 
-                let rhs_value: SymbolicBitVec = rhs.into();
-                let rhs_value = rhs_value.zero_extend(4);
+                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4);
+                let rhs_value = rhs_value.zero_extend(4).into_bytes().pop().unwrap();
                 let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
 
                 let output = VarnodeData {
@@ -1612,12 +1547,12 @@ mod tests {
         let lhs: u8 = 0xFF;
         let lhs_value: SymbolicBitVec = lhs.into();
         let lhs_value = lhs_value.zero_extend(8);
-        let lhs_input = write_bytes(&mut emulator, 0, lhs_value.into_parts(8))?;
+        let lhs_input = write_bytes(&mut emulator, 0, lhs_value.into_bytes())?;
 
         let rhs: u8 = 0x80;
         let rhs_value: SymbolicBitVec = rhs.into();
         let rhs_value = rhs_value.zero_extend(8);
-        let rhs_input = write_bytes(&mut emulator, 1, rhs_value.into_parts(8))?;
+        let rhs_input = write_bytes(&mut emulator, 1, rhs_value.into_bytes())?;
 
         let output = VarnodeData {
             address: Address {
@@ -1653,10 +1588,10 @@ mod tests {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_value: SymbolicByte = lhs.into();
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
 
-                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_value: SymbolicByte = rhs.into();
                 let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
 
                 let output = VarnodeData {
@@ -1696,10 +1631,10 @@ mod tests {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value: SymbolicBitVec = lhs.into();
+                let lhs_value: SymbolicByte = lhs.into();
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
 
-                let rhs_value: SymbolicBitVec = rhs.into();
+                let rhs_value: SymbolicByte = rhs.into();
                 let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
 
                 let output = VarnodeData {
@@ -1739,12 +1674,20 @@ mod tests {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4).sign_extend(4);
+                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
+                    .sign_extend(4)
+                    .into_bytes()
+                    .pop()
+                    .unwrap();
                 let lhs: u8 = lhs_value.clone().try_into().unwrap();
                 let lhs = lhs as i8;
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
 
-                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4).sign_extend(4);
+                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4)
+                    .sign_extend(4)
+                    .into_bytes()
+                    .pop()
+                    .unwrap();
                 let rhs: u8 = rhs_value.clone().try_into().unwrap();
                 let rhs = rhs as i8;
                 let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
@@ -1786,12 +1729,20 @@ mod tests {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
                 let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4).sign_extend(4);
+                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
+                    .sign_extend(4)
+                    .into_bytes()
+                    .pop()
+                    .unwrap();
                 let lhs: u8 = lhs_value.clone().try_into().unwrap();
                 let lhs = lhs as i8;
                 let lhs_input = write_bytes(&mut emulator, 0, vec![lhs_value])?;
 
-                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4).sign_extend(4);
+                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4)
+                    .sign_extend(4)
+                    .into_bytes()
+                    .pop()
+                    .unwrap();
                 let rhs: u8 = rhs_value.clone().try_into().unwrap();
                 let rhs = rhs as i8;
                 let rhs_input = write_bytes(&mut emulator, 1, vec![rhs_value])?;
@@ -2454,17 +2405,25 @@ mod tests {
     #[test]
     fn int_xor() -> Result<()> {
         let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
-        let lhs = 0b0011_1100;
-        let rhs = 0b1010_0101;
-        let lhs_input = write_bytes(&mut emulator, 0, vec![lhs.into()])?;
-        let rhs_input = write_bytes(&mut emulator, 1, vec![rhs.into()])?;
+        let lhs = 0b1111_0000_0011_1100;
+        let rhs = 0b0000_1111_1010_0101;
+        let lhs_input = write_bytes(
+            &mut emulator,
+            0,
+            sym::SymbolicBitVec::from(lhs).into_bytes(),
+        )?;
+        let rhs_input = write_bytes(
+            &mut emulator,
+            2,
+            sym::SymbolicBitVec::from(rhs).into_bytes(),
+        )?;
 
         let output = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
-                offset: 2,
+                offset: 4,
             },
-            size: 1,
+            size: 2,
         };
 
         let instruction = PcodeInstruction {
@@ -2480,7 +2439,7 @@ mod tests {
         emulator.emulate(&instruction)?;
 
         assert_eq!(
-            emulator.memory.read_concrete_value::<u8>(&output)?,
+            emulator.memory.read_concrete_value::<u16>(&output)?,
             lhs ^ rhs,
             "failed {lhs} ^ {rhs}"
         );
