@@ -2,7 +2,7 @@ use std::fs;
 
 use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 use sla::{Address, Sleigh, VarnodeData};
-use sym::SymbolicBitVec;
+use sym::{SymbolicBitVec, SymbolicByte};
 
 pub struct Processor<'a> {
     sleigh: Sleigh<'a>,
@@ -53,12 +53,12 @@ impl<'a> Processor<'a> {
     }
 
     pub fn write_data(&mut self, output: VarnodeData, data: impl AsRef<[u8]>) {
-        let bytes: Vec<SymbolicBitVec> = data
+        let bytes = data
             .as_ref()
             .into_iter()
             .copied()
-            .map(Into::<SymbolicBitVec>::into)
-            .collect();
+            .map(Into::<SymbolicByte>::into)
+            .collect::<Vec<_>>();
 
         self.emulator
             .memory_mut()
