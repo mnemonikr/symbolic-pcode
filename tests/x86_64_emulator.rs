@@ -1,5 +1,36 @@
 mod common;
 
+use std::path::Path;
+
+use common::Processor;
+use sym::SymbolicBitVec;
+
+const INITIAL_STACK: u64 = 0x8000000000;
+const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
+
+fn processor_with_image<'a>(image: impl AsRef<Path>, entry: u64) -> Processor<'a> {
+    let mut processor = common::Processor::new();
+
+    // Write image into memory
+    let data = std::fs::read(image).expect("failed to read image file");
+    processor.write_instructions(0, data);
+
+    // Set RIP to program entry
+    let rip: Vec<u8> = SymbolicBitVec::constant(entry.try_into().unwrap(), 64)
+        .into_parts(8)
+        .into_iter()
+        .map(|byte| u8::try_from(byte).expect("failed byte conversion"))
+        .collect();
+
+    let exit_rip = vec![0x0D, 0xF0, 0xAD, 0x0B, 0xEF, 0xBE, 0xED, 0xFE];
+    processor.write_register("RSP", vec![0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00]);
+    processor.write_register("RBP", &exit_rip);
+    processor.write_memory(INITIAL_STACK, &exit_rip);
+    processor.write_register("RIP", rip);
+
+    processor
+}
+
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
 #[test]
 fn x86_64_registers() {
@@ -98,5 +129,46 @@ fn doubler_32b() -> Result<(), String> {
         "result should be double initial value: {initial_value}",
     );
 
+    Ok(())
+}
+
+// This test requires the coverage file to be compiled ahead of time.
+// The coverage file can be compiled with gcc like the following:
+//
+// gcc -fno-stack-protector -fPIC -mpopcnt -o tests/data/coverage/coverage tests/data/coverage/coverage.c
+//
+// Then check the resulting binary for the main function
+//
+// objdump -t tests/data/coverage/coverage | grep main
+#[test]
+fn pcode_coverage() -> Result<(), String> {
+    // Use address of the main function for the entry point
+    let mut processor = processor_with_image("tests/data/coverage/coverage", 0x1675);
+    processor.init_registers();
+
+    loop {
+        processor.single_step();
+
+        // Check if RIP is the magic value
+        let rip: u64 = processor.read_register("RIP");
+        if rip == EXIT_RIP {
+            break;
+        }
+    }
+
+    let rax: u64 = processor.read_register("RAX");
+    assert_eq!(rax, 0);
+
+    processor
+        .executed_instructions()
+        .for_each(|(opcode, count)| println!("Executed {opcode:?}: {count}"));
+
+    // Currently the following p-code instructions are not covered by this test:
+    //
+    // Piece
+    // Bool(Xor)
+    // Int(LessThanOrEqual(Signed))
+    // Int(LessThanOrEqual(Unsigned))
+    assert_eq!(processor.executed_instructions().count(), 38);
     Ok(())
 }

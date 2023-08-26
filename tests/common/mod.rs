@@ -1,19 +1,60 @@
-use std::fs;
+use std::{collections::BTreeMap, fs};
 
 use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
-use sla::{Address, Sleigh, VarnodeData};
-use sym::{SymbolicBitVec, SymbolicByte};
+use sla::{Address, OpCode, Sleigh, VarnodeData};
+use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 pub struct Processor<'a> {
     sleigh: Sleigh<'a>,
     emulator: PcodeEmulator,
+    executed_instructions: BTreeMap<OpCode, usize>,
 }
 
 impl<'a> Processor<'a> {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
         let emulator = PcodeEmulator::new(sleigh.address_spaces());
-        Processor { sleigh, emulator }
+
+        Processor {
+            sleigh,
+            emulator,
+            executed_instructions: Default::default(),
+        }
+    }
+
+    pub fn init_registers(&mut self) {
+        let mut bitvar = 0;
+        let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((8..16).map(|n| format!("R{n}")))
+            .collect::<Vec<_>>();
+
+        for register in registers {
+            let output = self.sleigh.register_from_name(register);
+
+            let mut bytes = Vec::with_capacity(8);
+            for _ in 0..8 {
+                let byte: SymbolicByte = [
+                    SymbolicBit::Variable(bitvar),
+                    SymbolicBit::Variable(bitvar + 1),
+                    SymbolicBit::Variable(bitvar + 2),
+                    SymbolicBit::Variable(bitvar + 3),
+                    SymbolicBit::Variable(bitvar + 4),
+                    SymbolicBit::Variable(bitvar + 5),
+                    SymbolicBit::Variable(bitvar + 6),
+                    SymbolicBit::Variable(bitvar + 7),
+                ]
+                .into();
+                bytes.push(byte);
+                bitvar += 8;
+            }
+
+            self.emulator
+                .memory_mut()
+                .write_bytes(bytes, &output)
+                .expect("failed to write data");
+        }
     }
 
     pub fn write_register(&mut self, register_name: impl AsRef<str>, data: impl AsRef<[u8]>) {
@@ -78,17 +119,42 @@ impl<'a> Processor<'a> {
         self.write_data(output, instructions);
     }
 
+    pub fn executed_instructions(&self) -> impl Iterator<Item = (OpCode, usize)> + '_ {
+        self.executed_instructions
+            .iter()
+            .map(|(&op, &count)| (op, count))
+    }
+
+    pub fn single_step(&mut self) {
+        let rip: u64 = self.read_register("RIP");
+        let new_rip = self
+            .emulate(rip)
+            .unwrap_or_else(|err| panic!("failed to emulate {rip:#02x}: {err}"));
+        let new_rip: Vec<u8> = SymbolicBitVec::constant(new_rip.try_into().unwrap(), 64)
+            .into_parts(8)
+            .into_iter()
+            .map(|byte| u8::try_from(byte).expect("failed byte conversion"))
+            .collect();
+        self.write_register("RIP", new_rip);
+    }
+
     pub fn emulate(&mut self, offset: u64) -> Result<u64, String> {
         let pcode = self
             .sleigh
             .pcode(std::ptr::NonNull::from(&self.emulator), offset as u64)?;
         let next_addr = offset + pcode.num_bytes_consumed as u64;
-        println!("Bytes consumed: {}", pcode.num_bytes_consumed);
-        println!("Next address: {:016x}", next_addr);
+
+        if pcode.pcode_instructions.len() == 0 {
+            println!("NOOP [{offset:016x}]");
+        }
 
         for instruction in pcode.pcode_instructions {
             println!("Emulating {instruction}");
             let result = self.emulator.emulate(&instruction);
+            *self
+                .executed_instructions
+                .entry(instruction.op_code.into())
+                .or_default() += 1;
             // self.emulator.memory().dump();
 
             if let Err(err) = result {
