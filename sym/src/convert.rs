@@ -63,6 +63,13 @@ impl TryFrom<SymbolicBitBuf<7>> for u8 {
     }
 }
 
+impl TryFrom<SymbolicBitBuf<16>> for u16 {
+    type Error = ConcretizationError<u16>;
+    fn try_from(value: SymbolicBitBuf<16>) -> Result<Self, Self::Error> {
+        sym::concretize_bit_iter(value.into_inner().iter())
+    }
+}
+
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {
