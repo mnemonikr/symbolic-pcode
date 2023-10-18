@@ -87,11 +87,7 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::Int(IntOp::Carry(IntSign::Signed)) => self.int_scarry(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Int(IntOp::Carry(IntSign::Signed)) => self.int_scarry(&instruction)?,
             OpCode::Int(IntOp::Subtract) => self.int_sub(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
@@ -476,19 +472,17 @@ impl PcodeEmulator {
     /// This operation checks for signed addition overflow or carry conditions. If the result of
     /// adding input0 and input1 as signed integers overflows the size of the varnodes, output is
     /// assigned true. Both inputs must be the same size, and output must be size 1.
-    pub fn int_scarry(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(output.size, 1);
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
+    pub fn int_scarry(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match(&instruction)?;
+        require_output_size_equals(&instruction, 1)?;
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
         let overflow = lhs.signed_addition_overflow(rhs);
 
-        self.memory.write_bytes(vec![overflow.into()], &output)?;
+        self.memory
+            .write_bytes(vec![overflow.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
