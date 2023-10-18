@@ -407,7 +407,7 @@ impl PcodeEmulator {
     /// of the integer encoding (twos complement). Size of both inputs and output must be the same.
     /// The addition is of course performed modulo this size. Overflow and carry conditions are
     /// calculated by other operations. See INT_CARRY and INT_SCARRY.
-    pub fn int_add(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_add(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
@@ -424,7 +424,7 @@ impl PcodeEmulator {
     /// This operation checks for unsigned addition overflow or carry conditions. If the result of
     /// adding input0 and input1 as unsigned integers overflows the size of the varnodes, output is
     /// assigned true. Both inputs must be the same size, and output must be size 1.
-    pub fn int_carry(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_carry(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
@@ -442,7 +442,7 @@ impl PcodeEmulator {
     /// This operation checks for signed addition overflow or carry conditions. If the result of
     /// adding input0 and input1 as signed integers overflows the size of the varnodes, output is
     /// assigned true. Both inputs must be the same size, and output must be size 1.
-    pub fn int_scarry(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_scarry(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
@@ -461,7 +461,7 @@ impl PcodeEmulator {
     ///  interpretations of the integer encoding (twos complement). Size of both inputs and output
     ///  must be the same. The subtraction is of course performed modulo this size. Overflow and
     ///  borrow conditions are calculated by other operations. See INT_SBORROW and INT_LESS.
-    pub fn int_sub(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_sub(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
@@ -593,7 +593,7 @@ impl PcodeEmulator {
     /// into the least significant positions of output. Fill out any remaining space in the most
     /// significant bytes of output with zero. The size of output must be strictly bigger than the
     /// size of input.
-    pub fn int_zext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_zext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
         let input = &instruction.inputs[0];
@@ -612,7 +612,7 @@ impl PcodeEmulator {
     /// significant bytes of output with either zero or all ones (0xff) depending on the most
     /// significant bit of input0. The size of output must be strictly bigger than the size of
     /// input0.
-    pub fn int_sext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_sext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
         let input = &instruction.inputs[0];
@@ -629,7 +629,7 @@ impl PcodeEmulator {
     /// This is the integer equality operator. Output is assigned true, if input0 equals input1. It
     /// works for signed, unsigned, or any contiguous data where the match must be down to the bit.
     /// Both inputs must be the same size, and the output must have a size of 1.
-    pub fn int_equal(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_equal(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
@@ -647,7 +647,7 @@ impl PcodeEmulator {
     /// This is the integer inequality operator. Output is assigned true, if input0 does not equal
     /// input1. It works for signed, unsigned, or any contiguous data where the match must be down
     /// to the bit. Both inputs must be the same size, and the output must have a size of 1.
-    pub fn int_not_equal(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_not_equal(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
@@ -665,7 +665,7 @@ impl PcodeEmulator {
     /// This is a signed integer comparison operator. If the signed integer input0 is strictly less
     /// than the signed integer input1, output is set to true. Both inputs must be the same size,
     /// and the output must have a size of 1.
-    pub fn int_signed_less_than(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn int_signed_less_than(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
@@ -739,7 +739,7 @@ impl PcodeEmulator {
     /// in the output varnode. A value of 0 returns 0, a 4-byte varnode containing the value
     /// 2<sup>32</sup>-1 (all bits set) returns 32, for instance. The input and output varnodes can
     /// have any size. The resulting count is zero extended into the output varnode.
-    pub fn popcount(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn popcount(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
         let value: sym::SymbolicBitVec =
@@ -790,7 +790,7 @@ impl PcodeEmulator {
     /// with any remaining bytes of input0 up to the size of output. If the size of output is
     /// smaller than the size of input0 minus the constant input1, then the additional most
     /// significant bytes of input0 will also be truncated.
-    pub fn subpiece(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn subpiece(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_address_space_type(&instruction, 1, AddressSpaceType::Constant)?;
@@ -823,7 +823,7 @@ impl PcodeEmulator {
     /// instruction itself. So execution can only branch within the same address space via this
     /// instruction. The size of the variable input0 must match the size of offsets for the current
     /// address space. P-code relative branching is not possible with BRANCHIND.
-    pub fn branch_ind(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+    fn branch_ind(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, false)?;
 
@@ -866,7 +866,7 @@ impl PcodeEmulator {
     /// form. If input1 is present it represents the value being returned by this operation. This is
     /// used by analysis algorithms to hold the value logically flowing back to the parent
     /// subroutine.
-    pub fn return_instruction(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+    fn return_instruction(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         self.branch_ind(instruction)
     }
 
