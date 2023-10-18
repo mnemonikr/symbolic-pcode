@@ -94,12 +94,8 @@ impl PcodeEmulator {
             OpCode::Int(IntOp::Remainder(IntSign::Signed)) => {
                 self.int_signed_remainder(&instruction)?
             }
-            OpCode::Int(IntOp::Extension(IntSign::Unsigned)) => {
-                self.int_zext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
-            }
-            OpCode::Int(IntOp::Extension(IntSign::Signed)) => {
-                self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
-            }
+            OpCode::Int(IntOp::Extension(IntSign::Unsigned)) => self.int_zext(&instruction)?,
+            OpCode::Int(IntOp::Extension(IntSign::Signed)) => self.int_sext(&instruction)?,
             OpCode::Popcount => self.popcount(&instruction)?,
             OpCode::Piece => self.piece(&instruction)?,
             OpCode::Subpiece => self.subpiece(&instruction)?,
@@ -597,10 +593,15 @@ impl PcodeEmulator {
     /// into the least significant positions of output. Fill out any remaining space in the most
     /// significant bytes of output with zero. The size of output must be strictly bigger than the
     /// size of input.
-    pub fn int_zext(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
-        assert!(output.size > input_0.size);
-        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let data = data.zero_extend(8 * (output.size - input_0.size) as usize);
+    pub fn int_zext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 1)?;
+        require_has_output(&instruction, true)?;
+        let input = &instruction.inputs[0];
+        require_output_size_exceeds(&instruction, input.size)?;
+        let output = instruction.output.as_ref().unwrap();
+
+        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(&input)?.into();
+        let data = data.zero_extend(8 * (output.size - input.size) as usize);
         self.memory.write_bytes(data.into_bytes(), &output)?;
 
         Ok(())
@@ -611,10 +612,15 @@ impl PcodeEmulator {
     /// significant bytes of output with either zero or all ones (0xff) depending on the most
     /// significant bit of input0. The size of output must be strictly bigger than the size of
     /// input0.
-    pub fn int_sext(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
-        assert!(output.size > input_0.size);
-        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let data = data.sign_extend(8 * (output.size - input_0.size) as usize);
+    pub fn int_sext(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 1)?;
+        require_has_output(&instruction, true)?;
+        let input = &instruction.inputs[0];
+        require_output_size_exceeds(&instruction, input.size)?;
+        let output = instruction.output.as_ref().unwrap();
+
+        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(&input)?.into();
+        let data = data.sign_extend(8 * (output.size - input.size) as usize);
         self.memory.write_bytes(data.into_bytes(), &output)?;
 
         Ok(())
@@ -1892,7 +1898,17 @@ mod tests {
             size: 2,
         };
 
-        emulator.int_zext(&input, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Extension(IntSign::Unsigned)),
+            inputs: vec![input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(emulator.memory.read_concrete_value::<u16>(&output)?, 0x00FF);
         Ok(())
     }
@@ -1936,10 +1952,30 @@ mod tests {
             size: 2,
         };
 
-        emulator.int_sext(&input_positive, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Extension(IntSign::Signed)),
+            inputs: vec![input_positive.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(emulator.memory.read_concrete_value::<u16>(&output)?, 0x007F);
 
-        emulator.int_sext(&input_negative, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Extension(IntSign::Signed)),
+            inputs: vec![input_negative.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(emulator.memory.read_concrete_value::<u16>(&output)?, 0xFF80);
         Ok(())
     }
