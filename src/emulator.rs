@@ -104,11 +104,7 @@ impl PcodeEmulator {
                 self.popcount(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
             OpCode::Piece => self.piece(&instruction)?,
-            OpCode::Subpiece => self.subpiece(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Subpiece => self.subpiece(&instruction)?,
             OpCode::Int(IntOp::Equal) => self.int_equal(&instruction)?,
             OpCode::Int(IntOp::NotEqual) => self.int_not_equal(
                 &instruction.inputs[0],
@@ -793,23 +789,26 @@ impl PcodeEmulator {
     /// with any remaining bytes of input0 up to the size of output. If the size of output is
     /// smaller than the size of input0 minus the constant input1, then the additional most
     /// significant bytes of input0 will also be truncated.
-    pub fn subpiece(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(
-            input_1.address.address_space.space_type,
-            AddressSpaceType::Constant
-        );
-        let mut data = self.memory.read_bytes_owned(input_0)?;
+    pub fn subpiece(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_address_space_type(&instruction, 1, AddressSpaceType::Constant)?;
+        let mut data = self.memory.read_bytes_owned(&instruction.inputs[0])?;
 
         // Remove this number of least significant bytes. If for some reason the offset exceeds
         // the maximum usize value, then by definition all of the data would be drained anyway.
-        data.drain(..input_1.address.offset.try_into().unwrap_or(usize::MAX));
+        let truncate_count = instruction.inputs[1]
+            .address
+            .offset
+            .try_into()
+            .unwrap_or(usize::MAX);
+
+        // Remove this number of least significant bytes. If for some reason the offset exceeds
+        // the maximum usize value, then by definition all of the data would be drained anyway.
+        data.drain(..truncate_count);
 
         // Remove any excess from most significant bytes
+        let output = instruction.output.as_ref().unwrap();
         data.drain(output.size..);
 
         self.memory.write_bytes(data, &output)?;
@@ -1020,16 +1019,8 @@ impl PcodeEmulator {
     /// of the varnode referred to by the second input. In other words, an address space which
     /// requires 4-bytes to address should load a 4-byte offset from memory.
     fn indirect_address(&self, instruction: &PcodeInstruction) -> Result<Address> {
-        let input_address_space = &instruction.inputs[0];
-        if input_address_space.address.address_space.space_type != AddressSpaceType::Constant {
-            return Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!(
-                    "input 0 address space type is not constant: {address_space_type:?}",
-                    address_space_type = input_address_space.address.address_space.space_type
-                ),
-            ));
-        }
+        // Space identifier must be a constant value
+        require_input_address_space_type(&instruction, 0, AddressSpaceType::Constant)?;
         let address_space = self.memory.address_space(&instruction.inputs[0])?.clone();
 
         //  The data in input1 should have the same size as the space referred to by input0
@@ -1138,6 +1129,28 @@ fn require_input_sizes_equal(instruction: &PcodeInstruction, expected_size: usiz
     (0..instruction.inputs.len())
         .map(|i| require_input_size_equals(instruction, i, expected_size))
         .collect()
+}
+
+/// Require the input address space to be of the expected type
+fn require_input_address_space_type(
+    instruction: &PcodeInstruction,
+    input_index: usize,
+    expected_space_type: AddressSpaceType,
+) -> Result<()> {
+    let space_type = instruction.inputs[input_index]
+        .address
+        .address_space
+        .space_type;
+    if space_type != expected_space_type {
+        return Err(Error::IllegalInstruction(
+                instruction.clone(),
+                format!(
+                    "input[{input_index}] address space type is {space_type:?}, expected {expected_space_type:?}"
+                ),
+        ));
+    }
+
+    Ok(())
 }
 
 /// Require that the instruction input identified by its index has the expected size
@@ -2086,8 +2099,18 @@ mod tests {
             size: 2,
         };
 
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Subpiece,
+            inputs: vec![data_input.clone(), truncation_input.clone()],
+            output: Some(output.clone()),
+        };
+
         // Expect to truncate 2 least-significant bytes
-        emulator.subpiece(&data_input, &truncation_input, &output)?;
+        emulator.emulate(&instruction)?;
         assert_eq!(emulator.memory.read_concrete_value::<u16>(&output)?, 0xDEAD);
 
         let output = VarnodeData {
@@ -2098,9 +2121,19 @@ mod tests {
             size: 1,
         };
 
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Subpiece,
+            inputs: vec![data_input.clone(), truncation_input.clone()],
+            output: Some(output.clone()),
+        };
+
         // Expect to truncate 2 least-significant bytes and 1 most significant byte
         // since the output size is less than the input size
-        emulator.subpiece(&data_input, &truncation_input, &output)?;
+        emulator.emulate(&instruction)?;
         assert_eq!(emulator.memory.read_concrete_value::<u8>(&output)?, 0xAD);
         Ok(())
     }
