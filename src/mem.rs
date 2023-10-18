@@ -28,7 +28,7 @@ pub enum Error {
     UndefinedData(Address),
 
     #[error("address {0} has non-literal bit at index {1}")]
-    SymbolicData(Address, usize),
+    UnexpectedSymbolicData(Address, usize),
 
     #[error("arguments provided are not valid: {0}")]
     InvalidArguments(String),
@@ -105,7 +105,7 @@ impl Memory {
     }
 
     /// Read the value specified by the varnode and convert it into the concrete type `T`. If any
-    /// portion of the data read is symbolic then an `Error::SymbolicData` will be returned.
+    /// portion of the data read is symbolic then an `Error::UnexpectedSymbolicData` will be returned.
     pub fn read_concrete_value<T>(&self, varnode: &VarnodeData) -> Result<T>
     where
         T: TryFrom<usize>,
@@ -119,7 +119,7 @@ impl Memory {
         )
         .map_err(|err| match err {
             ConcretizationError::NonLiteralBit(index) => {
-                Error::SymbolicData(varnode.address.clone(), index)
+                Error::UnexpectedSymbolicData(varnode.address.clone(), index)
             }
             _ => Error::InternalError(format!("{}", err)),
         })
