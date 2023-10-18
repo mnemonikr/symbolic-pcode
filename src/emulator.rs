@@ -2972,4 +2972,23 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn unsupported_opcode() -> Result<()> {
+        let mut emulator = PcodeEmulator::new(vec![processor_address_space()]);
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Unknown(0),
+            inputs: Vec::new(),
+            output: None,
+        };
+
+        let result = emulator.emulate(&instruction);
+        assert!(matches!(result, Err(Error::UnsupportedInstruction(_))));
+
+        Ok(())
+    }
 }
