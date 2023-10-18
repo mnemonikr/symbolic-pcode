@@ -75,29 +75,13 @@ impl PcodeEmulator {
     pub fn emulate(&mut self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         match instruction.op_code {
             OpCode::Copy => self.copy(&instruction)?,
-            OpCode::Load => self.load(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
-            OpCode::Store => self.store(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                &instruction.inputs[2],
-            )?,
-            OpCode::Int(IntOp::Bitwise(BoolOp::And)) => self.int_and(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Load => self.load(&instruction)?,
+            OpCode::Store => self.store(&instruction)?,
+            OpCode::Int(IntOp::Bitwise(BoolOp::And)) => self.int_and(&instruction)?,
             OpCode::Int(IntOp::Bitwise(BoolOp::Or)) => self.int_or(&instruction)?,
             OpCode::Int(IntOp::Bitwise(BoolOp::Xor)) => self.int_xor(&instruction)?,
             OpCode::Int(IntOp::Bitwise(BoolOp::Negate)) => self.int_negate(&instruction)?,
-            OpCode::Int(IntOp::Add) => self.int_add(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Int(IntOp::Add) => self.int_add(&instruction)?,
             OpCode::Int(IntOp::Carry(IntSign::Unsigned)) => self.int_carry(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
@@ -182,7 +166,7 @@ impl PcodeEmulator {
 
     /// Copy a sequence of contiguous bytes from anywhere to anywhere. Size of input0 and output
     /// must be the same.
-    pub fn copy(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+    fn copy(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
@@ -211,22 +195,13 @@ impl PcodeEmulator {
     /// If the wordsize attribute of the space given by the ID is bigger than one, the offset into
     /// the space obtained from input1 must be multiplied by this value in order to obtain the
     /// correct byte offset into the space.
-    pub fn load(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(
-            input_0.address.address_space.space_type,
-            AddressSpaceType::Constant
-        );
+    fn load(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(instruction, 2)?;
+        require_has_output(instruction, true)?;
 
+        let output = instruction.output.as_ref().unwrap();
         let input = VarnodeData {
-            address: Address {
-                address_space: self.memory.address_space(&input_0)?.clone(),
-                offset: self.memory.read_concrete_value(&input_1)?,
-            },
+            address: self.indirect_address(instruction)?,
             size: output.size,
         };
 
@@ -246,21 +221,17 @@ impl PcodeEmulator {
     /// If the wordsize attribute of the space given by the ID is bigger than one, the offset into
     /// the space obtained from input1 must be multiplied by this value in order to obtain the
     /// correct byte offset into the space.
-    pub fn store(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        input_2: &VarnodeData,
-    ) -> Result<()> {
+    fn store(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(instruction, 3)?;
+        require_has_output(instruction, false)?;
+
+        let input = &instruction.inputs[2];
         let output = VarnodeData {
-            address: Address {
-                address_space: self.memory.address_space(&input_0)?.clone(),
-                offset: self.memory.read_concrete_value(&input_1)?,
-            },
-            size: input_2.size,
+            address: self.indirect_address(instruction)?,
+            size: input.size,
         };
 
-        let data = self.memory.read_bytes_owned(&input_2)?;
+        let data = self.memory.read_bytes_owned(&input)?;
         self.memory.write_bytes(data, &output)?;
 
         Ok(())
@@ -365,19 +336,22 @@ impl PcodeEmulator {
 
     /// This operation performs a Logical-And on the bits of input0 and input1. Both inputs and
     /// output must be the same size.
-    pub fn int_and(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(input_1.size, output.size);
+    fn int_and(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
-        let value = lhs & rhs;
-        self.memory.write_bytes(value.into_bytes(), &output)?;
+        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+
+        let and = lhs
+            .into_iter()
+            .zip(rhs)
+            .map(|(lhs, rhs)| lhs & rhs)
+            .collect();
+
+        self.memory
+            .write_bytes(and, &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -465,18 +439,16 @@ impl PcodeEmulator {
     /// of the integer encoding (twos complement). Size of both inputs and output must be the same.
     /// The addition is of course performed modulo this size. Overflow and carry conditions are
     /// calculated by other operations. See INT_CARRY and INT_SCARRY.
-    pub fn int_add(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(input_1.size, output.size);
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
+    pub fn int_add(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
         let sum = lhs + rhs;
-        self.memory.write_bytes(sum.into_bytes(), &output)?;
+        self.memory
+            .write_bytes(sum.into_bytes(), instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1062,6 +1034,36 @@ impl PcodeEmulator {
 
         Ok(())
     }
+
+    /// Construct an address from runtime values. The address space of the address is encoded in
+    /// the first input as the address space identifier. The address offset is stored in memory at
+    /// the address specified by the second input.
+    ///
+    /// The address size of the address space referred to by the first input should match the size
+    /// of the varnode referred to by the second input. In other words, an address space which
+    /// requires 4-bytes to address should load a 4-byte offset from memory.
+    fn indirect_address(&self, instruction: &PcodeInstruction) -> Result<Address> {
+        let input_address_space = &instruction.inputs[0];
+        if input_address_space.address.address_space.space_type != AddressSpaceType::Constant {
+            return Err(Error::IllegalInstruction(
+                instruction.clone(),
+                format!(
+                    "input 0 address space type is not constant: {address_space_type:?}",
+                    address_space_type = input_address_space.address.address_space.space_type
+                ),
+            ));
+        }
+        let address_space = self.memory.address_space(&instruction.inputs[0])?.clone();
+
+        //  The data in input1 should have the same size as the space referred to by input0
+        require_input_size_equals(instruction, 1, address_space.address_size)?;
+        let offset = self.memory.read_concrete_value(&instruction.inputs[1])?;
+
+        Ok(Address {
+            address_space,
+            offset,
+        })
+    }
 }
 
 /// Implementation of the LoadImage trait to enable loading instructions from memory
@@ -1279,7 +1281,7 @@ mod tests {
         };
 
         emulator.memory.write_bytes(data, &input)?;
-        emulator.copy(&instruction)?;
+        emulator.emulate(&instruction)?;
         emulator.memory.read_bytes(&output)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u32>(&input)?,
@@ -1334,7 +1336,18 @@ mod tests {
             },
             size: 4,
         };
-        emulator.load(&addr_space_input, &offset_input, &output)?;
+
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Load,
+            inputs: vec![addr_space_input.clone(), offset_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEADBEEF
@@ -1380,6 +1393,22 @@ mod tests {
             size: 8, // This value doesn't really matter
         };
 
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Store,
+            inputs: vec![
+                addr_space_input.clone(),
+                offset_input.clone(),
+                data_input.clone(),
+            ],
+            output: None,
+        };
+
+        emulator.emulate(&instruction)?;
+
         let output = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
@@ -1387,8 +1416,6 @@ mod tests {
             },
             size: 4,
         };
-
-        emulator.store(&addr_space_input, &offset_input, &data_input)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEADBEEF
@@ -1518,7 +1545,17 @@ mod tests {
             size: 4,
         };
 
-        emulator.int_add(&lhs_input, &rhs_input, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Add),
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEADBEEF
