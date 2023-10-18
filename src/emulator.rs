@@ -100,9 +100,7 @@ impl PcodeEmulator {
             OpCode::Int(IntOp::Extension(IntSign::Signed)) => {
                 self.int_sext(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
             }
-            OpCode::Popcount => {
-                self.popcount(&instruction.inputs[0], instruction.output.as_ref().unwrap())?
-            }
+            OpCode::Popcount => self.popcount(&instruction)?,
             OpCode::Piece => self.piece(&instruction)?,
             OpCode::Subpiece => self.subpiece(&instruction)?,
             OpCode::Int(IntOp::Equal) => self.int_equal(&instruction)?,
@@ -735,17 +733,23 @@ impl PcodeEmulator {
     /// in the output varnode. A value of 0 returns 0, a 4-byte varnode containing the value
     /// 2<sup>32</sup>-1 (all bits set) returns 32, for instance. The input and output varnodes can
     /// have any size. The resulting count is zero extended into the output varnode.
-    pub fn popcount(&mut self, input_0: &VarnodeData, output: &VarnodeData) -> Result<()> {
-        let value: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
+    pub fn popcount(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 1)?;
+        require_has_output(&instruction, true)?;
+        let value: sym::SymbolicBitVec =
+            self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
         let result = value.popcount();
         let num_bits = result.len();
-        let requested_bits = 8 * output.size;
-        if num_bits > requested_bits {
-            // TODO Return error here if popcount bits exceeds number requested
-        }
 
+        // The input and output varnodes can have any size. It is not documented what should occur
+        // if the resulting popcount value exceeds the varnode output size. Since the behavior is
+        // undocumented assuming this should never occur and returning an error.
+        require_output_size_at_least(instruction, num_bits / 8)?;
+
+        // The resulting count is zero extended into the output varnode.
+        let output = instruction.output.as_ref().unwrap();
         self.memory.write_bytes(
-            result.zero_extend(requested_bits - num_bits).into_bytes(),
+            result.zero_extend(8 * output.size - num_bits).into_bytes(),
             &output,
         )?;
 
@@ -1171,6 +1175,35 @@ fn require_output_size_equals(instruction: &PcodeInstruction, expected_size: usi
         return Err(Error::IllegalInstruction(
             instruction.clone(),
             format!("output size {output_size} != {expected_size}"),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Require that the instruction output size is strictly greater than the expected size
+fn require_output_size_exceeds(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
+    let output_size = instruction.output.as_ref().unwrap().size;
+    if output_size <= expected_size {
+        return Err(Error::IllegalInstruction(
+            instruction.clone(),
+            format!("output size {output_size} must exceed {expected_size}"),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Require that the instruction output size is at least the expected size
+fn require_output_size_at_least(
+    instruction: &PcodeInstruction,
+    expected_size: usize,
+) -> Result<()> {
+    let output_size = instruction.output.as_ref().unwrap().size;
+    if output_size < expected_size {
+        return Err(Error::IllegalInstruction(
+            instruction.clone(),
+            format!("output size {output_size} must be at least {expected_size}"),
         ));
     }
 
