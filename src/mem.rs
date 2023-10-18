@@ -28,7 +28,7 @@ pub enum Error {
     UndefinedData(Address),
 
     #[error("address {0} has non-literal bit at index {1}")]
-    SymbolicDataError(Address, usize),
+    UnexpectedSymbolicData(Address, usize),
 
     #[error("arguments provided are not valid: {0}")]
     InvalidArguments(String),
@@ -37,36 +37,22 @@ pub enum Error {
     InternalError(String),
 }
 
-struct AddressSpaceData {
-    address_space: AddressSpace,
-    data: BTreeMap<u64, SymbolicByte>,
+/// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
+/// enforce the predicate. It simply tracks the assumptions made at various branches.
+pub struct MemoryTree {
+    predicate: SymbolicBit,
+    parent: Option<Rc<Self>>,
+    memory: Memory,
 }
 
-impl AddressSpaceData {
-    pub fn new(address_space: AddressSpace) -> Self {
-        Self {
-            address_space,
-            data: Default::default(),
-        }
-    }
-
-    pub fn read_byte(&self, offset: u64) -> Option<&SymbolicByte> {
-        self.data.get(&offset)
-    }
-
-    pub fn read_bytes(
-        &self,
-        range: impl std::ops::RangeBounds<u64>,
-    ) -> impl Iterator<Item = (&u64, &SymbolicByte)> {
-        self.data.range(range)
-    }
-}
-
+/// A memory model that stores bytes associated with an AddressSpace.
 pub struct Memory {
+    /// Structure for looking up data based on the id of an AddressSpace.
     data: BTreeMap<usize, AddressSpaceData>,
 }
 
 impl Memory {
+    /// Create a new instance of memory for the provided AddressSpaces.
     pub fn new(address_spaces: Vec<AddressSpace>) -> Self {
         Self {
             data: address_spaces
@@ -76,8 +62,12 @@ impl Memory {
         }
     }
 
-    pub fn read_bytes(&self, input: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
-        let space_id = input.address.address_space.id;
+    /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
+    /// and only if data is successfully read from the requested addresses.
+    ///
+    /// The values returned here are references. For owned values see [Self::read_bytes_owned].
+    pub fn read_bytes(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+        let space_id = varnode.address.address_space.id;
         let memory = self
             .data
             .get(&space_id)
@@ -85,10 +75,10 @@ impl Memory {
 
         // Collect into a Vec or return the first undefined offset
         let result = memory
-            .read_bytes(input.range())
+            .read_bytes(varnode.range())
             .enumerate()
             .map(|(i, (offset, v))| {
-                if *offset == i as u64 + input.address.offset {
+                if *offset == i as u64 + varnode.address.offset {
                     Ok(v)
                 } else {
                     // Undefined offset
@@ -100,56 +90,59 @@ impl Memory {
         let bytes = result.map_err(|&offset| {
             Error::UndefinedData(Address {
                 offset,
-                address_space: input.address.address_space.clone(),
+                address_space: varnode.address.address_space.clone(),
             })
         })?;
 
-        if bytes.len() == input.size {
+        if bytes.len() == varnode.size {
             Ok(bytes)
         } else {
             Err(Error::UndefinedData(Address {
-                offset: input.address.offset + bytes.len() as u64,
-                address_space: input.address.address_space.clone(),
+                offset: varnode.address.offset + bytes.len() as u64,
+                address_space: varnode.address.address_space.clone(),
             }))
         }
     }
 
-    pub fn read_concrete_value<T>(&self, input: &VarnodeData) -> Result<T>
+    /// Read the value specified by the varnode and convert it into the concrete type `T`. If any
+    /// portion of the data read is symbolic then an `Error::UnexpectedSymbolicData` will be returned.
+    pub fn read_concrete_value<T>(&self, varnode: &VarnodeData) -> Result<T>
     where
         T: TryFrom<usize>,
         <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
-        // TODO Handle this result properly
         sym::concretize_bit_iter(
-            self.read_bytes(&input)?
+            self.read_bytes(&varnode)?
                 .iter()
                 .map(|byte| byte.iter())
                 .flatten(),
         )
         .map_err(|err| match err {
             ConcretizationError::NonLiteralBit(index) => {
-                Error::SymbolicDataError(input.address.clone(), index)
+                Error::UnexpectedSymbolicData(varnode.address.clone(), index)
             }
             _ => Error::InternalError(format!("{}", err)),
         })
     }
 
-    fn read_const(&self, input: &VarnodeData) -> Vec<SymbolicByte> {
+    /// Read from a varnode with an address in the constant address space.
+    fn read_const(&self, varnode: &VarnodeData) -> Vec<SymbolicByte> {
         SymbolicBitVec::constant(
-            input.address.offset.try_into().unwrap_or_else(|err| {
+            varnode.address.offset.try_into().unwrap_or_else(|err| {
                 panic!(
                     "unable to represent {offset} as symbolic constant: {err}",
-                    offset = input.address.offset
+                    offset = varnode.address.offset
                 )
             }),
-            8 * input.size,
+            8 * varnode.size,
         )
         .into_bytes()
     }
 
-    pub fn read_bit(&self, input: &VarnodeData) -> Result<SymbolicBit> {
-        if input.address.address_space.space_type == AddressSpaceType::Constant {
-            return match input.address.offset {
+    /// Read the least significant bit from the address referenced by the varnode.
+    pub fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
+        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
+            return match varnode.address.offset {
                 0 => Ok(SymbolicBit::Literal(false)),
                 1 => Ok(SymbolicBit::Literal(true)),
                 value => Err(Error::InvalidArguments(format!(
@@ -158,24 +151,25 @@ impl Memory {
             };
         }
 
-        let space_id = input.address.address_space.id;
+        let space_id = varnode.address.address_space.id;
         let memory = self
             .data
             .get(&space_id)
             .ok_or(Error::UnknownAddressSpace(space_id))?;
 
         memory
-            .read_byte(input.address.offset)
+            .read_byte(varnode.address.offset)
             .map(|byte| byte[0].clone())
-            .ok_or_else(|| Error::UndefinedData(input.address.clone()))
+            .ok_or_else(|| Error::UndefinedData(varnode.address.clone()))
     }
 
-    pub fn read_bytes_owned(&self, input: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        if input.address.address_space.space_type == AddressSpaceType::Constant {
-            return Ok(self.read_const(&input));
+    /// Functions identically to [Self::read_bytes] except the bytes returned are cloned.
+    pub fn read_bytes_owned(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
+            return Ok(self.read_const(&varnode));
         }
 
-        let space_id = input.address.address_space.id;
+        let space_id = varnode.address.address_space.id;
         let memory = self
             .data
             .get(&space_id)
@@ -183,10 +177,10 @@ impl Memory {
 
         // Collect into a Vec or return the first undefined offset
         let result = memory
-            .read_bytes(input.range())
+            .read_bytes(varnode.range())
             .enumerate()
             .map(|(i, (offset, v))| {
-                if *offset == i as u64 + input.address.offset {
+                if *offset == i as u64 + varnode.address.offset {
                     Ok(v.clone())
                 } else {
                     // Undefined offset
@@ -198,20 +192,22 @@ impl Memory {
         let bytes = result.map_err(|&offset| {
             Error::UndefinedData(Address {
                 offset,
-                address_space: input.address.address_space.clone(),
+                address_space: varnode.address.address_space.clone(),
             })
         })?;
 
-        if bytes.len() == input.size {
+        if bytes.len() == varnode.size {
             Ok(bytes)
         } else {
             Err(Error::UndefinedData(Address {
-                offset: input.address.offset + bytes.len() as u64,
-                address_space: input.address.address_space.clone(),
+                offset: varnode.address.offset + bytes.len() as u64,
+                address_space: varnode.address.address_space.clone(),
             }))
         }
     }
 
+    /// Writes the given data to the location specified by the provided varnode. The number of
+    /// bytes provided must match the size of the varnode or else an error will be returned.
     pub fn write_bytes(&mut self, input: Vec<SymbolicByte>, output: &VarnodeData) -> Result<()> {
         if input.len() != output.size {
             return Err(Error::InvalidArguments(format!(
@@ -236,6 +232,7 @@ impl Memory {
         Ok(())
     }
 
+    /// Get the address space associated with the given varnode.
     pub fn address_space(&self, input: &VarnodeData) -> Result<&AddressSpace> {
         if input.address.address_space.space_type != AddressSpaceType::Constant {
             return Err(Error::InvalidAddressSpaceType {
@@ -260,7 +257,7 @@ impl Memory {
             .map(|data| &data.address_space)
     }
 
-    /// Dumps the contents of memory to stdout.
+    /// Dumps the contents of memory to stdout. This is a helper function for debugging.
     pub fn dump(&self) {
         for addr_space_data in self.data.values() {
             println!(
@@ -283,14 +280,6 @@ impl Memory {
     }
 }
 
-/// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
-/// enforce the predicate. It simply tracks the assumptions made at various branches.
-pub struct MemoryTree {
-    predicate: SymbolicBit,
-    parent: Option<Rc<Self>>,
-    memory: Memory,
-}
-
 impl MemoryTree {
     pub fn new(memory: Memory) -> Self {
         Self {
@@ -300,10 +289,12 @@ impl MemoryTree {
         }
     }
 
+    /// Get the predicate associated with this branch.
     pub fn predicate(&self) -> &SymbolicBit {
         &self.predicate
     }
 
+    /// Read the bytes for this varnode.
     pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self.memory.read_bytes_owned(&varnode);
         if let Some(ref parent) = self.parent {
@@ -326,11 +317,11 @@ impl MemoryTree {
                 let mut data = self.memory.read_bytes_owned(&valid_input)?;
 
                 // Read the missing data from parent
-                let parent_input = VarnodeData {
+                let parent_varnode = VarnodeData {
                     address,
                     size: varnode.size - num_valid_bytes,
                 };
-                let mut parent_data = parent.read(&parent_input)?;
+                let mut parent_data = parent.read(&parent_varnode)?;
 
                 // Combine the two and return the result
                 data.append(&mut parent_data);
@@ -341,6 +332,7 @@ impl MemoryTree {
         result
     }
 
+    /// Write the data to the location specified by the varnode.
     pub fn write(&mut self, varnode: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()> {
         self.memory.write_bytes(data, varnode)
     }
@@ -370,6 +362,31 @@ impl MemoryTree {
         };
 
         (positive, negative)
+    }
+}
+
+struct AddressSpaceData {
+    address_space: AddressSpace,
+    data: BTreeMap<u64, SymbolicByte>,
+}
+
+impl AddressSpaceData {
+    pub fn new(address_space: AddressSpace) -> Self {
+        Self {
+            address_space,
+            data: Default::default(),
+        }
+    }
+
+    pub fn read_byte(&self, offset: u64) -> Option<&SymbolicByte> {
+        self.data.get(&offset)
+    }
+
+    pub fn read_bytes(
+        &self,
+        range: impl std::ops::RangeBounds<u64>,
+    ) -> impl Iterator<Item = (&u64, &SymbolicByte)> {
+        self.data.range(range)
     }
 }
 
