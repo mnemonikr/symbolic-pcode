@@ -109,11 +109,7 @@ impl PcodeEmulator {
                 &instruction.inputs[1],
                 instruction.output.as_ref().unwrap(),
             )?,
-            OpCode::Int(IntOp::Equal) => self.int_equal(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Int(IntOp::Equal) => self.int_equal(&instruction)?,
             OpCode::Int(IntOp::NotEqual) => self.int_not_equal(
                 &instruction.inputs[0],
                 &instruction.inputs[1],
@@ -639,19 +635,18 @@ impl PcodeEmulator {
     /// This is the integer equality operator. Output is assigned true, if input0 equals input1. It
     /// works for signed, unsigned, or any contiguous data where the match must be down to the bit.
     /// Both inputs must be the same size, and the output must have a size of 1.
-    pub fn int_equal(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(output.size, 1);
+    pub fn int_equal(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match(&instruction)?;
+        require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
         let bit = lhs.equals(rhs);
-        self.memory.write_bytes(vec![bit.into()], &output)?;
+        self.memory
+            .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
+
         Ok(())
     }
 
@@ -1944,7 +1939,17 @@ mod tests {
             size: 1,
         };
 
-        emulator.int_equal(&lhs_input, &rhs_input, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Equal),
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u8>(&output)?,
             0x1,
@@ -1955,7 +1960,8 @@ mod tests {
             vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()],
             &rhs_input,
         )?;
-        emulator.int_equal(&lhs_input, &rhs_input, &output)?;
+
+        emulator.emulate(&instruction)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u8>(&output)?,
             0x0,
