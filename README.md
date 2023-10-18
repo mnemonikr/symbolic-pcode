@@ -6,7 +6,7 @@ TODO
 
 # P-code operations
 
-This section document which p-code operations are currently supported by the emulator. Emulation of instructions with unsupported p-code operations will trigger a panic.
+This section document which p-code operations are currently supported by the emulator.
 
 | Opcode                             | Opcode                                | Opcode                             | Opcode                                 |
 | ---------------------------------- | ------------------------------------- | -----------------------------------| -------------------------------------  |
