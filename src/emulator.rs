@@ -107,11 +107,9 @@ impl PcodeEmulator {
             OpCode::Subpiece => self.subpiece(&instruction)?,
             OpCode::Int(IntOp::Equal) => self.int_equal(&instruction)?,
             OpCode::Int(IntOp::NotEqual) => self.int_not_equal(&instruction)?,
-            OpCode::Int(IntOp::LessThan(IntSign::Signed)) => self.int_signed_less_than(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Int(IntOp::LessThan(IntSign::Signed)) => {
+                self.int_signed_less_than(&instruction)?
+            }
             OpCode::Int(IntOp::LessThanOrEqual(IntSign::Signed)) => {
                 self.int_signed_less_than_eq(&instruction)?
             }
@@ -663,19 +661,17 @@ impl PcodeEmulator {
     /// This is a signed integer comparison operator. If the signed integer input0 is strictly less
     /// than the signed integer input1, output is set to true. Both inputs must be the same size,
     /// and the output must have a size of 1.
-    pub fn int_signed_less_than(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(output.size, 1);
+    pub fn int_signed_less_than(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match(&instruction)?;
+        require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
         let bit = lhs.signed_less_than(rhs);
-        self.memory.write_bytes(vec![bit.into()], &output)?;
+        self.memory
+            .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
