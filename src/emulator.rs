@@ -84,11 +84,7 @@ impl PcodeEmulator {
             OpCode::Int(IntOp::Add) => self.int_add(&instruction)?,
             OpCode::Int(IntOp::Carry(IntSign::Unsigned)) => self.int_carry(&instruction)?,
             OpCode::Int(IntOp::Carry(IntSign::Signed)) => self.int_scarry(&instruction)?,
-            OpCode::Int(IntOp::Subtract) => self.int_sub(
-                &instruction.inputs[0],
-                &instruction.inputs[1],
-                instruction.output.as_ref().unwrap(),
-            )?,
+            OpCode::Int(IntOp::Subtract) => self.int_sub(&instruction)?,
             OpCode::Int(IntOp::Negate) => self.int_2comp(&instruction)?,
             OpCode::Int(IntOp::Borrow) => self.int_sub_borrow(&instruction)?,
             OpCode::Int(IntOp::Multiply) => self.int_multiply(&instruction)?,
@@ -485,18 +481,16 @@ impl PcodeEmulator {
     ///  interpretations of the integer encoding (twos complement). Size of both inputs and output
     ///  must be the same. The subtraction is of course performed modulo this size. Overflow and
     ///  borrow conditions are calculated by other operations. See INT_SBORROW and INT_LESS.
-    pub fn int_sub(
-        &mut self,
-        input_0: &VarnodeData,
-        input_1: &VarnodeData,
-        output: &VarnodeData,
-    ) -> Result<()> {
-        assert_eq!(input_0.size, input_1.size);
-        assert_eq!(input_1.size, output.size);
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_0)?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(input_1)?.into();
+    pub fn int_sub(&mut self, instruction: &PcodeInstruction) -> Result<()> {
+        require_num_inputs(&instruction, 2)?;
+        require_has_output(&instruction, true)?;
+        require_input_sizes_match_output(&instruction)?;
+
+        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
         let diff = lhs - rhs;
-        self.memory.write_bytes(diff.into_bytes(), &output)?;
+        self.memory
+            .write_bytes(diff.into_bytes(), &instruction.output.as_ref().unwrap())?;
 
         Ok(())
     }
@@ -1444,7 +1438,17 @@ mod tests {
             size: 4,
         };
 
-        emulator.int_sub(&lhs_input, &rhs_input, &output)?;
+        let instruction = PcodeInstruction {
+            address: Address {
+                address_space: processor_address_space(),
+                offset: 0xFF00000000,
+            },
+            op_code: OpCode::Int(IntOp::Subtract),
+            inputs: vec![lhs_input.clone(), rhs_input.clone()],
+            output: Some(output.clone()),
+        };
+
+        emulator.emulate(&instruction)?;
         assert_eq!(
             emulator.memory.read_concrete_value::<u32>(&output)?,
             0xDEAD0000
