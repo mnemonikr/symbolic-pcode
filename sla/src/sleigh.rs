@@ -376,15 +376,13 @@ impl Sleigh {
             size: bytes_consumed,
         };
 
-        let result = if inner_loader.readable(&source) {
-            pcode.num_bytes_consumed = bytes_consumed as usize;
-            Ok(pcode)
-        } else {
-            Err("Out-of-bounds read while decoding instruction".to_string())
-        };
+        if !inner_loader.readable(&source) {
+            return Err("Out-of-bounds read while decoding instruction".to_string());
+        }
 
         inner_loader.0 = None;
-        result
+        pcode.num_bytes_consumed = bytes_consumed as usize;
+        Ok(pcode)
     }
 
     pub fn assembly(
@@ -413,15 +411,13 @@ impl Sleigh {
             size: bytes_consumed,
         };
 
-        let result = if inner_loader.readable(&data_read) {
-            response.num_bytes_consumed = bytes_consumed as usize;
-            Ok(response)
-        } else {
-            Err("Out-of-bounds read while decoding instruction".to_string())
-        };
+        if !inner_loader.readable(&data_read) {
+            return Err("Out-of-bounds read while decoding instruction".to_string());
+        }
 
         inner_loader.0 = None;
-        result
+        response.num_bytes_consumed = bytes_consumed as usize;
+        Ok(response)
     }
 }
 
