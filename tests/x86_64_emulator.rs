@@ -8,7 +8,7 @@ use sym::SymbolicBitVec;
 const INITIAL_STACK: u64 = 0x8000000000;
 const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
 
-fn processor_with_image<'a>(image: impl AsRef<Path>, entry: u64) -> Processor<'a> {
+fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor {
     let mut processor = common::Processor::new();
 
     // Write image into memory

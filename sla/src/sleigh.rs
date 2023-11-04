@@ -255,21 +255,21 @@ impl api::LoadImage for WeakLoader {
     }
 }
 
-pub struct Sleigh<'a> {
-    /// The sleigh object.
-    sleigh: UniquePtr<sys::SleighProxy<'a>>,
+pub struct Sleigh {
+    /// The sleigh object. This object holds a reference to the image loader.
+    sleigh: UniquePtr<sys::SleighProxy<'static>>,
 
     /// An _owned_ reference to the image loader. This value is owned on the Rust side of the FFI
     /// but actually used on the C++ side of the FFI. It is held here only to drop it.
     ///
     /// This field is declared here so it is dropped after `sleigh` is dropped.
     #[allow(dead_code)]
-    loader: Box<rust::RustLoadImage<'a>>,
+    loader: Box<rust::RustLoadImage<'static>>,
 
     inner_loader: RefCell<Box<WeakLoader>>,
 }
 
-impl<'a> Sleigh<'a> {
+impl Sleigh {
     pub fn new() -> Self {
         let inner_loader_ref = Box::leak(Box::new(WeakLoader::default()));
         let inner_loader = RefCell::new(unsafe { Box::from_raw(inner_loader_ref) });
@@ -376,13 +376,15 @@ impl<'a> Sleigh<'a> {
             size: bytes_consumed,
         };
 
-        if !inner_loader.readable(&source) {
-            return Err("Out-of-bounds read while decoding instruction".to_string());
-        }
+        let result = if inner_loader.readable(&source) {
+            pcode.num_bytes_consumed = bytes_consumed as usize;
+            Ok(pcode)
+        } else {
+            Err("Out-of-bounds read while decoding instruction".to_string())
+        };
 
         inner_loader.0 = None;
-        pcode.num_bytes_consumed = bytes_consumed as usize;
-        Ok(pcode)
+        result
     }
 
     pub fn assembly(
@@ -411,13 +413,15 @@ impl<'a> Sleigh<'a> {
             size: bytes_consumed,
         };
 
-        if !inner_loader.readable(&data_read) {
-            return Err("Out-of-bounds read while decoding instruction".to_string());
-        }
+        let result = if inner_loader.readable(&data_read) {
+            response.num_bytes_consumed = bytes_consumed as usize;
+            Ok(response)
+        } else {
+            Err("Out-of-bounds read while decoding instruction".to_string())
+        };
 
         inner_loader.0 = None;
-        response.num_bytes_consumed = bytes_consumed as usize;
-        Ok(response)
+        result
     }
 }
 
