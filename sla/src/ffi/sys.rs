@@ -277,12 +277,9 @@ mod default {
         unsafe fn registerTag(self: Pin<&mut DocumentStorage>, element: *const Element);
 
         // The Sleigh
-        type SleighProxy<'a>;
+        type SleighProxy;
         #[rust_name = "new_sleigh"]
-        fn construct_new_sleigh<'a>(
-            image: &'a RustLoadImage<'a>,
-            context: UniquePtr<ContextDatabase>,
-        ) -> UniquePtr<SleighProxy<'a>>;
+        fn construct_new_sleigh(context: UniquePtr<ContextDatabase>) -> UniquePtr<SleighProxy>;
         fn initialize(self: Pin<&mut SleighProxy>, store: Pin<&mut DocumentStorage>) -> Result<()>;
         #[rust_name = "num_spaces"]
         fn numSpaces(self: &SleighProxy) -> i32;
@@ -322,15 +319,17 @@ mod default {
             -> Result<()>;
 
         // TODO Can throw UnimplError from C++ which has lots of useful info that is lost here
-        #[rust_name = "one_instruction"]
-        fn oneInstruction(
+        #[rust_name = "disassemble_pcode"]
+        fn disassemblePcode(
             self: &SleighProxy,
+            loadImage: &RustLoadImage,
             emit: &mut RustPcodeEmit,
             address: &Address,
         ) -> Result<i32>;
-        #[rust_name = "print_assembly"]
-        fn printAssembly(
+        #[rust_name = "disassemble_native"]
+        fn disassembleNative(
             self: &SleighProxy,
+            loadImage: &RustLoadImage,
             emit: &mut RustAssemblyEmit,
             address: &Address,
         ) -> Result<i32>;

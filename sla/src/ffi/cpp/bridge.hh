@@ -24,13 +24,25 @@ class RustAssemblyEmitProxy : public AssemblyEmit {
 class RustLoadImage;
 
 class RustLoadImageProxy : public LoadImage {
-    const RustLoadImage &inner;
+    const RustLoadImage *inner;
 
     public:
-        RustLoadImageProxy(const RustLoadImage &image);
+        RustLoadImageProxy();
         void loadFill(uint1 *ptr,int4 size,const Address &addr) override;
         string getArchType() const override;
         void adjustVma(long adjust) override;
+        void setInner(const RustLoadImage &inner) { this->inner = &inner; }
+        void resetInner() { this->inner = nullptr; }
+};
+
+/// This class is responsible for managing the load image callback. When the disassembly function
+/// is called the callback is set. On completion of the disassembly the callback is cleared.
+class RustLoadImageManager final {
+    RustLoadImageProxy &proxy;
+
+    public:
+        RustLoadImageManager(RustLoadImageProxy &proxy, const RustLoadImage &loadImage);
+        ~RustLoadImageManager();
 };
 
 class RustPcodeEmit;
@@ -50,12 +62,14 @@ class SleighProxy : public Sleigh {
     public:
         SleighProxy(unique_ptr<RustLoadImageProxy> loader, unique_ptr<ContextDatabase> context);
         void parseProcessorConfig(const DocumentStorage &store);
-        int4 oneInstruction(RustPcodeEmit &emit, const Address &baseaddr) const;
-        int4 printAssembly(RustAssemblyEmit &emit, const Address &baseaddr) const;
+        //int4 oneInstruction(RustPcodeEmit &emit, const Address &baseaddr) const;
+        //int4 printAssembly(RustAssemblyEmit &emit, const Address &baseaddr) const;
+        int4 disassemblePcode(const RustLoadImage &loadImage, RustPcodeEmit &emit, const Address &baseaddr) const;
+        int4 disassembleNative(const RustLoadImage &loadImage, RustAssemblyEmit &emit, const Address &baseaddr) const;
         std::unique_ptr<std::string> getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const;
 };
 
-unique_ptr<SleighProxy> construct_new_sleigh(const RustLoadImage &image, unique_ptr<ContextDatabase> context);
+unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context);
 unique_ptr<ContextDatabase> construct_new_context();
 
 template<typename T, typename... Args>

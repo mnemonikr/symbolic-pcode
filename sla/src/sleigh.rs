@@ -257,7 +257,7 @@ impl api::LoadImage for WeakLoader {
 
 pub struct Sleigh {
     /// The sleigh object. This object holds a reference to the image loader.
-    sleigh: UniquePtr<sys::SleighProxy<'static>>,
+    sleigh: UniquePtr<sys::SleighProxy>,
 
     /// An _owned_ reference to the image loader. This value is owned on the Rust side of the FFI
     /// but actually used on the C++ side of the FFI. It is held here only to drop it.
@@ -281,7 +281,7 @@ impl Sleigh {
         //
         // SAFETY: This is safe because `ffi_loader` was leaked from a `Box<RustLoadImage>`.
         let loader = unsafe { Box::from_raw(ffi_loader) };
-        let sleigh = sys::new_sleigh(ffi_loader, sys::new_context_internal());
+        let sleigh = sys::new_sleigh(sys::new_context_internal());
 
         Self {
             sleigh,
@@ -359,12 +359,15 @@ impl Sleigh {
         let mut pcode = PcodeResponse::default();
         let mut emitter = rust::RustPcodeEmit(&mut pcode);
 
-        let mut inner_loader = self.inner_loader.borrow_mut();
-        inner_loader.0 = Some(loader);
+        //let mut inner_loader = self.inner_loader.borrow_mut();
+        //inner_loader.0 = Some(loader);
 
+        // TODO Weak loader no longer weak
+        let loader = WeakLoader(Some(loader));
+        let rust_loader = rust::RustLoadImage(&loader);
         let bytes_consumed = self
             .sleigh
-            .one_instruction(&mut emitter, address.as_ref().unwrap())
+            .disassemble_pcode(&rust_loader, &mut emitter, address.as_ref().unwrap())
             .map_err(|err| format!("Failed to decode instruction: {err}"))?;
 
         let bytes_consumed: usize = bytes_consumed
@@ -376,11 +379,11 @@ impl Sleigh {
             size: bytes_consumed,
         };
 
-        if !inner_loader.readable(&source) {
+        if !loader.readable(&source) {
             return Err("Out-of-bounds read while decoding instruction".to_string());
         }
 
-        inner_loader.0 = None;
+        //inner_loader.0 = None;
         pcode.num_bytes_consumed = bytes_consumed as usize;
         Ok(pcode)
     }
@@ -394,12 +397,15 @@ impl Sleigh {
         let mut response: DecodeResponse<AssemblyInstruction> = Default::default();
         let mut emitter = rust::RustAssemblyEmit(&mut response);
 
-        let mut inner_loader = self.inner_loader.borrow_mut();
-        inner_loader.0 = Some(loader);
+        //let mut inner_loader = self.inner_loader.borrow_mut();
+        //inner_loader.0 = Some(loader);
 
+        // TODO Weak loader no longer weak
+        let loader = WeakLoader(Some(loader));
+        let rust_loader = rust::RustLoadImage(&loader);
         let bytes_consumed = self
             .sleigh
-            .print_assembly(&mut emitter, address.as_ref().unwrap())
+            .disassemble_native(&rust_loader, &mut emitter, address.as_ref().unwrap())
             .map_err(|_err| "Failed to decode instruction")?;
 
         let bytes_consumed: usize = bytes_consumed
@@ -411,11 +417,11 @@ impl Sleigh {
             size: bytes_consumed,
         };
 
-        if !inner_loader.readable(&data_read) {
+        if !loader.readable(&data_read) {
             return Err("Out-of-bounds read while decoding instruction".to_string());
         }
 
-        inner_loader.0 = None;
+        //inner_loader.0 = None;
         response.num_bytes_consumed = bytes_consumed as usize;
         Ok(response)
     }
