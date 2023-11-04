@@ -255,21 +255,21 @@ impl api::LoadImage for WeakLoader {
     }
 }
 
-pub struct Sleigh<'a> {
-    /// The sleigh object.
-    sleigh: UniquePtr<sys::SleighProxy<'a>>,
+pub struct Sleigh {
+    /// The sleigh object. This object holds a reference to the image loader.
+    sleigh: UniquePtr<sys::SleighProxy<'static>>,
 
     /// An _owned_ reference to the image loader. This value is owned on the Rust side of the FFI
     /// but actually used on the C++ side of the FFI. It is held here only to drop it.
     ///
     /// This field is declared here so it is dropped after `sleigh` is dropped.
     #[allow(dead_code)]
-    loader: Box<rust::RustLoadImage<'a>>,
+    loader: Box<rust::RustLoadImage<'static>>,
 
     inner_loader: RefCell<Box<WeakLoader>>,
 }
 
-impl<'a> Sleigh<'a> {
+impl Sleigh {
     pub fn new() -> Self {
         let inner_loader_ref = Box::leak(Box::new(WeakLoader::default()));
         let inner_loader = RefCell::new(unsafe { Box::from_raw(inner_loader_ref) });

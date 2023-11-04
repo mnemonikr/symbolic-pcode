@@ -4,13 +4,13 @@ use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
-pub struct Processor<'a> {
-    sleigh: Sleigh<'a>,
+pub struct Processor {
+    sleigh: Sleigh,
     emulator: PcodeEmulator,
     executed_instructions: BTreeMap<OpCode, usize>,
 }
 
-impl<'a> Processor<'a> {
+impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
         let emulator = PcodeEmulator::new(sleigh.address_spaces());
@@ -200,7 +200,7 @@ impl<'a> Processor<'a> {
     }
 }
 
-pub fn x86_64_sleigh<'a>() -> Sleigh<'a> {
+pub fn x86_64_sleigh() -> Sleigh {
     let mut sleigh = Sleigh::new();
     let sleigh_spec =
         fs::read_to_string("tests/data/x86-64.sla").expect("failed to read processor spec file");
