@@ -30,13 +30,15 @@ void RustPcodeEmitProxy::dump(
     inner.dump(addr, op_code, outvar, inputs);
 }
 
-RustLoadImageProxy::RustLoadImageProxy(const RustLoadImage &image)
-    : LoadImage("undefined"), inner(image) {
-}
+RustLoadImageProxy::RustLoadImageProxy() : LoadImage("undefined") { }
 
 void RustLoadImageProxy::loadFill(uint1 *output_buf, int4 size, const Address &addr) {
+    if (inner == nullptr) {
+        throw RustBridgeException("inner image loader is null");
+    }
+
     try {
-        inner.load_fill(output_buf, size, addr);
+        inner->load_fill(output_buf, size, addr);
     } catch (const rust::Error& e) {
         throw DataUnavailError(string(e.what()));
     }
@@ -54,18 +56,8 @@ SleighProxy::SleighProxy(unique_ptr<RustLoadImageProxy> loader, unique_ptr<Conte
     : Sleigh(loader.get(), context.get()), loader(move(loader)), context(move(context)) {
 }
 
-int4 SleighProxy::oneInstruction(RustPcodeEmit &emit, const Address &baseaddr) const {
-    auto proxy = RustPcodeEmitProxy(emit);
-    return Sleigh::oneInstruction(proxy, baseaddr);
-}
-
-int4 SleighProxy::printAssembly(RustAssemblyEmit &emit, const Address &baseaddr) const {
-    auto proxy = RustAssemblyEmitProxy(emit);
-    return Sleigh::printAssembly(proxy, baseaddr);
-}
-
-unique_ptr<SleighProxy> construct_new_sleigh(const RustLoadImage &image, unique_ptr<ContextDatabase> context) {
-    auto loader = make_unique<RustLoadImageProxy>(image);
+unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context) {
+    auto loader = make_unique<RustLoadImageProxy>();
     return make_unique<SleighProxy>(move(loader), move(context));
 }
 
@@ -139,4 +131,29 @@ void SleighProxy::parseProcessorConfig(const DocumentStorage &store) {
 
 std::unique_ptr<std::string> SleighProxy::getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const {
     return std::make_unique<std::string>(getRegisterName(base, off, size));
+}
+
+int4 SleighProxy::disassemblePcode(const RustLoadImage &loadImage, RustPcodeEmit &emit, const Address &baseaddr) const {
+    // The loader is stored in the loader proxy only for as long as this manager lives
+    RustLoadImageManager manager { *loader.get(), loadImage };
+
+    auto proxy = RustPcodeEmitProxy(emit);
+    return Sleigh::oneInstruction(proxy, baseaddr);
+}
+
+int4 SleighProxy::disassembleNative(const RustLoadImage &loadImage, RustAssemblyEmit &emit, const Address &baseaddr) const {
+    // The loader is stored in the loader proxy only for as long as this manager lives
+    RustLoadImageManager manager { *loader.get(), loadImage };
+
+    auto proxy = RustAssemblyEmitProxy(emit);
+    return Sleigh::printAssembly(proxy, baseaddr);
+}
+
+RustLoadImageManager::RustLoadImageManager(RustLoadImageProxy &proxy, const RustLoadImage &loadImage)
+    : proxy(proxy) {
+    this->proxy.setInner(loadImage);
+}
+
+RustLoadImageManager::~RustLoadImageManager() {
+    this->proxy.resetInner();
 }

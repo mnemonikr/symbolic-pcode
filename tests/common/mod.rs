@@ -139,9 +139,7 @@ impl Processor {
     }
 
     pub fn emulate(&mut self, offset: u64) -> Result<u64, String> {
-        let pcode = self
-            .sleigh
-            .pcode(std::ptr::NonNull::from(&self.emulator), offset as u64)?;
+        let pcode = self.sleigh.pcode(&self.emulator, offset as u64)?;
         let next_addr = offset + pcode.num_bytes_consumed as u64;
 
         if pcode.pcode_instructions.len() == 0 {
