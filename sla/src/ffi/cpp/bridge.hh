@@ -62,11 +62,13 @@ class SleighProxy : public Sleigh {
     public:
         SleighProxy(unique_ptr<RustLoadImageProxy> loader, unique_ptr<ContextDatabase> context);
         void parseProcessorConfig(const DocumentStorage &store);
-        //int4 oneInstruction(RustPcodeEmit &emit, const Address &baseaddr) const;
-        //int4 printAssembly(RustAssemblyEmit &emit, const Address &baseaddr) const;
         int4 disassemblePcode(const RustLoadImage &loadImage, RustPcodeEmit &emit, const Address &baseaddr) const;
         int4 disassembleNative(const RustLoadImage &loadImage, RustAssemblyEmit &emit, const Address &baseaddr) const;
         std::unique_ptr<std::string> getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const;
+};
+
+class RustBridgeException : public std::runtime_error {
+    using std::runtime_error::runtime_error;
 };
 
 unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context);

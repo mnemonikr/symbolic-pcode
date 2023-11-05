@@ -34,7 +34,7 @@ RustLoadImageProxy::RustLoadImageProxy() : LoadImage("undefined") { }
 
 void RustLoadImageProxy::loadFill(uint1 *output_buf, int4 size, const Address &addr) {
     if (inner == nullptr) {
-        // TODO This should never occur. Throw some kind of exception
+        throw RustBridgeException("inner image loader is null");
     }
 
     try {
@@ -55,16 +55,6 @@ void RustLoadImageProxy::adjustVma(long adjust) {
 SleighProxy::SleighProxy(unique_ptr<RustLoadImageProxy> loader, unique_ptr<ContextDatabase> context)
     : Sleigh(loader.get(), context.get()), loader(move(loader)), context(move(context)) {
 }
-
-//int4 SleighProxy::oneInstruction(RustPcodeEmit &emit, const Address &baseaddr) const {
-//    auto proxy = RustPcodeEmitProxy(emit);
-//    return Sleigh::oneInstruction(proxy, baseaddr);
-//}
-
-//int4 SleighProxy::printAssembly(RustAssemblyEmit &emit, const Address &baseaddr) const {
-//    auto proxy = RustAssemblyEmitProxy(emit);
-//    return Sleigh::printAssembly(proxy, baseaddr);
-//}
 
 unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context) {
     auto loader = make_unique<RustLoadImageProxy>();
