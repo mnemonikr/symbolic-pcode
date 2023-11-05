@@ -218,41 +218,35 @@ impl api::PcodeEmit for PcodeResponse {
     }
 }
 
+/// Wrapper around the public load image API so that it can be converted to the native API.
+/// This is required in order to pass a trait object reference down into the native API.
+struct InstructionLoader<'a>(&'a dyn LoadImage);
+
+impl<'a> InstructionLoader<'a> {
+    /// Returns true only if the requested number of instruction bytes are read.
+    fn readable(&self, varnode: &VarnodeData) -> bool {
+        self.0
+            .instruction_bytes(&varnode)
+            .map_or(false, |data| data.len() == varnode.size)
+    }
+}
+
+impl<'a> api::LoadImage for InstructionLoader<'a> {
+    fn load_fill(&self, data: &mut [u8], address: &sys::Address) -> Result<(), String> {
+        let varnode = VarnodeData {
+            size: data.len(),
+            address: address.into(),
+        };
+
+        let loaded_data = self.0.instruction_bytes(&varnode)?;
+        data[..loaded_data.len()].copy_from_slice(&loaded_data);
+
+        Ok(())
+    }
+}
+
 pub trait LoadImage {
     fn instruction_bytes(&self, data: &VarnodeData) -> Result<Vec<u8>, String>;
-}
-
-#[derive(Default)]
-struct WeakLoader(Option<std::ptr::NonNull<dyn LoadImage>>);
-
-impl WeakLoader {
-    fn readable(&self, varnode: &VarnodeData) -> bool {
-        if let Some(loader) = self.0 {
-            let loader = unsafe { loader.as_ref() };
-            if let Ok(loaded_data) = loader.instruction_bytes(&varnode) {
-                return loaded_data.len() == varnode.size;
-            }
-        }
-
-        false
-    }
-}
-
-impl api::LoadImage for WeakLoader {
-    fn load_fill(&self, data: &mut [u8], address: &sys::Address) -> Result<(), String> {
-        if let Some(loader) = self.0 {
-            let loader = unsafe { loader.as_ref() };
-            let varnode = VarnodeData {
-                size: data.len(),
-                address: address.into(),
-            };
-            let loaded_data = loader.instruction_bytes(&varnode)?;
-            data[..loaded_data.len()].copy_from_slice(&loaded_data);
-            Ok(())
-        } else {
-            Err("no loader".to_string())
-        }
-    }
 }
 
 pub struct Sleigh {
@@ -327,17 +321,12 @@ impl Sleigh {
         AddressSpace::from(&*(space_id as *const sys::AddrSpace))
     }
 
-    pub fn pcode(
-        &self,
-        loader: std::ptr::NonNull<dyn LoadImage>,
-        addr_offset: u64,
-    ) -> Result<PcodeResponse, String> {
+    pub fn pcode(&self, loader: &dyn LoadImage, addr_offset: u64) -> Result<PcodeResponse, String> {
         let address = unsafe { sys::new_address(self.sleigh.default_code_space(), addr_offset) };
         let mut pcode = PcodeResponse::default();
         let mut emitter = rust::RustPcodeEmit(&mut pcode);
 
-        // TODO Weak loader no longer weak
-        let loader = WeakLoader(Some(loader));
+        let loader = InstructionLoader(loader);
         let rust_loader = rust::RustLoadImage(&loader);
         let bytes_consumed = self
             .sleigh
@@ -363,15 +352,14 @@ impl Sleigh {
 
     pub fn assembly(
         &self,
-        loader: std::ptr::NonNull<dyn LoadImage>,
+        loader: &dyn LoadImage,
         address: u64,
     ) -> Result<DecodeResponse<AssemblyInstruction>, String> {
         let address = unsafe { sys::new_address(self.sleigh.default_code_space(), address) };
         let mut response: DecodeResponse<AssemblyInstruction> = Default::default();
         let mut emitter = rust::RustAssemblyEmit(&mut response);
 
-        // TODO Weak loader no longer weak
-        let loader = WeakLoader(Some(loader));
+        let loader = InstructionLoader(loader);
         let rust_loader = rust::RustLoadImage(&loader);
         let bytes_consumed = self
             .sleigh
@@ -414,26 +402,6 @@ mod tests {
             // Never exceed image
             let end = usize::min(start + data.size, self.0.len());
             Ok(self.0[start..end].to_vec())
-        }
-    }
-
-    impl api::LoadImage for LoadImageImpl {
-        fn load_fill(&self, data: &mut [u8], address: &sys::Address) -> Result<(), String> {
-            let start = address.offset() as usize;
-            if start >= self.0.len() {
-                return Err("Requested fill outside image".to_string());
-            }
-
-            // Never exceed image
-            let end = usize::min(start + data.len(), self.0.len());
-            let fill_len = end - start;
-            data[..fill_len].copy_from_slice(&self.0[start..end]);
-
-            for i in self.0.len()..data.len() {
-                data[i] = 0;
-            }
-
-            Ok(())
         }
     }
 
@@ -490,7 +458,7 @@ mod tests {
         let mut offset = 0;
         for _ in 0..NUM_INSTRUCTIONS {
             let response = sleigh
-                .pcode(std::ptr::NonNull::from(&load_image), offset)
+                .pcode(&load_image, offset)
                 .expect("Failed to decode instruction");
             dump_pcode_response(&response);
             offset += response.num_bytes_consumed as u64;
@@ -547,7 +515,7 @@ mod tests {
 
         for i in 0..NUM_INSTRUCTIONS {
             let response = sleigh
-                .assembly(std::ptr::NonNull::from(&load_image), offset)
+                .assembly(&load_image, offset)
                 .expect("Failed to decode instruction");
             let (addr, instruction) = &response.instructions[0];
             assert_eq!(addr.address_space.name, expected[i].0);
