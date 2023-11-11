@@ -1,8 +1,8 @@
-Emulate instructions for Ghidra-supported processors using concrete or symbolic execution of Ghidra p-code.
+Execute instructions for Ghidra-supported processors using concrete or symbolic execution of Ghidra p-code.
 
 # Usage
 
-TODO
+The public API for this library has not yet been finalized. A tested example x86-64 processor is included the [integration tests](tests).
 
 # P-code operations
 
