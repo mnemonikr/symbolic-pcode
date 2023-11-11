@@ -2,7 +2,7 @@ Execute instructions for Ghidra-supported processors using concrete or symbolic 
 
 # Usage
 
-The public API for this library has not yet been finalized. A tested example x86-64 processor is included the [integration tests](tests).
+The public API for this library has not yet been finalized. See [x86-64 integration tests](tests/x86_64_emulator.rs) for examples using library primitives.
 
 # P-code operations
 
