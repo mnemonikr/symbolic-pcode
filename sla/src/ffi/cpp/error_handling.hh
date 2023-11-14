@@ -1,6 +1,7 @@
 #pragma once
 
 #include "error.hh"
+#include "translate.hh"
 #include "xml.hh"
 
 namespace rust {
@@ -9,6 +10,9 @@ namespace rust {
         static void trycatch(Try &&func, Fail &&fail) noexcept {
             try {
                 func();
+            } catch (const UnimplError &e) {
+                // Defined in translate.hh
+                fail("UnimplError: " + e.explain);
             } catch (const LowlevelError &e) {
                 // Top-level error
                 fail("LowlevelError: " + e.explain);

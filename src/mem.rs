@@ -5,7 +5,7 @@ use thiserror;
 use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
 use sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

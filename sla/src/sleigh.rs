@@ -9,6 +9,10 @@ use cxx::{let_cxx_string, UniquePtr};
 
 static INIT: Once = Once::new();
 
+pub enum Error {}
+
+pub type Result<T> = Result<T, Error>;
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
