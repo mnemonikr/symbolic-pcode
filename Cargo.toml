@@ -2,7 +2,7 @@
 members = ["sla", "sym"]
 
 [package]
-name = "pcode"
+name = "symbolic-pcode"
 version = "0.1.0"
 edition = "2021"
 
