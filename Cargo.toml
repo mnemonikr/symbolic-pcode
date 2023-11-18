@@ -3,8 +3,12 @@ members = ["sla", "sym"]
 
 [package]
 name = "symbolic-pcode"
+authors = ["mnemonikr"]
+license = "Apache-2.0"
 version = "0.1.0"
 edition = "2021"
+keywords = ["ghidra", "pcode", "sleigh", "libsla", "symbolic"]
+categories = ["emulators"]
 
 [dependencies]
 sla = { path = "sla" }
