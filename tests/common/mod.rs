@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fs};
 
-use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use symbolic_pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 
 pub struct Processor {
     sleigh: Sleigh,
