@@ -1,6 +1,32 @@
+use thiserror;
+
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+
+// TODO Emulator can also have memory access errors. Probably better to write a custom
+// derivation that converts emulator errors into processor errors.
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    /// Error occurred while accessing a memory location
+    #[error(transparent)]
+    Emulation(#[from] crate::emulator::Error),
+
+    /// Error occurred while accessing a memory location
+    #[error(transparent)]
+    MemoryAccess(#[from] crate::mem::Error),
+
+    #[error("failed to decode instruction: {0}")]
+    InstructionDecoding(String),
+
+    #[error("symbolic condition")]
+    SymbolicCondition,
+
+    #[error("symbolic instruction")]
+    SymbolicInstruction,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Processor {
     sleigh: Sleigh,
@@ -62,23 +88,23 @@ impl Processor {
         self.write_concrete(varnode, instructions);
     }
 
-    pub fn single_step(
-        &mut self,
-        instruction_register_name: impl AsRef<str>,
-    ) -> crate::emulator::Result<()> {
+    pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
         let rip: u64 = self.read_register(&instruction_register_name);
         let next_instr = self.emulate(rip)?;
-        let next_instr: Vec<u8> = SymbolicBitVec::constant(new_rip.try_into().unwrap(), 64)
-            .into_parts(8)
+        let next_instr: Vec<u8> = SymbolicBitVec::from(next_instr)
+            .into_bytes()
             .into_iter()
-            .map(|byte| u8::try_from(byte))
-            .collect()?;
-        self.write_register_concrete(instruction_register_name, new_instruction)?;
+            .map(|byte| u8::try_from(byte).map_err(|err| Error::SymbolicInstruction))
+            .collect::<Result<_>>()?;
+        self.write_register_concrete(instruction_register_name, next_instr)?;
         Ok(())
     }
 
-    pub fn emulate(&mut self, offset: u64) -> crate::emulator::Result<u64> {
-        let pcode = self.sleigh.pcode(&self.emulator, offset as u64)?;
+    pub fn emulate(&mut self, offset: u64) -> Result<u64> {
+        let pcode = self
+            .sleigh
+            .pcode(&self.emulator, offset as u64)
+            .map_err(|err| Error::InstructionDecoding(err))?;
         let next_addr = offset + pcode.num_bytes_consumed as u64;
         for instruction in pcode.pcode_instructions {
             println!("Emulating {instruction}");

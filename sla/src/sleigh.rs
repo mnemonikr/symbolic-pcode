@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::sync::Once;
 
 use crate::ffi::api;
@@ -11,7 +10,7 @@ static INIT: Once = Once::new();
 
 pub enum Error {}
 
-pub type Result<T> = Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
@@ -151,6 +150,8 @@ impl From<sys::spacetype> for AddressSpaceType {
 
 #[derive(Clone, Debug)]
 pub struct PcodeInstruction {
+    // TODO This should be separate from the instruction. Note that in that case though the address
+    // becomes a required argument for branch indirect instructions to execute them.
     pub address: Address,
     pub op_code: OpCode,
     pub inputs: Vec<VarnodeData>,
@@ -236,7 +237,11 @@ impl<'a> InstructionLoader<'a> {
 }
 
 impl<'a> api::LoadImage for InstructionLoader<'a> {
-    fn load_fill(&self, data: &mut [u8], address: &sys::Address) -> Result<(), String> {
+    fn load_fill(
+        &self,
+        data: &mut [u8],
+        address: &sys::Address,
+    ) -> std::result::Result<(), String> {
         let varnode = VarnodeData {
             size: data.len(),
             address: address.into(),
@@ -250,7 +255,7 @@ impl<'a> api::LoadImage for InstructionLoader<'a> {
 }
 
 pub trait LoadImage {
-    fn instruction_bytes(&self, data: &VarnodeData) -> Result<Vec<u8>, String>;
+    fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String>;
 }
 
 pub struct Sleigh {
@@ -269,7 +274,11 @@ impl Sleigh {
         unsafe { &*self.sleigh.default_code_space() }.into()
     }
 
-    pub fn initialize(&mut self, sleigh_spec: &str, processor_spec: &str) -> Result<(), String> {
+    pub fn initialize(
+        &mut self,
+        sleigh_spec: &str,
+        processor_spec: &str,
+    ) -> std::result::Result<(), String> {
         // This global libsla initialization is required for parsing sleigh document
         INIT.call_once(|| {
             sys::initialize_element_id();
@@ -325,7 +334,11 @@ impl Sleigh {
         AddressSpace::from(&*(space_id as *const sys::AddrSpace))
     }
 
-    pub fn pcode(&self, loader: &dyn LoadImage, addr_offset: u64) -> Result<PcodeResponse, String> {
+    pub fn pcode(
+        &self,
+        loader: &dyn LoadImage,
+        addr_offset: u64,
+    ) -> std::result::Result<PcodeResponse, String> {
         let address = unsafe { sys::new_address(self.sleigh.default_code_space(), addr_offset) };
         let mut pcode = PcodeResponse::default();
         let mut emitter = rust::RustPcodeEmit(&mut pcode);
@@ -358,7 +371,7 @@ impl Sleigh {
         &self,
         loader: &dyn LoadImage,
         address: u64,
-    ) -> Result<DecodeResponse<AssemblyInstruction>, String> {
+    ) -> std::result::Result<DecodeResponse<AssemblyInstruction>, String> {
         let address = unsafe { sys::new_address(self.sleigh.default_code_space(), address) };
         let mut response: DecodeResponse<AssemblyInstruction> = Default::default();
         let mut emitter = rust::RustAssemblyEmit(&mut response);
@@ -397,7 +410,7 @@ mod tests {
     struct LoadImageImpl(Vec<u8>);
 
     impl LoadImage for LoadImageImpl {
-        fn instruction_bytes(&self, data: &VarnodeData) -> Result<Vec<u8>, String> {
+        fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
             let start: usize = data.address.offset.try_into().expect("invalid offset");
             if start >= self.0.len() {
                 return Err("Requested fill outside image".to_string());

@@ -212,7 +212,7 @@ impl SymbolicBitVec {
             value >>= 1;
         }
 
-        if value != 0 {
+        if value > 0 {
             // TODO Throw error, this should be a result
         }
 

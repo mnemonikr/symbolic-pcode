@@ -211,9 +211,10 @@ where
     T: std::ops::BitAnd + std::ops::ShlAssign + PartialEq + From<u8> + Copy,
     <T as std::ops::BitAnd>::Output: PartialEq + From<u8>,
 {
-    let mut bits = Vec::with_capacity(std::mem::size_of::<T>());
+    let num_bits = 8 * std::mem::size_of::<T>();
+    let mut bits = Vec::with_capacity(num_bits);
     let mut mask: T = 1u8.into();
-    while mask != 0u8.into() {
+    for _ in 0..num_bits {
         bits.push(SymbolicBit::Literal(value & mask != 0u8.into()));
         mask <<= 1u8.into();
     }

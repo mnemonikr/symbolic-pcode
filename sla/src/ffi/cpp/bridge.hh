@@ -67,10 +67,6 @@ class SleighProxy : public Sleigh {
         std::unique_ptr<std::string> getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const;
 };
 
-class RustBridgeException : public std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
 unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context);
 unique_ptr<ContextDatabase> construct_new_context();
 

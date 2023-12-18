@@ -1,6 +1,7 @@
 #pragma once
 
 #include "error.hh"
+#include "loadimage.hh"
 #include "translate.hh"
 #include "xml.hh"
 
@@ -11,8 +12,11 @@ namespace rust {
             try {
                 func();
             } catch (const UnimplError &e) {
-                // Defined in translate.hh
+                // Defined in translate.hh, type of LowLevelError
                 fail("UnimplError: " + e.explain);
+            } catch (const DataUnavailError &e) {
+                // Defined in loadimage.hh, type of LowLevelError
+                fail("DataUnavailError: " + e.explain);
             } catch (const LowlevelError &e) {
                 // Top-level error
                 fail("LowlevelError: " + e.explain);

@@ -839,7 +839,8 @@ impl PcodeEmulator {
             ));
         }
 
-        if instruction.address.address_space.space_type == AddressSpaceType::PcodeOp {
+        // Constant address space indicates a p-code relative branch.
+        if instruction.address.address_space.space_type == AddressSpaceType::Constant {
             return Err(Error::IllegalInstruction(
                 instruction.clone(),
                 format!(
@@ -848,8 +849,6 @@ impl PcodeEmulator {
                 ),
             ));
         }
-
-        // TODO Enforce restriction that this is not P-code relative branch
 
         Ok(ControlFlow::Jump(Destination::MachineAddress(Address {
             address_space: instruction.address.address_space.clone(),
