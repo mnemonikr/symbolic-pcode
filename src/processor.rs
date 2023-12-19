@@ -89,7 +89,7 @@ impl Processor {
     }
 
     pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
-        let rip: u64 = self.read_register(&instruction_register_name);
+        let rip: u64 = self.read_register(&instruction_register_name)?;
         let next_instr = self.emulate(rip)?;
         self.write_register_concrete(instruction_register_name, next_instr.to_le_bytes())?;
         Ok(())
