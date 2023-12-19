@@ -1,8 +1,8 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use sla::{Address, OpCode, Sleigh, VarnodeData};
-use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sla::{Address, Sleigh, VarnodeData};
+use sym::{SymbolicBit, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
 // derivation that converts emulator errors into processor errors.
