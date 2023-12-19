@@ -20,10 +20,7 @@ pub enum Error {
     InstructionDecoding(String),
 
     #[error("symbolic condition")]
-    SymbolicCondition,
-
-    #[error("symbolic instruction")]
-    SymbolicInstruction,
+    SymbolicCondition(SymbolicBit),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -50,16 +47,14 @@ impl Processor {
         self.write_concrete(output, data)
     }
 
-    pub fn read_register<T>(&mut self, register_name: impl AsRef<str>) -> T
+    pub fn read_register<T>(&mut self, register_name: impl AsRef<str>) -> Result<T>
     where
         T: TryFrom<usize>,
         <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
         let input = self.sleigh.register_from_name(register_name);
-        self.emulator
-            .memory()
-            .read_concrete_value::<T>(&input)
-            .expect("failed to read value")
+        let value = self.emulator.memory().read_concrete_value::<T>(&input)?;
+        Ok(value)
     }
 
     pub fn write_concrete(
@@ -77,7 +72,11 @@ impl Processor {
         self.emulator.memory_mut().write_bytes(bytes, &varnode)
     }
 
-    pub fn write_instructions(&mut self, base_address: u64, instructions: impl AsRef<[u8]>) {
+    pub fn write_instructions(
+        &mut self,
+        base_address: u64,
+        instructions: impl AsRef<[u8]>,
+    ) -> Result<()> {
         let varnode = VarnodeData {
             address: Address {
                 offset: base_address,
@@ -85,18 +84,14 @@ impl Processor {
             },
             size: instructions.as_ref().len(),
         };
-        self.write_concrete(varnode, instructions);
+        self.write_concrete(varnode, instructions)?;
+        Ok(())
     }
 
     pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
         let rip: u64 = self.read_register(&instruction_register_name);
         let next_instr = self.emulate(rip)?;
-        let next_instr: Vec<u8> = SymbolicBitVec::from(next_instr)
-            .into_bytes()
-            .into_iter()
-            .map(|byte| u8::try_from(byte).map_err(|err| Error::SymbolicInstruction))
-            .collect::<Result<_>>()?;
-        self.write_register_concrete(instruction_register_name, next_instr)?;
+        self.write_register_concrete(instruction_register_name, next_instr.to_le_bytes())?;
         Ok(())
     }
 
@@ -107,7 +102,6 @@ impl Processor {
             .map_err(|err| Error::InstructionDecoding(err))?;
         let next_addr = offset + pcode.num_bytes_consumed as u64;
         for instruction in pcode.pcode_instructions {
-            println!("Emulating {instruction}");
             match self.emulator.emulate(&instruction)? {
                 ControlFlow::Jump(destination) => match destination {
                     Destination::MachineAddress(addr) => {
@@ -135,7 +129,7 @@ impl Processor {
                             }
                         }
                     } else {
-                        panic!("symbolic condition in branch: {condition:?}");
+                        return Err(Error::SymbolicCondition(condition));
                     }
                 }
                 ControlFlow::NextInstruction => (),
