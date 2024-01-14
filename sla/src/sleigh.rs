@@ -3,6 +3,7 @@ use std::sync::Once;
 use crate::ffi::api;
 use crate::ffi::rust;
 use crate::ffi::sys;
+use crate::ffi::sys::AddrSpace;
 pub use crate::opcodes::OpCode;
 use cxx::{let_cxx_string, UniquePtr};
 
@@ -319,6 +320,18 @@ impl Sleigh {
         addr_spaces
     }
 
+    fn sys_address_space(&self, space_id: usize) -> Option<*mut AddrSpace> {
+        let num_spaces = self.sleigh.num_spaces();
+        for i in 0..num_spaces {
+            let addr_space = self.sleigh.address_space(i);
+            if (addr_space as usize) == space_id {
+                return Some(addr_space);
+            }
+        }
+
+        None
+    }
+
     pub fn register_from_name(&self, name: impl AsRef<str>) -> VarnodeData {
         let_cxx_string!(name = name.as_ref());
         self.sleigh.register_from_name(&name).into()
@@ -337,9 +350,16 @@ impl Sleigh {
     pub fn pcode(
         &self,
         loader: &dyn LoadImage,
-        addr_offset: u64,
+        address: &Address,
     ) -> std::result::Result<PcodeResponse, String> {
-        let address = unsafe { sys::new_address(self.sleigh.default_code_space(), addr_offset) };
+        let address = unsafe {
+            sys::new_address(
+                self.sys_address_space(address.address_space.id)
+                    .expect("invalid space id"),
+                address.offset,
+            )
+        };
+
         let mut pcode = PcodeResponse::default();
         let mut emitter = rust::RustPcodeEmit(&mut pcode);
 
@@ -404,7 +424,6 @@ impl Sleigh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use std::fs;
 
     struct LoadImageImpl(Vec<u8>);
@@ -457,12 +476,6 @@ mod tests {
         let mut sleigh = Sleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read sleigh spec file");
-        let mut context = HashMap::new();
-        context.insert("opsize".to_string(), 1);
-        context.insert("addrsize".to_string(), 2);
-        context.insert("bit64".to_string(), 1);
-        context.insert("longMode".to_string(), 1);
-        context.insert("rexprefix".to_string(), 0);
 
         let processor_spec =
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
@@ -474,8 +487,13 @@ mod tests {
 
         let mut offset = 0;
         for _ in 0..NUM_INSTRUCTIONS {
+            let address = Address {
+                offset,
+                address_space: sleigh.default_code_space(),
+            };
+
             let response = sleigh
-                .pcode(&load_image, offset)
+                .pcode(&load_image, &address)
                 .expect("Failed to decode instruction");
             dump_pcode_response(&response);
             offset += response.num_bytes_consumed as u64;

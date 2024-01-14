@@ -215,8 +215,8 @@ impl PcodeEmulator {
     /// to the machine instruction at that address. When attempting to determine which p-code
     /// instruction is executed next, the rule is: execute the first p-code instruction resulting
     /// from the translation of the machine instruction(s) at that address. The resulting p-code
-    /// instruction may not be attached directly to the indicated address due to NOP instruction
-    /// s and delay slots.
+    /// instruction may not be attached directly to the indicated address due to NOP instructions
+    /// and delay slots.
     ///
     /// If input0 is constant, i.e. its address space is the constant address space, then it encodes
     /// a p-code relative branch. In this case, the offset of input0 is considered a relative offset

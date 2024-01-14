@@ -38,6 +38,10 @@ impl Processor {
         }
     }
 
+    pub fn sleigh(&self) -> &Sleigh {
+        &self.sleigh
+    }
+
     pub fn write_register_concrete(
         &mut self,
         register_name: impl AsRef<str>,
@@ -90,17 +94,20 @@ impl Processor {
 
     pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
         let rip: u64 = self.read_register(&instruction_register_name)?;
-        let next_instr = self.emulate(rip)?;
+        let next_instr = self.emulate(Address {
+            offset: rip,
+            address_space: self.sleigh.default_code_space(),
+        })?;
         self.write_register_concrete(instruction_register_name, next_instr.to_le_bytes())?;
         Ok(())
     }
 
-    pub fn emulate(&mut self, offset: u64) -> Result<u64> {
+    pub fn emulate(&mut self, address: Address) -> Result<u64> {
         let pcode = self
             .sleigh
-            .pcode(&self.emulator, offset as u64)
+            .pcode(&self.emulator, &address)
             .map_err(|err| Error::InstructionDecoding(err))?;
-        let next_addr = offset + pcode.num_bytes_consumed as u64;
+        let next_addr = address.offset + pcode.num_bytes_consumed as u64;
         let mut instruction_index = 0;
         let max_index =
             i64::try_from(pcode.pcode_instructions.len()).expect("too many instructions");
