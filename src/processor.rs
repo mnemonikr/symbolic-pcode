@@ -101,7 +101,15 @@ impl Processor {
             .pcode(&self.emulator, offset as u64)
             .map_err(|err| Error::InstructionDecoding(err))?;
         let next_addr = offset + pcode.num_bytes_consumed as u64;
-        for instruction in pcode.pcode_instructions {
+        let mut instruction_index = 0;
+        let max_index =
+            i64::try_from(pcode.pcode_instructions.len()).expect("too many instructions");
+        while (0..max_index).contains(&instruction_index) {
+            // SAFETY: Index is already bound by size of array
+            let instruction = unsafe {
+                &pcode.pcode_instructions[usize::try_from(instruction_index).unwrap_unchecked()]
+            };
+
             match self.emulator.emulate(&instruction)? {
                 ControlFlow::Jump(destination) => match destination {
                     Destination::MachineAddress(addr) => {
@@ -109,7 +117,7 @@ impl Processor {
                         return Ok(addr.offset);
                     }
                     Destination::PcodeAddress(offset) => {
-                        todo!("handle p-code relative branch: {offset}")
+                        instruction_index += offset;
                     }
                 },
                 ControlFlow::ConditionalBranch(condition, destination) => {
@@ -124,7 +132,7 @@ impl Processor {
                                     return Ok(addr.offset);
                                 }
                                 Destination::PcodeAddress(offset) => {
-                                    todo!("handle p-code relative branch: {offset}")
+                                    instruction_index += offset;
                                 }
                             }
                         }
@@ -132,10 +140,16 @@ impl Processor {
                         return Err(Error::SymbolicCondition(condition));
                     }
                 }
-                ControlFlow::NextInstruction => (),
+                ControlFlow::NextInstruction => {
+                    instruction_index += 1;
+                }
             }
         }
 
+        // TODO: This assumes that any instruction index outside the valid bounds means proceed to
+        // the next instruction. For branchless pcode instructions this is correct. However if
+        // there is a relative pcode branch that reaches out-of-bounds it is unclear what the
+        // correct behavior is.
         Ok(next_addr)
     }
 }
