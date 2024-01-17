@@ -275,8 +275,21 @@ impl From<Vec<SymbolicByte>> for SymbolicBitVec {
         Self {
             bits: value
                 .into_iter()
-                .map(|byte| <[SymbolicBit; 8]>::from(byte).into_iter())
+                .map(|byte| byte.into_inner().into_iter())
                 .flatten()
+                .collect(),
+        }
+    }
+}
+
+impl From<Vec<&SymbolicByte>> for SymbolicBitVec {
+    fn from(value: Vec<&SymbolicByte>) -> Self {
+        Self {
+            bits: value
+                .into_iter()
+                .map(|byte| byte.inner().iter())
+                .flatten()
+                .cloned()
                 .collect(),
         }
     }

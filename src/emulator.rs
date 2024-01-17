@@ -383,7 +383,7 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
         let negative = -lhs;
 
         self.memory
@@ -418,8 +418,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let sum = lhs + rhs;
         self.memory
             .write_bytes(sum.into_bytes(), instruction.output.as_ref().unwrap())?;
@@ -435,8 +435,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
 
         let overflow = lhs.unsigned_addition_overflow(rhs);
         self.memory
@@ -453,8 +453,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let overflow = lhs.signed_addition_overflow(rhs);
 
         self.memory
@@ -472,8 +472,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let diff = lhs - rhs;
         self.memory
             .write_bytes(diff.into_bytes(), &instruction.output.as_ref().unwrap())?;
@@ -491,8 +491,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let overflow = lhs.subtraction_with_borrow(rhs).1;
 
         self.memory
@@ -506,8 +506,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let output = instruction.output.as_ref().unwrap();
 
         let product = lhs.multiply(rhs, 8 * output.size);
@@ -525,8 +525,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let output = instruction.output.as_ref().unwrap();
 
         let (quotient, _) = rhs.unsigned_divide(lhs);
@@ -545,8 +545,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let output = instruction.output.as_ref().unwrap();
 
         let (_, remainder) = rhs.unsigned_divide(lhs);
@@ -565,8 +565,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let output = instruction.output.as_ref().unwrap();
 
         let (quotient, _) = rhs.signed_divide(lhs);
@@ -585,8 +585,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let output = instruction.output.as_ref().unwrap();
 
         let (_, remainder) = rhs.signed_divide(lhs);
@@ -606,7 +606,7 @@ impl MemoryPcodeEmulator {
         require_output_size_exceeds(&instruction, input.size)?;
         let output = instruction.output.as_ref().unwrap();
 
-        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(&input)?.into();
+        let data: sym::SymbolicBitVec = self.memory.read(&input)?.into();
         let data = data.zero_extend(8 * (output.size - input.size) as usize);
         self.memory.write_bytes(data.into_bytes(), &output)?;
 
@@ -625,7 +625,7 @@ impl MemoryPcodeEmulator {
         require_output_size_exceeds(&instruction, input.size)?;
         let output = instruction.output.as_ref().unwrap();
 
-        let data: sym::SymbolicBitVec = self.memory.read_bytes_owned(&input)?.into();
+        let data: sym::SymbolicBitVec = self.memory.read(&input)?.into();
         let data = data.sign_extend(8 * (output.size - input.size) as usize);
         self.memory.write_bytes(data.into_bytes(), &output)?;
 
@@ -641,8 +641,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = lhs.equals(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -659,8 +659,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = !lhs.equals(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -677,8 +677,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = lhs.signed_less_than(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -695,8 +695,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = lhs.signed_less_than_eq(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -713,8 +713,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = lhs.less_than(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -731,8 +731,8 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match(&instruction)?;
         require_output_size_equals(&instruction, 1)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let bit = lhs.less_than_eq(rhs);
         self.memory
             .write_bytes(vec![bit.into()], instruction.output.as_ref().unwrap())?;
@@ -748,8 +748,7 @@ impl MemoryPcodeEmulator {
     fn popcount(&mut self, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
-        let value: sym::SymbolicBitVec =
-            self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
+        let value: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
         let result = value.popcount();
         let num_bits = result.len();
 
@@ -780,8 +779,8 @@ impl MemoryPcodeEmulator {
             instruction.inputs[0].size + instruction.inputs[1].size,
         )?;
 
-        let msb: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let lsb: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let msb: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let lsb: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
 
         self.memory.write_bytes(
             lsb.concat(msb).into_bytes(),
@@ -964,8 +963,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_output_size_equals(&instruction, instruction.inputs[0].size)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let result = lhs << rhs;
 
         self.memory
@@ -985,8 +984,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_output_size_equals(&instruction, instruction.inputs[0].size)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let result = lhs >> rhs;
 
         self.memory
@@ -1007,8 +1006,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_output_size_equals(&instruction, instruction.inputs[0].size)?;
 
-        let lhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[0])?.into();
-        let rhs: sym::SymbolicBitVec = self.memory.read_bytes_owned(&instruction.inputs[1])?.into();
+        let lhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[0])?.into();
+        let rhs: sym::SymbolicBitVec = self.memory.read(&instruction.inputs[1])?.into();
         let result = lhs.signed_shift_right(rhs);
 
         self.memory

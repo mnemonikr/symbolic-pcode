@@ -461,7 +461,7 @@ impl SymbolicBitVec {
 
         let mut quotient = SymbolicBitVec::constant(0, dividend.len());
         let mut remainder = SymbolicBitVec::constant(0, dividend.len());
-        //println!("Divisor: {divisor:?}");
+
         for next_bit in dividend.bits.into_iter().rev() {
             // TODO If we had a VecDeque then this would be constant time instead of O(n)
             remainder.bits.rotate_right(1);
@@ -471,8 +471,6 @@ impl SymbolicBitVec {
             let selector = remainder.clone().less_than(divisor.clone());
             let diff = remainder.clone() - divisor.clone();
             remainder = remainder.mux(diff, selector.clone());
-
-            //println!("Selector: {selector:?}. Remainder: {remainder:?}");
 
             // TODO If we had a VecDeque then this would be constant time instead of O(n)
             quotient.bits.rotate_right(1);

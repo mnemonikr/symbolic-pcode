@@ -121,6 +121,11 @@ impl<const N: usize> SymbolicBitBuf<N> {
     }
 
     #[must_use]
+    pub fn inner(&self) -> &[SymbolicBit; N] {
+        &self.bits
+    }
+
+    #[must_use]
     pub fn equals(self, rhs: Self) -> SymbolicBit {
         self.bits
             .into_iter()
