@@ -66,7 +66,7 @@ impl Memory {
     /// and only if data is successfully read from the requested addresses.
     ///
     /// The values returned here are references. For owned values see [Self::read_bytes_owned].
-    pub fn read_bytes(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
         let space_id = varnode.address.address_space.id;
         let memory = self
             .data
@@ -112,7 +112,7 @@ impl Memory {
         <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
         sym::concretize_bit_iter(
-            self.read_bytes(&varnode)?
+            self.read(&varnode)?
                 .iter()
                 .map(|byte| byte.iter())
                 .flatten(),
@@ -431,7 +431,7 @@ mod tests {
         // Read and write value into memory
         let mut memory = Memory::new(vec![addr_space]);
         memory.write_bytes(value.clone(), &varnode)?;
-        let read_value = memory.read_bytes(&varnode)?;
+        let read_value = memory.read(&varnode)?;
 
         // Confirm read value matches written value
         assert_eq!(read_value.len(), value.len());

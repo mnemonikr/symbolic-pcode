@@ -1,19 +1,19 @@
 use std::{collections::BTreeMap, fs};
 
-use pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
+use pcode::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: PcodeEmulator,
+    emulator: MemoryPcodeEmulator,
     executed_instructions: BTreeMap<OpCode, usize>,
 }
 
 impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
-        let emulator = PcodeEmulator::new(sleigh.address_spaces());
+        let emulator = MemoryPcodeEmulator::new(sleigh.address_spaces());
 
         Processor {
             sleigh,

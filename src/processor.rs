@@ -1,6 +1,6 @@
 use thiserror;
 
-use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
+use crate::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
 use sla::{Address, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicByte};
 
@@ -27,13 +27,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: PcodeEmulator,
+    emulator: MemoryPcodeEmulator,
 }
 
 impl Processor {
     pub fn new(sleigh: Sleigh) -> Self {
         Processor {
-            emulator: PcodeEmulator::new(sleigh.address_spaces()),
+            emulator: MemoryPcodeEmulator::new(sleigh.address_spaces()),
             sleigh,
         }
     }
