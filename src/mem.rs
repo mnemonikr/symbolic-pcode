@@ -64,8 +64,6 @@ impl Memory {
 
     /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
     /// and only if data is successfully read from the requested addresses.
-    ///
-    /// The values returned here are references. For owned values see [Self::read_bytes_owned].
     pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
         let space_id = varnode.address.address_space.id;
         let memory = self
@@ -163,49 +161,6 @@ impl Memory {
             .ok_or_else(|| Error::UndefinedData(varnode.address.clone()))
     }
 
-    /// Functions identically to [Self::read_bytes] except the bytes returned are cloned.
-    pub fn read_bytes_owned(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
-            return Ok(self.read_const(&varnode));
-        }
-
-        let space_id = varnode.address.address_space.id;
-        let memory = self
-            .data
-            .get(&space_id)
-            .ok_or(Error::UnknownAddressSpace(space_id))?;
-
-        // Collect into a Vec or return the first undefined offset
-        let result = memory
-            .read_bytes(varnode.range())
-            .enumerate()
-            .map(|(i, (offset, v))| {
-                if *offset == i as u64 + varnode.address.offset {
-                    Ok(v.clone())
-                } else {
-                    // Undefined offset
-                    Err(offset)
-                }
-            })
-            .collect::<std::result::Result<Vec<_>, _>>();
-
-        let bytes = result.map_err(|&offset| {
-            Error::UndefinedData(Address {
-                offset,
-                address_space: varnode.address.address_space.clone(),
-            })
-        })?;
-
-        if bytes.len() == varnode.size {
-            Ok(bytes)
-        } else {
-            Err(Error::UndefinedData(Address {
-                offset: varnode.address.offset + bytes.len() as u64,
-                address_space: varnode.address.address_space.clone(),
-            }))
-        }
-    }
-
     /// Writes the given data to the location specified by the provided varnode. The number of
     /// bytes provided must match the size of the varnode or else an error will be returned.
     pub fn write_bytes(&mut self, input: Vec<SymbolicByte>, output: &VarnodeData) -> Result<()> {
@@ -295,8 +250,8 @@ impl MemoryTree {
     }
 
     /// Read the bytes for this varnode.
-    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        let result = self.memory.read_bytes_owned(&varnode);
+    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+        let result = self.memory.read(&varnode);
         if let Some(ref parent) = self.parent {
             if let Err(Error::UndefinedData(address)) = result {
                 let num_valid_bytes = (address.offset - varnode.address.offset) as usize;
@@ -314,7 +269,7 @@ impl MemoryTree {
                     },
                     size: num_valid_bytes,
                 };
-                let mut data = self.memory.read_bytes_owned(&valid_input)?;
+                let mut data = self.memory.read(&valid_input)?;
 
                 // Read the missing data from parent
                 let parent_varnode = VarnodeData {

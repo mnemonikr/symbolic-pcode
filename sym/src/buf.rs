@@ -88,6 +88,34 @@ impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
     }
 }
 
+impl<const N: usize> TryFrom<Vec<&SymbolicByte>> for SymbolicBitBuf<N> {
+    type Error = String;
+
+    fn try_from(value: Vec<&SymbolicByte>) -> Result<Self, Self::Error> {
+        if N == 8 * value.len() {
+            let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
+                value
+                    .into_iter()
+                    .map(|byte| byte.inner().iter())
+                    .flatten()
+                    .cloned()
+                    .enumerate()
+                    .for_each(|(i, bit)| {
+                        uninit_bits[i].write(bit);
+                    })
+            };
+
+            // SAFETY: All bits are initialized
+            unsafe { Ok(SymbolicBitBuf::<N>::initialize(initializer)) }
+        } else {
+            Err(format!(
+                "value has {num_bits} bits, expected {N} bits",
+                num_bits = 8 * value.len(),
+            ))
+        }
+    }
+}
+
 enum ShiftDirection {
     Left,
     Right,
