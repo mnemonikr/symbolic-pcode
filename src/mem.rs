@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, rc::Rc};
 use thiserror;
 
 use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
-use sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -333,6 +333,8 @@ impl AddressSpaceData {
 
 #[cfg(test)]
 mod tests {
+    use sym::SymbolicBitVec;
+
     use super::*;
 
     fn address_space(id: usize) -> AddressSpace {
