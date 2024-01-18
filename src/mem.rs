@@ -123,20 +123,6 @@ impl Memory {
         })
     }
 
-    /// Read from a varnode with an address in the constant address space.
-    fn read_const(&self, varnode: &VarnodeData) -> Vec<SymbolicByte> {
-        SymbolicBitVec::constant(
-            varnode.address.offset.try_into().unwrap_or_else(|err| {
-                panic!(
-                    "unable to represent {offset} as symbolic constant: {err}",
-                    offset = varnode.address.offset
-                )
-            }),
-            8 * varnode.size,
-        )
-        .into_bytes()
-    }
-
     /// Read the least significant bit from the address referenced by the varnode.
     pub fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
         if varnode.address.address_space.space_type == AddressSpaceType::Constant {
