@@ -1,3 +1,4 @@
+use sym::SymbolicByte;
 use thiserror;
 
 use crate::mem;
@@ -145,7 +146,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let data = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+        let input = &instruction.inputs[0];
+        let data = self.memory.read(input)?.into_iter().cloned().collect();
         let output = unsafe { instruction.output.as_ref().unwrap_unchecked() };
 
         self.memory.write_bytes(data, &output)?;
@@ -179,7 +181,7 @@ impl MemoryPcodeEmulator {
             size: output.size,
         };
 
-        let data = self.memory.read_bytes_owned(&input)?;
+        let data = self.memory.read(&input)?.into_iter().cloned().collect();
         self.memory.write_bytes(data, &output)?;
 
         Ok(())
@@ -205,7 +207,7 @@ impl MemoryPcodeEmulator {
             size: input.size,
         };
 
-        let data = self.memory.read_bytes_owned(&input)?;
+        let data = self.memory.read(&input)?.into_iter().cloned().collect();
         self.memory.write_bytes(data, &output)?;
 
         Ok(())
@@ -315,8 +317,18 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
-        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+        let lhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[0])?
+            .into_iter()
+            .cloned()
+            .collect();
+        let rhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[1])?
+            .into_iter()
+            .cloned()
+            .collect();
 
         let and = lhs
             .into_iter()
@@ -337,8 +349,18 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
-        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+        let lhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[0])?
+            .into_iter()
+            .cloned()
+            .collect();
+        let rhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[1])?
+            .into_iter()
+            .cloned()
+            .collect();
 
         let or = lhs
             .into_iter()
@@ -359,8 +381,18 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
-        let rhs = self.memory.read_bytes_owned(&instruction.inputs[1])?;
+        let lhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[0])?
+            .into_iter()
+            .cloned()
+            .collect();
+        let rhs: Vec<SymbolicByte> = self
+            .memory
+            .read(&instruction.inputs[1])?
+            .into_iter()
+            .cloned()
+            .collect();
 
         let xor = lhs
             .into_iter()
@@ -399,9 +431,8 @@ impl MemoryPcodeEmulator {
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
 
-        let lhs = self.memory.read_bytes_owned(&instruction.inputs[0])?;
-
-        let negation = lhs.into_iter().map(|value| !value).collect();
+        let lhs = self.memory.read(&instruction.inputs[0])?;
+        let negation = lhs.into_iter().cloned().map(|value| !value).collect();
 
         self.memory
             .write_bytes(negation, &instruction.output.as_ref().unwrap())?;
@@ -799,7 +830,7 @@ impl MemoryPcodeEmulator {
         require_num_inputs(&instruction, 2)?;
         require_has_output(&instruction, true)?;
         require_input_address_space_type(&instruction, 1, AddressSpaceType::Constant)?;
-        let mut data = self.memory.read_bytes_owned(&instruction.inputs[0])?;
+        let mut data = self.memory.read(&instruction.inputs[0])?;
 
         // Remove this number of least significant bytes. If for some reason the offset exceeds
         // the maximum usize value, then by definition all of the data would be drained anyway.
@@ -817,7 +848,10 @@ impl MemoryPcodeEmulator {
         let output = instruction.output.as_ref().unwrap();
         data.drain(output.size..);
 
+        // Clone remaining bytes
+        let data = data.into_iter().cloned().collect();
         self.memory.write_bytes(data, &output)?;
+
         Ok(())
     }
 
