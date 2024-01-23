@@ -7,6 +7,11 @@ use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub trait SymbolicMemory {
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>>;
+    fn write(&mut self, output: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()>;
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("space id {0:0width$x} does not refer to a known address space", width = 2 * std::mem::size_of::<usize>())]
@@ -51,20 +56,10 @@ pub struct Memory {
     data: BTreeMap<usize, AddressSpaceData>,
 }
 
-impl Memory {
-    /// Create a new instance of memory for the provided AddressSpaces.
-    pub fn new(address_spaces: Vec<AddressSpace>) -> Self {
-        Self {
-            data: address_spaces
-                .into_iter()
-                .map(|space| (space.id, AddressSpaceData::new(space)))
-                .collect(),
-        }
-    }
-
+impl SymbolicMemory for Memory {
     /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
     /// and only if data is successfully read from the requested addresses.
-    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
         let space_id = varnode.address.address_space.id;
         let memory = self
             .data
@@ -75,8 +70,9 @@ impl Memory {
         let result = memory
             .read_bytes(varnode.range())
             .enumerate()
-            .map(|(i, (offset, v))| {
-                if *offset == i as u64 + varnode.address.offset {
+            .map(|(i, (&offset, v))| {
+                let i = u64::try_from(i).map_err(|_| offset)?;
+                if offset == i as u64 + varnode.address.offset {
                     Ok(v)
                 } else {
                     // Undefined offset
@@ -85,7 +81,7 @@ impl Memory {
             })
             .collect::<std::result::Result<Vec<_>, _>>();
 
-        let bytes = result.map_err(|&offset| {
+        let bytes = result.map_err(|offset| {
             Error::UndefinedData(Address {
                 offset,
                 address_space: varnode.address.address_space.clone(),
@@ -99,6 +95,44 @@ impl Memory {
                 offset: varnode.address.offset + bytes.len() as u64,
                 address_space: varnode.address.address_space.clone(),
             }))
+        }
+    }
+
+    /// Writes the given data to the location specified by the provided varnode. The number of
+    /// bytes provided must match the size of the varnode or else an error will be returned.
+    fn write(&mut self, varnode: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()> {
+        if data.len() != varnode.size {
+            return Err(Error::InvalidArguments(format!(
+                "requested {} bytes to be written, provided {} bytes",
+                varnode.size,
+                data.len()
+            )));
+        }
+
+        let space_id = varnode.address.address_space.id;
+        let memory = self
+            .data
+            .get_mut(&space_id)
+            .ok_or(Error::UnknownAddressSpace(space_id))?;
+
+        let mut offset = varnode.address.offset;
+        for byte in data {
+            memory.data.insert(offset, byte);
+            offset += 1;
+        }
+
+        Ok(())
+    }
+}
+
+impl Memory {
+    /// Create a new instance of memory for the provided AddressSpaces.
+    pub fn new(address_spaces: Vec<AddressSpace>) -> Self {
+        Self {
+            data: address_spaces
+                .into_iter()
+                .map(|space| (space.id, AddressSpaceData::new(space)))
+                .collect(),
         }
     }
 
@@ -145,32 +179,6 @@ impl Memory {
             .read_byte(varnode.address.offset)
             .map(|byte| byte[0].clone())
             .ok_or_else(|| Error::UndefinedData(varnode.address.clone()))
-    }
-
-    /// Writes the given data to the location specified by the provided varnode. The number of
-    /// bytes provided must match the size of the varnode or else an error will be returned.
-    pub fn write_bytes(&mut self, input: Vec<SymbolicByte>, output: &VarnodeData) -> Result<()> {
-        if input.len() != output.size {
-            return Err(Error::InvalidArguments(format!(
-                "requested {} bytes to be written, provided {} bytes",
-                output.size,
-                input.len()
-            )));
-        }
-
-        let space_id = output.address.address_space.id;
-        let memory = self
-            .data
-            .get_mut(&space_id)
-            .ok_or(Error::UnknownAddressSpace(space_id))?;
-
-        let mut offset = output.address.offset;
-        for data in input.into_iter() {
-            memory.data.insert(offset, data);
-            offset += 1;
-        }
-
-        Ok(())
     }
 
     /// Get the address space associated with the given varnode.
@@ -275,7 +283,7 @@ impl MemoryTree {
 
     /// Write the data to the location specified by the varnode.
     pub fn write(&mut self, varnode: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()> {
-        self.memory.write_bytes(data, varnode)
+        self.memory.write(varnode, data)
     }
 
     /// Create a branch in the memory tree based on the given predicate. The left branch is the
@@ -405,7 +413,7 @@ mod tests {
 
         // Read and write value into memory
         let mut memory = Memory::new(vec![addr_space]);
-        memory.write_bytes(value.clone(), &varnode)?;
+        memory.write(&varnode, value.clone())?;
         let read_value = memory.read(&varnode)?;
 
         // Confirm read value matches written value
@@ -435,7 +443,7 @@ mod tests {
             },
             size: 1,
         };
-        memory.write_bytes(SymbolicBitVec::constant(0xff, 8).into_bytes(), &varnode)?;
+        memory.write(&varnode, SymbolicBitVec::constant(0xff, 8).into_bytes())?;
 
         // Create a memory tree from this initialized memory and branch on a predicate
         let tree = MemoryTree::new(memory);
@@ -479,7 +487,7 @@ mod tests {
             },
             size: 2,
         };
-        memory.write_bytes(SymbolicBitVec::constant(0xbeef, 16).into_bytes(), &varnode)?;
+        memory.write(&varnode, SymbolicBitVec::constant(0xbeef, 16).into_bytes())?;
 
         // Create a memory tree from this initialized memory
         let tree = MemoryTree::new(memory);

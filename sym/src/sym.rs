@@ -155,6 +155,21 @@ pub struct SymbolicBitVec {
     pub(crate) bits: Vec<SymbolicBit>,
 }
 
+impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
+    type Error = String;
+
+    fn try_into(self) -> Result<Vec<SymbolicByte>, Self::Error> {
+        if self.bits.len() % 8 == 0 {
+            Ok(self.into_bytes())
+        } else {
+            Err(format!(
+                "invalid number of bits: {len}",
+                len = self.bits.len()
+            ))
+        }
+    }
+}
+
 static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 impl SymbolicBitVec {
     pub fn with_size(num_bits: usize) -> Self {

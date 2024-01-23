@@ -1,6 +1,7 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
+use crate::mem::SymbolicMemory;
 use sla::{Address, AddressSpace, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicByte};
 
@@ -82,7 +83,7 @@ impl Processor {
             .map(Into::<SymbolicByte>::into)
             .collect::<Vec<_>>();
 
-        self.emulator.memory_mut().write_bytes(bytes, &varnode)
+        self.emulator.memory_mut().write(&varnode, bytes)
     }
 
     pub fn write_instructions(
