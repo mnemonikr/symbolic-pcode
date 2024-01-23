@@ -331,6 +331,38 @@ impl AddressSpaceData {
     }
 }
 
+/// Implementation of the LoadImage trait to enable loading instructions from memory
+impl sla::LoadImage for Memory {
+    fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
+        let bytes = self.read(&input);
+
+        // The number of bytes requested may exceed valid data in memory.
+        // In that case only read and return the defined bytes.
+        let bytes = match bytes {
+            Err(Error::UndefinedData(addr)) => {
+                let input = VarnodeData {
+                    // SAFETY: This new size MUST be less than the existing input size
+                    size: unsafe {
+                        (addr.offset - input.address.offset)
+                            .try_into()
+                            .unwrap_unchecked()
+                    },
+                    address: input.address.clone(),
+                };
+                self.read(&input)
+            }
+            _ => bytes,
+        };
+
+        bytes
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|x| x.try_into())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|_err| "symbolic byte".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use sym::SymbolicBitVec;

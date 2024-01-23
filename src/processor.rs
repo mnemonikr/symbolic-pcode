@@ -1,7 +1,7 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
-use sla::{Address, Sleigh, VarnodeData};
+use sla::{Address, AddressSpace, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -21,6 +21,15 @@ pub enum Error {
 
     #[error("symbolic condition")]
     SymbolicCondition(SymbolicBit),
+
+    #[error("address {address} not in expected space {expected}")]
+    InvalidAddressSpace {
+        address: Address,
+        expected: AddressSpace,
+    },
+
+    #[error("internal error: {0}")]
+    InternalError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -98,14 +107,22 @@ impl Processor {
             offset: rip,
             address_space: self.sleigh.default_code_space(),
         })?;
-        self.write_register_concrete(instruction_register_name, next_instr.to_le_bytes())?;
+
+        if self.sleigh.default_code_space() != next_instr.address_space {
+            return Err(Error::InvalidAddressSpace {
+                address: next_instr,
+                expected: self.sleigh.default_code_space(),
+            });
+        }
+
+        self.write_register_concrete(instruction_register_name, next_instr.offset.to_le_bytes())?;
         Ok(())
     }
 
-    pub fn emulate(&mut self, address: Address) -> Result<u64> {
+    pub fn emulate(&mut self, address: Address) -> Result<Address> {
         let pcode = self
             .sleigh
-            .pcode(&self.emulator, &address)
+            .pcode(self.emulator.memory(), &address)
             .map_err(|err| Error::InstructionDecoding(err))?;
         let next_addr = address.offset + pcode.num_bytes_consumed as u64;
         let mut instruction_index = 0;
@@ -120,8 +137,7 @@ impl Processor {
             match self.emulator.emulate(&instruction)? {
                 ControlFlow::Jump(destination) => match destination {
                     Destination::MachineAddress(addr) => {
-                        assert_eq!(addr.address_space, self.sleigh.default_code_space());
-                        return Ok(addr.offset);
+                        return Ok(addr);
                     }
                     Destination::PcodeAddress(offset) => {
                         instruction_index += offset;
@@ -136,7 +152,7 @@ impl Processor {
                                         addr.address_space,
                                         self.sleigh.default_code_space()
                                     );
-                                    return Ok(addr.offset);
+                                    return Ok(addr);
                                 }
                                 Destination::PcodeAddress(offset) => {
                                     instruction_index += offset;
@@ -157,6 +173,9 @@ impl Processor {
         // the next instruction. For branchless pcode instructions this is correct. However if
         // there is a relative pcode branch that reaches out-of-bounds it is unclear what the
         // correct behavior is.
-        Ok(next_addr)
+        Ok(Address {
+            offset: next_addr,
+            address_space: address.address_space,
+        })
     }
 }
