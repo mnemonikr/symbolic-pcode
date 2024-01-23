@@ -101,6 +101,11 @@ impl Processor {
         Ok(())
     }
 
+    /// Emulates the current instruction in the instruction register. This assumes the instruction
+    /// in the register is an address offset into the [Sleigh::default_code_space].
+    ///
+    /// If the next instruction is an address into a different address space, the error variant
+    /// [Error::InvalidAddressSpace] is returned.
     pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
         let rip: u64 = self.read_register(&instruction_register_name)?;
         let next_instr = self.emulate(Address {
