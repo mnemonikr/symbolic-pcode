@@ -1,4 +1,5 @@
 #include <mutex>
+#include <stdexcept>
 
 #include "bridge.hh"
 #include "rust/cxx.h"
@@ -34,7 +35,7 @@ RustLoadImageProxy::RustLoadImageProxy() : LoadImage("undefined") { }
 
 void RustLoadImageProxy::loadFill(uint1 *output_buf, int4 size, const Address &addr) {
     if (inner == nullptr) {
-        throw RustBridgeException("inner image loader is null");
+        throw std::runtime_error(std::string("inner image loader is null"));
     }
 
     try {

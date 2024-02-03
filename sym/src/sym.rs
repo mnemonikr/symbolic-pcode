@@ -5,6 +5,9 @@ use thiserror;
 
 use crate::buf::SymbolicByte;
 
+pub const FALSE: SymbolicBit = SymbolicBit::Literal(false);
+pub const TRUE: SymbolicBit = SymbolicBit::Literal(true);
+
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicBit {
@@ -82,7 +85,7 @@ impl SymbolicBit {
 
 impl Default for SymbolicBit {
     fn default() -> Self {
-        SymbolicBit::Literal(false)
+        FALSE
     }
 }
 
@@ -155,6 +158,21 @@ pub struct SymbolicBitVec {
     pub(crate) bits: Vec<SymbolicBit>,
 }
 
+impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
+    type Error = String;
+
+    fn try_into(self) -> Result<Vec<SymbolicByte>, Self::Error> {
+        if self.bits.len() % 8 == 0 {
+            Ok(self.into_bytes())
+        } else {
+            Err(format!(
+                "invalid number of bits: {len}",
+                len = self.bits.len()
+            ))
+        }
+    }
+}
+
 static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 impl SymbolicBitVec {
     pub fn with_size(num_bits: usize) -> Self {
@@ -212,7 +230,7 @@ impl SymbolicBitVec {
             value >>= 1;
         }
 
-        if value != 0 {
+        if value > 0 {
             // TODO Throw error, this should be a result
         }
 
@@ -461,7 +479,7 @@ impl SymbolicBitVec {
 
         let mut quotient = SymbolicBitVec::constant(0, dividend.len());
         let mut remainder = SymbolicBitVec::constant(0, dividend.len());
-        //println!("Divisor: {divisor:?}");
+
         for next_bit in dividend.bits.into_iter().rev() {
             // TODO If we had a VecDeque then this would be constant time instead of O(n)
             remainder.bits.rotate_right(1);
@@ -471,8 +489,6 @@ impl SymbolicBitVec {
             let selector = remainder.clone().less_than(divisor.clone());
             let diff = remainder.clone() - divisor.clone();
             remainder = remainder.mux(diff, selector.clone());
-
-            //println!("Selector: {selector:?}. Remainder: {remainder:?}");
 
             // TODO If we had a VecDeque then this would be constant time instead of O(n)
             quotient.bits.rotate_right(1);

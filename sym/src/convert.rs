@@ -70,6 +70,26 @@ impl TryFrom<SymbolicBitBuf<16>> for u16 {
     }
 }
 
+impl From<u64> for SymbolicBitBuf<64> {
+    fn from(value: u64) -> Self {
+        value.to_le_bytes().into()
+    }
+}
+
+impl<const BYTES: usize, const BITS: usize> From<[u8; BYTES]> for SymbolicBitBuf<BITS> {
+    fn from(bytes: [u8; BYTES]) -> Self {
+        let mut bits = [sym::FALSE; BITS];
+        assert!(8 * BYTES == BITS);
+        for i in 0..bytes.len() {
+            for b in 0..8 {
+                bits[8 * i + b] = SymbolicBit::Literal((bytes[i] & (1 << b)) > 0);
+            }
+        }
+
+        bits.into()
+    }
+}
+
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {
@@ -211,9 +231,10 @@ where
     T: std::ops::BitAnd + std::ops::ShlAssign + PartialEq + From<u8> + Copy,
     <T as std::ops::BitAnd>::Output: PartialEq + From<u8>,
 {
-    let mut bits = Vec::with_capacity(std::mem::size_of::<T>());
+    let num_bits = 8 * std::mem::size_of::<T>();
+    let mut bits = Vec::with_capacity(num_bits);
     let mut mask: T = 1u8.into();
-    while mask != 0u8.into() {
+    for _ in 0..num_bits {
         bits.push(SymbolicBit::Literal(value & mask != 0u8.into()));
         mask <<= 1u8.into();
     }
@@ -274,8 +295,21 @@ impl From<Vec<SymbolicByte>> for SymbolicBitVec {
         Self {
             bits: value
                 .into_iter()
-                .map(|byte| <[SymbolicBit; 8]>::from(byte).into_iter())
+                .map(|byte| byte.into_inner().into_iter())
                 .flatten()
+                .collect(),
+        }
+    }
+}
+
+impl From<Vec<&SymbolicByte>> for SymbolicBitVec {
+    fn from(value: Vec<&SymbolicByte>) -> Self {
+        Self {
+            bits: value
+                .into_iter()
+                .map(|byte| byte.inner().iter())
+                .flatten()
+                .cloned()
                 .collect(),
         }
     }

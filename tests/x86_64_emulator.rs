@@ -116,12 +116,13 @@ fn doubler_32b() -> Result<(), String> {
     let initial_value = 0x99;
     processor.write_register("EDI", vec![initial_value, 0x00, 0x00, 0x00]);
 
-    let mut addr = base_addr;
+    processor.write_register("RIP", base_addr.to_le_bytes());
     for _ in 0..num_instructions {
-        addr = processor.emulate(addr)?;
+        processor.single_step();
     }
 
-    assert_eq!(addr, 0x66778899aabbccdd, "return address on stack");
+    let rip: u64 = processor.read_register("RIP");
+    assert_eq!(rip, 0x66778899aabbccdd, "return address on stack");
     let result: usize = processor.read_register("RAX");
     assert_eq!(
         result,

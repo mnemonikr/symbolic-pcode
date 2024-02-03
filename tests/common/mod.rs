@@ -2,18 +2,19 @@ use std::{collections::BTreeMap, fs};
 
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
-use symbolic_pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
+use symbolic_pcode::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
+use symbolic_pcode::mem::SymbolicMemory;
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: PcodeEmulator,
+    emulator: MemoryPcodeEmulator,
     executed_instructions: BTreeMap<OpCode, usize>,
 }
 
 impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
-        let emulator = PcodeEmulator::new(sleigh.address_spaces());
+        let emulator = MemoryPcodeEmulator::new(sleigh.address_spaces());
 
         Processor {
             sleigh,
@@ -52,7 +53,7 @@ impl Processor {
 
             self.emulator
                 .memory_mut()
-                .write_bytes(bytes, &output)
+                .write(&output, bytes)
                 .expect("failed to write data");
         }
     }
@@ -103,7 +104,7 @@ impl Processor {
 
         self.emulator
             .memory_mut()
-            .write_bytes(bytes, &output)
+            .write(&output, bytes)
             .expect("failed to write data");
     }
 
@@ -127,8 +128,12 @@ impl Processor {
 
     pub fn single_step(&mut self) {
         let rip: u64 = self.read_register("RIP");
+        let address = Address {
+            offset: rip,
+            address_space: self.sleigh.default_code_space(),
+        };
         let new_rip = self
-            .emulate(rip)
+            .emulate(address)
             .unwrap_or_else(|err| panic!("failed to emulate {rip:#02x}: {err}"));
         let new_rip: Vec<u8> = SymbolicBitVec::constant(new_rip.try_into().unwrap(), 64)
             .into_parts(8)
@@ -138,12 +143,12 @@ impl Processor {
         self.write_register("RIP", new_rip);
     }
 
-    pub fn emulate(&mut self, offset: u64) -> Result<u64, String> {
-        let pcode = self.sleigh.pcode(&self.emulator, offset as u64)?;
-        let next_addr = offset + pcode.num_bytes_consumed as u64;
+    fn emulate(&mut self, instruction_address: Address) -> Result<u64, String> {
+        let pcode = self.sleigh.pcode(&self.emulator, &instruction_address)?;
+        let next_addr = instruction_address.offset + pcode.num_bytes_consumed as u64;
 
         if pcode.pcode_instructions.len() == 0 {
-            println!("NOOP [{offset:016x}]");
+            println!("NOOP [{instruction_address}]");
         }
 
         for instruction in pcode.pcode_instructions {

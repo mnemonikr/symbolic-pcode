@@ -61,6 +61,23 @@ impl<const N: usize> std::ops::IndexMut<usize> for SymbolicBitBuf<N> {
     }
 }
 
+impl<const N: usize> From<SymbolicBitBuf<N>> for Vec<SymbolicByte> {
+    fn from(mut value: SymbolicBitBuf<N>) -> Self {
+        assert!(N % 8 == 0);
+        let num_bytes = N / 8;
+        let mut result = Vec::with_capacity(num_bytes);
+        for n in 0..num_bytes {
+            let mut bits = [crate::FALSE; 8];
+            for i in 0..8 {
+                std::mem::swap(&mut bits[i], &mut value.bits[8 * n + i]);
+            }
+            result.push(SymbolicByte::from(bits));
+        }
+
+        result
+    }
+}
+
 impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
     type Error = String;
 
@@ -71,6 +88,34 @@ impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
                     .into_iter()
                     .map(|byte| byte.into_inner().into_iter())
                     .flatten()
+                    .enumerate()
+                    .for_each(|(i, bit)| {
+                        uninit_bits[i].write(bit);
+                    })
+            };
+
+            // SAFETY: All bits are initialized
+            unsafe { Ok(SymbolicBitBuf::<N>::initialize(initializer)) }
+        } else {
+            Err(format!(
+                "value has {num_bits} bits, expected {N} bits",
+                num_bits = 8 * value.len(),
+            ))
+        }
+    }
+}
+
+impl<const N: usize> TryFrom<Vec<&SymbolicByte>> for SymbolicBitBuf<N> {
+    type Error = String;
+
+    fn try_from(value: Vec<&SymbolicByte>) -> Result<Self, Self::Error> {
+        if N == 8 * value.len() {
+            let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
+                value
+                    .into_iter()
+                    .map(|byte| byte.inner().iter())
+                    .flatten()
+                    .cloned()
                     .enumerate()
                     .for_each(|(i, bit)| {
                         uninit_bits[i].write(bit);
@@ -118,6 +163,11 @@ impl<const N: usize> SymbolicBitBuf<N> {
     #[must_use]
     pub fn into_inner(self) -> [SymbolicBit; N] {
         self.bits
+    }
+
+    #[must_use]
+    pub fn inner(&self) -> &[SymbolicBit; N] {
+        &self.bits
     }
 
     #[must_use]
