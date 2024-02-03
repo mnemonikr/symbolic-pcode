@@ -1,9 +1,18 @@
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
+/// Value that is the little-endian portion of a larger value
+pub struct LittleEndian<T: Copy>(T);
+
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
         SymbolicBit::Literal(value)
+    }
+}
+
+impl From<SymbolicBit> for SymbolicBitVec {
+    fn from(value: SymbolicBit) -> Self {
+        Self { bits: vec![value] }
     }
 }
 
@@ -203,21 +212,19 @@ impl From<usize> for SymbolicBitVec {
     }
 }
 
-impl From<&[u8]> for SymbolicBitVec {
-    fn from(value: &[u8]) -> Self {
-        value
-            .iter()
-            .copied()
+impl FromIterator<LittleEndian<u8>> for SymbolicBitVec {
+    fn from_iter<T: IntoIterator<Item = LittleEndian<u8>>>(iter: T) -> Self {
+        iter.into_iter()
+            .map(|x| x.0)
             .map(Into::<SymbolicBitVec>::into)
-            .collect::<Vec<_>>()
-            .into()
+            .collect()
     }
 }
 
-impl From<Vec<SymbolicBitVec>> for SymbolicBitVec {
-    fn from(value: Vec<SymbolicBitVec>) -> Self {
+impl FromIterator<SymbolicBitVec> for SymbolicBitVec {
+    fn from_iter<T: IntoIterator<Item = SymbolicBitVec>>(iter: T) -> Self {
         Self {
-            bits: value
+            bits: iter
                 .into_iter()
                 .map(|bitvec| bitvec.bits.into_iter())
                 .flatten()
@@ -270,12 +277,6 @@ impl From<&[SymbolicBit]> for SymbolicBitVec {
     }
 }
 
-impl From<Vec<SymbolicBit>> for SymbolicBitVec {
-    fn from(bits: Vec<SymbolicBit>) -> Self {
-        Self { bits }
-    }
-}
-
 impl TryFrom<SymbolicBitVec> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
@@ -290,26 +291,21 @@ impl TryFrom<&SymbolicBitVec> for u8 {
     }
 }
 
-impl From<Vec<SymbolicByte>> for SymbolicBitVec {
-    fn from(value: Vec<SymbolicByte>) -> Self {
+impl FromIterator<SymbolicBit> for SymbolicBitVec {
+    fn from_iter<T: IntoIterator<Item = SymbolicBit>>(iter: T) -> Self {
         Self {
-            bits: value
-                .into_iter()
-                .map(|byte| byte.into_inner().into_iter())
-                .flatten()
-                .collect(),
+            bits: iter.into_iter().collect(),
         }
     }
 }
 
-impl From<Vec<&SymbolicByte>> for SymbolicBitVec {
-    fn from(value: Vec<&SymbolicByte>) -> Self {
+impl FromIterator<SymbolicByte> for SymbolicBitVec {
+    fn from_iter<T: IntoIterator<Item = SymbolicByte>>(iter: T) -> Self {
         Self {
-            bits: value
+            bits: iter
                 .into_iter()
-                .map(|byte| byte.inner().iter())
+                .map(|byte| byte.into_inner().into_iter())
                 .flatten()
-                .cloned()
                 .collect(),
         }
     }
