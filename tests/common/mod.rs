@@ -4,6 +4,7 @@ use pcode::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulat
 use pcode::mem::SymbolicMemory;
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use symbolic_pcode::emulator::{ControlFlow, Destination, PcodeEmulator};
 
 pub struct Processor {
     sleigh: Sleigh,
