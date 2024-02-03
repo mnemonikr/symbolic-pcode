@@ -277,8 +277,8 @@ impl SymbolicBitVec {
             }
         } else {
             let partition = self.bits.len() / 2;
-            let self_part: Self = self.bits.split_off(partition).into();
-            let rhs_part: Self = rhs.bits.split_off(partition).into();
+            let self_part: Self = self.bits.split_off(partition).into_iter().collect();
+            let rhs_part: Self = rhs.bits.split_off(partition).into_iter().collect();
             self_part.equals_unchecked(rhs_part) & self.equals_unchecked(rhs)
         }
     }
@@ -426,8 +426,9 @@ impl SymbolicBitVec {
                 // TODO All of the bits placed into x will be overwritten. It could improve
                 // performance if these bits were extracted instead of cloned.
                 let x: Self = product.bits[rhs_size..rhs_size + num_sum_bits]
-                    .to_vec()
-                    .into();
+                    .iter()
+                    .cloned()
+                    .collect();
                 let y = self
                     .clone()
                     .truncate_msb(self.len() - num_sum_bits)
@@ -636,7 +637,7 @@ impl SymbolicBitVec {
 
         let mut result = SymbolicBitVec::constant(0, len);
         for bit in self.bits.into_iter() {
-            let bit: SymbolicBitVec = vec![bit].into();
+            let bit: SymbolicBitVec = bit.into();
             let bit = bit.zero_extend(len - 1);
             result = result + bit;
         }
@@ -688,8 +689,8 @@ impl SymbolicBitVec {
     }
 
     fn mux(self, rhs: Self, selector: SymbolicBit) -> Self {
-        let positive = vec![selector.clone(); self.len()].into();
-        let negative = vec![!selector; self.len()].into();
+        let positive = vec![selector.clone(); self.len()].into_iter().collect();
+        let negative = vec![!selector; self.len()].into_iter().collect();
         (self & positive) | (rhs & negative)
     }
 }
