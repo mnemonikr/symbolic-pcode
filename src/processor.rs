@@ -9,7 +9,7 @@ use sym::{SymbolicBit, SymbolicByte};
 // derivation that converts emulator errors into processor errors.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Error occurred while accessing a memory location
+    /// Error occurred during emulation
     #[error(transparent)]
     Emulation(#[from] crate::emulator::Error),
 
