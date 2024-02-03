@@ -70,6 +70,26 @@ impl TryFrom<SymbolicBitBuf<16>> for u16 {
     }
 }
 
+impl From<u64> for SymbolicBitBuf<64> {
+    fn from(value: u64) -> Self {
+        value.to_le_bytes().into()
+    }
+}
+
+impl<const BYTES: usize, const BITS: usize> From<[u8; BYTES]> for SymbolicBitBuf<BITS> {
+    fn from(bytes: [u8; BYTES]) -> Self {
+        let mut bits = [sym::FALSE; BITS];
+        assert!(8 * BYTES == BITS);
+        for i in 0..bytes.len() {
+            for b in 0..8 {
+                bits[8 * i + b] = SymbolicBit::Literal((bytes[i] & (1 << b)) > 0);
+            }
+        }
+
+        bits.into()
+    }
+}
+
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError<u8>;
     fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {

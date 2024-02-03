@@ -8,7 +8,7 @@ use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait SymbolicMemory {
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>>;
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>>;
     fn write(&mut self, output: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()>;
 }
 
@@ -59,7 +59,26 @@ pub struct Memory {
 impl SymbolicMemory for Memory {
     /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
     /// and only if data is successfully read from the requested addresses.
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
+            // This is just a constant value defined by the offset
+            let bytes: sym::SymbolicBitBuf<64> = varnode.address.offset.into();
+            let mut result: Vec<SymbolicByte> = bytes.into();
+
+            // The varnode size defines the number of bytes in the result. Since offset
+            // is always 64 bits then the number of bytes is at most 8
+            if varnode.size <= 8 {
+                // Remove extra bytes
+                result.drain(varnode.size..);
+                return Ok(result);
+            } else {
+                return Err(Error::InvalidArguments(format!(
+                    "varnode size {size} exceeds maximum allowed for constant address space",
+                    size = varnode.size
+                )));
+            }
+        }
+
         let space_id = varnode.address.address_space.id;
         let memory = self
             .data
@@ -73,7 +92,7 @@ impl SymbolicMemory for Memory {
             .map(|(i, (&offset, v))| {
                 let i = u64::try_from(i).map_err(|_| offset)?;
                 if offset == i as u64 + varnode.address.offset {
-                    Ok(v)
+                    Ok(v.clone())
                 } else {
                     // Undefined offset
                     Err(offset)
@@ -244,7 +263,7 @@ impl MemoryTree {
     }
 
     /// Read the bytes for this varnode.
-    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<&SymbolicByte>> {
+    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self.memory.read(&varnode);
         if let Some(ref parent) = self.parent {
             if let Err(Error::UndefinedData(address)) = result {

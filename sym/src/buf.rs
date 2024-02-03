@@ -61,6 +61,23 @@ impl<const N: usize> std::ops::IndexMut<usize> for SymbolicBitBuf<N> {
     }
 }
 
+impl<const N: usize> From<SymbolicBitBuf<N>> for Vec<SymbolicByte> {
+    fn from(mut value: SymbolicBitBuf<N>) -> Self {
+        assert!(N % 8 == 0);
+        let num_bytes = N / 8;
+        let mut result = Vec::with_capacity(num_bytes);
+        for n in 0..num_bytes {
+            let mut bits = [crate::FALSE; 8];
+            for i in 0..8 {
+                std::mem::swap(&mut bits[i], &mut value.bits[8 * n + i]);
+            }
+            result.push(SymbolicByte::from(bits));
+        }
+
+        result
+    }
+}
+
 impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
     type Error = String;
 

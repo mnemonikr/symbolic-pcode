@@ -5,6 +5,9 @@ use thiserror;
 
 use crate::buf::SymbolicByte;
 
+pub const FALSE: SymbolicBit = SymbolicBit::Literal(false);
+pub const TRUE: SymbolicBit = SymbolicBit::Literal(true);
+
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicBit {
@@ -82,7 +85,7 @@ impl SymbolicBit {
 
 impl Default for SymbolicBit {
     fn default() -> Self {
-        SymbolicBit::Literal(false)
+        FALSE
     }
 }
 

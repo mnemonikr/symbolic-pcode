@@ -171,7 +171,7 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match_output(&instruction)?;
 
         let input = &instruction.inputs[0];
-        let data = self.memory.read(input)?.into_iter().cloned().collect();
+        let data = self.memory.read(input)?.into_iter().collect();
 
         self.write_bytes(instruction, data)?;
 
@@ -204,7 +204,7 @@ impl MemoryPcodeEmulator {
             size: output.size,
         };
 
-        let data = self.memory.read(&input)?.into_iter().cloned().collect();
+        let data = self.memory.read(&input)?.into_iter().collect();
         self.write_bytes(instruction, data)?;
 
         Ok(())
@@ -230,7 +230,7 @@ impl MemoryPcodeEmulator {
             size: input.size,
         };
 
-        let data = self.memory.read(&input)?.into_iter().cloned().collect();
+        let data = self.memory.read(&input)?.into_iter().collect();
         self.memory.write(&output, data)?;
 
         Ok(())
@@ -344,13 +344,11 @@ impl MemoryPcodeEmulator {
             .memory
             .read(&instruction.inputs[0])?
             .into_iter()
-            .cloned()
             .collect();
         let rhs: Vec<SymbolicByte> = self
             .memory
             .read(&instruction.inputs[1])?
             .into_iter()
-            .cloned()
             .collect();
 
         let and = lhs
@@ -375,13 +373,11 @@ impl MemoryPcodeEmulator {
             .memory
             .read(&instruction.inputs[0])?
             .into_iter()
-            .cloned()
             .collect();
         let rhs: Vec<SymbolicByte> = self
             .memory
             .read(&instruction.inputs[1])?
             .into_iter()
-            .cloned()
             .collect();
 
         let or = lhs
@@ -406,13 +402,11 @@ impl MemoryPcodeEmulator {
             .memory
             .read(&instruction.inputs[0])?
             .into_iter()
-            .cloned()
             .collect();
         let rhs: Vec<SymbolicByte> = self
             .memory
             .read(&instruction.inputs[1])?
             .into_iter()
-            .cloned()
             .collect();
 
         let xor = lhs
@@ -451,7 +445,7 @@ impl MemoryPcodeEmulator {
         require_input_sizes_match_output(&instruction)?;
 
         let lhs = self.memory.read(&instruction.inputs[0])?;
-        let negation = lhs.into_iter().cloned().map(|value| !value).collect();
+        let negation = lhs.into_iter().map(|value| !value).collect();
 
         self.write_bytes(instruction, negation)?;
 
@@ -846,7 +840,7 @@ impl MemoryPcodeEmulator {
         data.drain(output.size..);
 
         // Clone remaining bytes
-        let data = data.into_iter().cloned().collect();
+        let data = data.into_iter().collect();
         self.write_bytes(instruction, data)?;
 
         Ok(())
