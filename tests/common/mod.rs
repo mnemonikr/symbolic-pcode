@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
 use pcode::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
+use pcode::mem::SymbolicMemory;
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
@@ -52,7 +53,7 @@ impl Processor {
 
             self.emulator
                 .memory_mut()
-                .write_bytes(bytes, &output)
+                .write(&output, bytes)
                 .expect("failed to write data");
         }
     }
@@ -103,7 +104,7 @@ impl Processor {
 
         self.emulator
             .memory_mut()
-            .write_bytes(bytes, &output)
+            .write(&output, bytes)
             .expect("failed to write data");
     }
 
