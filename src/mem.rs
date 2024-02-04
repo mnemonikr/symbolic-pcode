@@ -10,6 +10,18 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub trait SymbolicMemory {
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>>;
     fn write(&mut self, output: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()>;
+
+    fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
+        if varnode.size != 1 {
+            return Err(Error::InvalidArguments(format!(
+                "expected varnode size to be 1, actual {size}",
+                size = varnode.size
+            )));
+        }
+
+        let byte = &self.read(varnode)?[0];
+        Ok(byte[0].clone())
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -174,30 +186,6 @@ impl Memory {
             }
             _ => Error::InternalError(format!("{}", err)),
         })
-    }
-
-    /// Read the least significant bit from the address referenced by the varnode.
-    pub fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
-        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
-            return match varnode.address.offset {
-                0 => Ok(SymbolicBit::Literal(false)),
-                1 => Ok(SymbolicBit::Literal(true)),
-                value => Err(Error::InvalidArguments(format!(
-                    "constant {value} is not a valid bit"
-                ))),
-            };
-        }
-
-        let space_id = varnode.address.address_space.id;
-        let memory = self
-            .data
-            .get(&space_id)
-            .ok_or(Error::UnknownAddressSpace(space_id))?;
-
-        memory
-            .read_byte(varnode.address.offset)
-            .map(|byte| byte[0].clone())
-            .ok_or_else(|| Error::UndefinedData(varnode.address.clone()))
     }
 
     /// Get the address space associated with the given varnode.
