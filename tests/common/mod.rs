@@ -16,7 +16,7 @@ impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
         let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
-        let memory = Memory::new(sleigh.address_spaces());
+        let memory = Memory::new();
 
         Processor {
             sleigh,

@@ -44,7 +44,7 @@ pub struct Processor {
 impl Processor {
     pub fn new(sleigh: Sleigh) -> Self {
         Processor {
-            memory: crate::mem::Memory::new(sleigh.address_spaces()),
+            memory: crate::mem::Memory::new(),
             emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
             sleigh,
         }

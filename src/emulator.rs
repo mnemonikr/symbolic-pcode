@@ -1497,7 +1497,7 @@ mod tests {
 
     #[test]
     fn copy() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
         let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
@@ -1535,7 +1535,7 @@ mod tests {
 
     #[test]
     fn load() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -1597,7 +1597,7 @@ mod tests {
 
     #[test]
     fn store() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -1663,7 +1663,7 @@ mod tests {
 
     #[test]
     fn int_sub() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -1724,7 +1724,7 @@ mod tests {
 
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -1761,7 +1761,7 @@ mod tests {
 
     #[test]
     fn int_add() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -1812,7 +1812,7 @@ mod tests {
     fn int_multiply() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 0..16u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value = SymbolicBitVec::constant(lhs.into(), 4);
                 let lhs_value = lhs_value.zero_extend(4).into_bytes().pop().unwrap();
@@ -1855,7 +1855,7 @@ mod tests {
 
     #[test]
     fn int_multiply_multibyte() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs: u8 = 0xFF;
         let lhs_value: SymbolicBitVec = lhs.into();
@@ -1900,7 +1900,7 @@ mod tests {
     fn int_divide() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value: SymbolicByte = lhs.into();
                 let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
@@ -1944,7 +1944,7 @@ mod tests {
     fn int_remainder() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value: SymbolicByte = lhs.into();
                 let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
@@ -1988,7 +1988,7 @@ mod tests {
     fn int_signed_divide() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
                     .sign_extend(4)
@@ -2044,7 +2044,7 @@ mod tests {
     fn int_signed_remainder() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
                     .sign_extend(4)
@@ -2098,7 +2098,7 @@ mod tests {
 
     #[test]
     fn int_zext() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -2137,7 +2137,7 @@ mod tests {
 
     #[test]
     fn int_sext() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -2205,7 +2205,7 @@ mod tests {
 
     #[test]
     fn int_equal() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -2269,7 +2269,7 @@ mod tests {
 
     #[test]
     fn int_not_equal() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -2332,7 +2332,7 @@ mod tests {
 
     #[test]
     fn piece() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let msb_input = write_bytes(&mut memory, 0, vec![0xADu8.into(), 0xDEu8.into()])?;
         let lsb_input = write_bytes(&mut memory, 2, vec![0xEFu8.into(), 0xBEu8.into()])?;
@@ -2363,7 +2363,7 @@ mod tests {
 
     #[test]
     fn subpiece() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space(), unique_address_space()]);
+        let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
@@ -2434,7 +2434,7 @@ mod tests {
 
     #[test]
     fn branch_ind() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
         let data_input = write_bytes(&mut memory, 0, data)?;
@@ -2458,7 +2458,7 @@ mod tests {
 
     #[test]
     fn call_ind() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
         let data_input = write_bytes(&mut memory, 0, data)?;
@@ -2484,7 +2484,7 @@ mod tests {
     #[test]
     fn bool_negate() -> Result<()> {
         for value in 0..=1u8 {
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let input = write_bytes(&mut memory, 0, vec![value.into()])?;
 
@@ -2522,7 +2522,7 @@ mod tests {
     fn bool_and() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
                 let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2562,7 +2562,7 @@ mod tests {
     fn bool_or() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
                 let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2602,7 +2602,7 @@ mod tests {
     fn bool_xor() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new(vec![processor_address_space()]);
+                let mut memory = Memory::new();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
                 let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
                 let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2640,7 +2640,7 @@ mod tests {
 
     #[test]
     fn int_negate() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b1010_0101;
         let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
@@ -2676,7 +2676,7 @@ mod tests {
 
     #[test]
     fn int_2comp() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 1u8;
         let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
@@ -2712,7 +2712,7 @@ mod tests {
 
     #[test]
     fn int_and() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b0011_1100;
         let rhs = 0b1010_0101;
@@ -2750,7 +2750,7 @@ mod tests {
 
     #[test]
     fn int_or() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b0011_1100;
         let rhs = 0b1010_0101;
@@ -2788,7 +2788,7 @@ mod tests {
 
     #[test]
     fn int_xor() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b1111_0000_0011_1100;
         let rhs = 0b0000_1111_1010_0101;
@@ -2834,7 +2834,7 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2879,7 +2879,7 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2924,7 +2924,7 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -2969,7 +2969,7 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
@@ -3007,7 +3007,7 @@ mod tests {
     #[test]
     fn shift_left() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![0x01u8.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
@@ -3046,7 +3046,7 @@ mod tests {
     #[test]
     fn shift_right() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![0x80u8.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
@@ -3085,7 +3085,7 @@ mod tests {
     #[test]
     fn signed_shift_right() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![0x80u8.into()])?;
             let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
@@ -3123,7 +3123,7 @@ mod tests {
 
     #[test]
     fn call() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -3155,7 +3155,7 @@ mod tests {
 
     #[test]
     fn branch_absolute() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -3187,7 +3187,7 @@ mod tests {
 
     #[test]
     fn branch_pcode_relative() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -3216,7 +3216,7 @@ mod tests {
 
     #[test]
     fn conditional_branch_absolute() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let destination_input = VarnodeData {
             address: Address {
@@ -3258,7 +3258,7 @@ mod tests {
 
     #[test]
     fn conditional_branch_pcode_relative() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let destination_input = VarnodeData {
             address: Address {
@@ -3299,7 +3299,7 @@ mod tests {
     fn popcount() -> Result<()> {
         for n in 0..=8u8 {
             let value: u8 = ((1u16 << n) - 1) as u8;
-            let mut memory = Memory::new(vec![processor_address_space()]);
+            let mut memory = Memory::new();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_bytes(&mut memory, 0, vec![value.into()])?;
 
@@ -3336,7 +3336,7 @@ mod tests {
 
     #[test]
     fn unsupported_opcode() -> Result<()> {
-        let mut memory = Memory::new(vec![processor_address_space()]);
+        let mut memory = Memory::new();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let instruction = PcodeInstruction {
             address: Address {
