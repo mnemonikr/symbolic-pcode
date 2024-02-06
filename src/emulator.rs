@@ -202,11 +202,7 @@ impl StandardPcodeEmulator {
 
     /// Copy a sequence of contiguous bytes from anywhere to anywhere. Size of input0 and output
     /// must be the same.
-    fn copy<M: SymbolicMemory>(
-        &self,
-        memory: &mut M,
-        instruction: &PcodeInstruction,
-    ) -> Result<()> {
+    fn copy(&self, memory: &mut impl SymbolicMemory, instruction: &PcodeInstruction) -> Result<()> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, true)?;
         require_input_sizes_match_output(&instruction)?;
