@@ -1,6 +1,6 @@
 use thiserror;
 
-use crate::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
+use crate::emulator::{ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator};
 use crate::mem::SymbolicMemory;
 use sla::{Address, AddressSpace, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicByte};
@@ -37,13 +37,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: MemoryPcodeEmulator,
+    memory: crate::mem::Memory,
+    emulator: StandardPcodeEmulator,
 }
 
 impl Processor {
     pub fn new(sleigh: Sleigh) -> Self {
         Processor {
-            emulator: MemoryPcodeEmulator::new(sleigh.address_spaces()),
+            memory: crate::mem::Memory::new(sleigh.address_spaces()),
+            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
             sleigh,
         }
     }
@@ -67,7 +69,7 @@ impl Processor {
         <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
         let input = self.sleigh.register_from_name(register_name);
-        let value = self.emulator.memory().read_concrete_value::<T>(&input)?;
+        let value = self.memory.read_concrete_value::<T>(&input)?;
         Ok(value)
     }
 
@@ -83,7 +85,7 @@ impl Processor {
             .map(Into::<SymbolicByte>::into)
             .collect::<Vec<_>>();
 
-        self.emulator.memory_mut().write(&varnode, bytes)
+        self.memory.write(&varnode, bytes)
     }
 
     pub fn write_instructions(
@@ -128,7 +130,7 @@ impl Processor {
     pub fn emulate(&mut self, address: Address) -> Result<Address> {
         let pcode = self
             .sleigh
-            .pcode(self.emulator.memory(), &address)
+            .pcode(&self.memory, &address)
             .map_err(|err| Error::InstructionDecoding(err))?;
         let next_addr = address.offset + pcode.num_bytes_consumed as u64;
         let mut instruction_index = 0;
@@ -140,7 +142,7 @@ impl Processor {
                 &pcode.pcode_instructions[usize::try_from(instruction_index).unwrap_unchecked()]
             };
 
-            match self.emulator.emulate(&instruction)? {
+            match self.emulator.emulate(&mut self.memory, &instruction)? {
                 ControlFlow::Jump(destination) => match destination {
                     Destination::MachineAddress(addr) => {
                         return Ok(addr);

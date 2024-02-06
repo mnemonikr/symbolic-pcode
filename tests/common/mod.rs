@@ -2,23 +2,26 @@ use std::{collections::BTreeMap, fs};
 
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
-use symbolic_pcode::emulator::{ControlFlow, Destination, MemoryPcodeEmulator, PcodeEmulator};
-use symbolic_pcode::mem::SymbolicMemory;
+use symbolic_pcode::emulator::{ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator};
+use symbolic_pcode::mem::{Memory, SymbolicMemory};
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: MemoryPcodeEmulator,
+    emulator: StandardPcodeEmulator,
+    memory: Memory,
     executed_instructions: BTreeMap<OpCode, usize>,
 }
 
 impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
-        let emulator = MemoryPcodeEmulator::new(sleigh.address_spaces());
+        let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+        let memory = Memory::new(sleigh.address_spaces());
 
         Processor {
             sleigh,
             emulator,
+            memory,
             executed_instructions: Default::default(),
         }
     }
@@ -51,8 +54,7 @@ impl Processor {
                 bitvar += 8;
             }
 
-            self.emulator
-                .memory_mut()
+            self.memory
                 .write(&output, bytes)
                 .expect("failed to write data");
         }
@@ -69,8 +71,7 @@ impl Processor {
         <T as TryFrom<usize>>::Error: std::error::Error + 'static,
     {
         let input = self.sleigh.register_from_name(register_name);
-        self.emulator
-            .memory()
+        self.memory
             .read_concrete_value::<T>(&input)
             .expect("failed to read value")
     }
@@ -102,8 +103,7 @@ impl Processor {
             .map(Into::<SymbolicByte>::into)
             .collect::<Vec<_>>();
 
-        self.emulator
-            .memory_mut()
+        self.memory
             .write(&output, bytes)
             .expect("failed to write data");
     }
@@ -144,7 +144,7 @@ impl Processor {
     }
 
     fn emulate(&mut self, instruction_address: Address) -> Result<u64, String> {
-        let pcode = self.sleigh.pcode(&self.emulator, &instruction_address)?;
+        let pcode = self.sleigh.pcode(&self.memory, &instruction_address)?;
         let next_addr = instruction_address.offset + pcode.num_bytes_consumed as u64;
 
         if pcode.pcode_instructions.len() == 0 {
@@ -153,7 +153,7 @@ impl Processor {
 
         for instruction in pcode.pcode_instructions {
             println!("Emulating {instruction}");
-            let result = self.emulator.emulate(&instruction);
+            let result = self.emulator.emulate(&mut self.memory, &instruction);
             *self
                 .executed_instructions
                 .entry(instruction.op_code.into())
