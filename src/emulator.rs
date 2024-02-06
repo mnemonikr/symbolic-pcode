@@ -1007,7 +1007,8 @@ impl StandardPcodeEmulator {
         require_has_output(&instruction, false)?;
 
         // Constant address space indicates a p-code relative branch.
-        if instruction.address.address_space.space_type == AddressSpaceType::Constant {
+        let address_space = &instruction.address.address_space;
+        if address_space.space_type == AddressSpaceType::Constant {
             return Err(Error::IllegalInstruction {
                 instruction: instruction.clone(),
                 reason: format!(
@@ -1017,11 +1018,10 @@ impl StandardPcodeEmulator {
             });
         }
 
-        let offset =
-            Self::indirect_offset(memory, instruction, 0, &instruction.address.address_space)?;
+        let offset = Self::indirect_offset(memory, instruction, 0, address_space)?;
 
         Ok(ControlFlow::Jump(Destination::MachineAddress(Address {
-            address_space: instruction.address.address_space.clone(),
+            address_space: address_space.clone(),
             offset,
         })))
     }
