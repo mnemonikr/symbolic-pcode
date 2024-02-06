@@ -15,12 +15,29 @@ pub enum Error {
 
     /// The provided instruction violates some invariant. An example of this could be missing an
     /// output varnode for an instruction that requires an output.
-    #[error("illegal instruction {0:?}: {1}")]
-    IllegalInstruction(PcodeInstruction, String),
+    #[error("illegal instruction {instruction:?}: {reason}")]
+    IllegalInstruction {
+        instruction: PcodeInstruction,
+        reason: String,
+    },
 
     /// Emulation of this instruction is not implemented
-    #[error("unsupported instruction {0:?}")]
-    UnsupportedInstruction(PcodeInstruction),
+    #[error("unsupported instruction {instruction:?}")]
+    UnsupportedInstruction { instruction: PcodeInstruction },
+
+    #[error("symbolic address loaded from {varnode} in instruction {instruction:?}")]
+    SymbolicAddress {
+        instruction: PcodeInstruction,
+        varnode: VarnodeData,
+        address: Vec<SymbolicByte>,
+    },
+
+    #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
+    UnknownAddressSpace {
+        instruction: PcodeInstruction,
+        varnode: VarnodeData,
+        space_id: usize,
+    },
 
     #[error("internal error: {0}")]
     InternalError(String),
@@ -142,7 +159,11 @@ impl PcodeEmulator for StandardPcodeEmulator {
             OpCode::BranchConditional => return self.conditional_branch(memory, &instruction),
             OpCode::Call => return self.call(memory, &instruction),
             OpCode::CallIndirect => return self.call_ind(memory, &instruction),
-            _ => return Err(Error::UnsupportedInstruction(instruction.clone())),
+            _ => {
+                return Err(Error::UnsupportedInstruction {
+                    instruction: instruction.clone(),
+                })
+            }
         }
 
         Ok(ControlFlow::NextInstruction)
@@ -987,13 +1008,13 @@ impl StandardPcodeEmulator {
 
         // Constant address space indicates a p-code relative branch.
         if instruction.address.address_space.space_type == AddressSpaceType::Constant {
-            return Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!(
+            return Err(Error::IllegalInstruction {
+                instruction: instruction.clone(),
+                reason: format!(
                     "P-code relative branching is not possible with {:?}",
                     instruction.op_code
                 ),
-            ));
+            });
         }
 
         let offset =
@@ -1199,7 +1220,7 @@ impl StandardPcodeEmulator {
     ) -> Result<Address> {
         // Space identifier must be a constant value
         require_input_address_space_type(&instruction, 0, AddressSpaceType::Constant)?;
-        let address_space = self.address_space(&instruction.inputs[0])?.clone();
+        let address_space = self.address_space(&instruction, 0)?.clone();
         let offset = Self::indirect_offset(memory, instruction, 1, &address_space)?;
 
         Ok(Address {
@@ -1218,12 +1239,17 @@ impl StandardPcodeEmulator {
         require_input_size_equals(instruction, input_index, target_space.address_size)?;
 
         // Get concrete bytes. Can return an error if byte is symbolic
+        let offset_bytes = memory.read(&instruction.inputs[input_index])?;
         let offset_bytes: Vec<u8> = memory
             .read(&instruction.inputs[input_index])?
             .into_iter()
             .map(u8::try_from)
             .collect::<std::result::Result<_, sym::ConcretizationError<_>>>()
-            .map_err(|_| Error::InternalError("todo".to_string()))?;
+            .map_err(|_| Error::SymbolicAddress {
+                instruction: instruction.clone(),
+                varnode: instruction.inputs[input_index].clone(),
+                address: offset_bytes,
+            })?;
 
         // Convert vector into array of bytes
         let offset = match target_space.address_size {
@@ -1244,28 +1270,27 @@ impl StandardPcodeEmulator {
         Ok(offset)
     }
 
-    // TODO Replace these mem errors with emulator errors
-    fn address_space(&self, input: &VarnodeData) -> mem::Result<&AddressSpace> {
-        if input.address.address_space.space_type != AddressSpaceType::Constant {
-            return Err(mem::Error::InvalidAddressSpaceType {
-                expected: AddressSpaceType::Constant,
-                address: input.address.clone(),
-            });
-        }
-
-        let space_id =
-            input
-                .address
-                .offset
-                .try_into()
-                .map_err(|err| mem::Error::InvalidAddressSpaceId {
-                    space_id: input.address.offset,
-                    source: err,
-                })?;
+    /// Get the address space encoded by the address offset of the specified input.
+    fn address_space(
+        &self,
+        instruction: &PcodeInstruction,
+        input_index: usize,
+    ) -> Result<&AddressSpace> {
+        let input = &instruction.inputs[input_index];
+        let space_id = input.address.offset.try_into().map_err(|err| {
+            Error::InternalError(format!(
+                "unable to convert offset {offset} into address space id: {err}",
+                offset = input.address.offset,
+            ))
+        })?;
 
         self.address_spaces_by_id
             .get(&space_id)
-            .ok_or(mem::Error::UnknownAddressSpace(space_id))
+            .ok_or(Error::UnknownAddressSpace {
+                instruction: instruction.clone(),
+                varnode: input.clone(),
+                space_id,
+            })
     }
 }
 
@@ -1274,13 +1299,13 @@ fn require_num_inputs(instruction: &PcodeInstruction, num_inputs: usize) -> Resu
     if instruction.inputs.len() == num_inputs {
         Ok(())
     } else {
-        Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!(
-                "expected {num_inputs} inputs, found {}",
-                instruction.inputs.len()
+        Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!(
+                "expected {num_inputs} inputs, found {actual}",
+                actual = instruction.inputs.len()
             ),
-        ))
+        })
     }
 }
 
@@ -1296,24 +1321,24 @@ fn require_has_output(instruction: &PcodeInstruction, has_output: bool) -> Resul
                 .address_space
                 .is_constant()
         {
-            Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!(
+            Err(Error::IllegalInstruction {
+                instruction: instruction.clone(),
+                reason: format!(
                     "instruction output address space is constant: {:?}",
                     instruction.output
                 ),
-            ))
+            })
         } else {
             Ok(())
         }
     } else {
-        Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!(
+        Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!(
                 "instruction has unexpected output: {:?}",
                 instruction.output
             ),
-        ))
+        })
     }
 }
 
@@ -1345,12 +1370,12 @@ fn require_input_address_space_type(
         .address_space
         .space_type;
     if space_type != expected_space_type {
-        return Err(Error::IllegalInstruction(
-                instruction.clone(),
-                format!(
+        return Err(Error::IllegalInstruction {
+                instruction: instruction.clone(),
+                reason: format!(
                     "input[{input_index}] address space type is {space_type:?}, expected {expected_space_type:?}"
                 ),
-        ));
+        });
     }
 
     Ok(())
@@ -1364,13 +1389,13 @@ fn require_input_size_equals(
 ) -> Result<()> {
     let input = &instruction.inputs[input_index];
     if input.size != expected_size {
-        Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!(
+        Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!(
                 "input[{input_index}] size {} != {expected_size}",
                 input.size
             ),
-        ))
+        })
     } else {
         Ok(())
     }
@@ -1380,10 +1405,10 @@ fn require_input_size_equals(
 fn require_output_size_equals(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
     let output_size = instruction.output.as_ref().unwrap().size;
     if output_size != expected_size {
-        return Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!("output size {output_size} != {expected_size}"),
-        ));
+        return Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!("output size {output_size} != {expected_size}"),
+        });
     }
 
     Ok(())
@@ -1393,10 +1418,10 @@ fn require_output_size_equals(instruction: &PcodeInstruction, expected_size: usi
 fn require_output_size_exceeds(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
     let output_size = instruction.output.as_ref().unwrap().size;
     if output_size <= expected_size {
-        return Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!("output size {output_size} must exceed {expected_size}"),
-        ));
+        return Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!("output size {output_size} must exceed {expected_size}"),
+        });
     }
 
     Ok(())
@@ -1409,10 +1434,10 @@ fn require_output_size_at_least(
 ) -> Result<()> {
     let output_size = instruction.output.as_ref().unwrap().size;
     if output_size < expected_size {
-        return Err(Error::IllegalInstruction(
-            instruction.clone(),
-            format!("output size {output_size} must be at least {expected_size}"),
-        ));
+        return Err(Error::IllegalInstruction {
+            instruction: instruction.clone(),
+            reason: format!("output size {output_size} must be at least {expected_size}"),
+        });
     }
 
     Ok(())
@@ -3328,7 +3353,7 @@ mod tests {
         };
 
         let result = emulator.emulate(&mut memory, &instruction);
-        assert!(matches!(result, Err(Error::UnsupportedInstruction(_))));
+        assert!(matches!(result, Err(Error::UnsupportedInstruction { .. })));
 
         Ok(())
     }
