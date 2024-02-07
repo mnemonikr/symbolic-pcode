@@ -161,7 +161,9 @@ fn pcode_coverage() -> Result<(), String> {
     assert_eq!(rax, 0);
 
     processor
+        .emulator()
         .executed_instructions()
+        .into_iter()
         .for_each(|(opcode, count)| println!("Executed {opcode:?}: {count}"));
 
     // Currently the following p-code instructions are not covered by this test:
@@ -170,6 +172,13 @@ fn pcode_coverage() -> Result<(), String> {
     // Bool(Xor)
     // Int(LessThanOrEqual(Signed))
     // Int(LessThanOrEqual(Unsigned))
-    assert_eq!(processor.executed_instructions().count(), 38);
+    assert_eq!(
+        processor
+            .emulator()
+            .executed_instructions()
+            .into_iter()
+            .count(),
+        38
+    );
     Ok(())
 }
