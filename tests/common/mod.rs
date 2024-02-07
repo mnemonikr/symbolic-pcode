@@ -97,7 +97,7 @@ impl Processor {
             }
 
             self.memory
-                .write(&output, bytes)
+                .write(&output, bytes.into_iter())
                 .expect("failed to write data");
         }
     }
@@ -142,8 +142,7 @@ impl Processor {
             .as_ref()
             .into_iter()
             .copied()
-            .map(Into::<SymbolicByte>::into)
-            .collect::<Vec<_>>();
+            .map(Into::<SymbolicByte>::into);
 
         self.memory
             .write(&output, bytes)

@@ -2,14 +2,18 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
-use sla::{Address, AddressSpace, AddressSpaceType, VarnodeData};
+use sla::{Address, AddressSpaceType, VarnodeData};
 use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait SymbolicMemory {
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>>;
-    fn write(&mut self, output: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()>;
+    fn write(
+        &mut self,
+        output: &VarnodeData,
+        data: impl ExactSizeIterator<Item = SymbolicByte>,
+    ) -> Result<()>;
 
     fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
         if varnode.size != 1 {
@@ -117,7 +121,11 @@ impl SymbolicMemory for Memory {
 
     /// Writes the given data to the location specified by the provided varnode. The number of
     /// bytes provided must match the size of the varnode or else an error will be returned.
-    fn write(&mut self, varnode: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()> {
+    fn write(
+        &mut self,
+        varnode: &VarnodeData,
+        data: impl ExactSizeIterator<Item = SymbolicByte>,
+    ) -> Result<()> {
         if data.len() != varnode.size {
             return Err(Error::InvalidArguments(format!(
                 "requested {} bytes to be written, provided {} bytes",
@@ -200,8 +208,30 @@ impl MemoryTree {
         &self.predicate
     }
 
+    /// Create a branch in the memory tree based on the given predicate. The left branch is the
+    /// MemoryTree with the predicate and the right memory model is the MemoryTree with its
+    /// negation.
+    pub fn branch(self, predicate: SymbolicBit) -> (Self, Self) {
+        let rc = Rc::new(self);
+        let positive = Self {
+            predicate: predicate.clone(),
+            parent: Some(Rc::clone(&rc)),
+            memory: Memory::new(),
+        };
+
+        let negative = Self {
+            predicate: !predicate,
+            parent: Some(rc),
+            memory: Memory::new(),
+        };
+
+        (positive, negative)
+    }
+}
+
+impl SymbolicMemory for MemoryTree {
     /// Read the bytes for this varnode.
-    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self.memory.read(&varnode);
         if let Some(ref parent) = self.parent {
             if let Err(Error::UndefinedData(address)) = result {
@@ -239,28 +269,12 @@ impl MemoryTree {
     }
 
     /// Write the data to the location specified by the varnode.
-    pub fn write(&mut self, varnode: &VarnodeData, data: Vec<SymbolicByte>) -> Result<()> {
+    fn write(
+        &mut self,
+        varnode: &VarnodeData,
+        data: impl ExactSizeIterator<Item = SymbolicByte>,
+    ) -> Result<()> {
         self.memory.write(varnode, data)
-    }
-
-    /// Create a branch in the memory tree based on the given predicate. The left branch is the
-    /// MemoryTree with the predicate and the right memory model is the MemoryTree with its
-    /// negation.
-    pub fn branch(self, predicate: SymbolicBit) -> (Self, Self) {
-        let rc = Rc::new(self);
-        let positive = Self {
-            predicate: predicate.clone(),
-            parent: Some(Rc::clone(&rc)),
-            memory: Memory::new(),
-        };
-
-        let negative = Self {
-            predicate: !predicate,
-            parent: Some(rc),
-            memory: Memory::new(),
-        };
-
-        (positive, negative)
     }
 }
 
@@ -298,6 +312,7 @@ impl sla::LoadImage for Memory {
 
 #[cfg(test)]
 mod tests {
+    use sla::AddressSpace;
     use sym::SymbolicBitVec;
 
     use super::*;
@@ -338,7 +353,7 @@ mod tests {
 
         // Read and write value into memory
         let mut memory = Memory::new();
-        memory.write(&varnode, value.clone())?;
+        memory.write(&varnode, value.clone().into_iter())?;
         let read_value = memory.read(&varnode)?;
 
         // Confirm read value matches written value
@@ -368,7 +383,10 @@ mod tests {
             },
             size: 1,
         };
-        memory.write(&varnode, SymbolicBitVec::constant(0xff, 8).into_bytes())?;
+        memory.write(
+            &varnode,
+            SymbolicBitVec::constant(0xff, 8).into_bytes().into_iter(),
+        )?;
 
         // Create a memory tree from this initialized memory and branch on a predicate
         let tree = MemoryTree::new(memory);
@@ -380,7 +398,10 @@ mod tests {
         assert_eq!(*right.predicate(), SymbolicBit::Literal(false));
 
         // Overwrite the initialized value in the left branch only
-        left.write(&varnode, SymbolicBitVec::constant(0x00, 8).into_bytes())?;
+        left.write(
+            &varnode,
+            SymbolicBitVec::constant(0x00, 8).into_bytes().into_iter(),
+        )?;
 
         // Show that the left memory branch has the updated value
         assert_eq!(
@@ -412,7 +433,12 @@ mod tests {
             },
             size: 2,
         };
-        memory.write(&varnode, SymbolicBitVec::constant(0xbeef, 16).into_bytes())?;
+        memory.write(
+            &varnode,
+            SymbolicBitVec::constant(0xbeef, 16)
+                .into_bytes()
+                .into_iter(),
+        )?;
 
         // Create a memory tree from this initialized memory
         let tree = MemoryTree::new(memory);
@@ -421,7 +447,10 @@ mod tests {
 
         // Overwite part of the initial value
         varnode.size = 1;
-        left.write(&varnode, SymbolicBitVec::constant(0xed, 8).into_bytes())?;
+        left.write(
+            &varnode,
+            SymbolicBitVec::constant(0xed, 8).into_bytes().into_iter(),
+        )?;
 
         // Read the entire value and confirm the overwritten portion is read along with the portion
         // that is not overwritten
