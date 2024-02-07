@@ -2,28 +2,70 @@ use std::{collections::BTreeMap, fs};
 
 use sla::{Address, OpCode, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
-use symbolic_pcode::emulator::{ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator};
+use symbolic_pcode::emulator::{
+    self, ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator,
+};
 use symbolic_pcode::mem::{Memory, SymbolicMemory};
+
+pub struct TracingEmulator {
+    inner: StandardPcodeEmulator,
+    executed_instructions: std::cell::RefCell<BTreeMap<OpCode, usize>>,
+}
+
+impl PcodeEmulator for TracingEmulator {
+    fn emulate(
+        &self,
+        memory: &mut impl SymbolicMemory,
+        instruction: &sla::PcodeInstruction,
+    ) -> emulator::Result<ControlFlow> {
+        let result = self.inner.emulate(memory, instruction)?;
+        *self
+            .executed_instructions
+            .borrow_mut()
+            .entry(instruction.op_code.into())
+            .or_default() += 1;
+        Ok(result)
+    }
+}
+
+impl TracingEmulator {
+    pub fn new(inner: StandardPcodeEmulator) -> Self {
+        Self {
+            inner,
+            executed_instructions: Default::default(),
+        }
+    }
+
+    pub fn executed_instructions(&self) -> impl IntoIterator<Item = (OpCode, usize)> {
+        self.executed_instructions
+            .borrow()
+            .iter()
+            .map(|(&op, &count)| (op, count))
+            .collect::<Vec<_>>()
+    }
+}
 
 pub struct Processor {
     sleigh: Sleigh,
-    emulator: StandardPcodeEmulator,
+    emulator: TracingEmulator,
     memory: Memory,
-    executed_instructions: BTreeMap<OpCode, usize>,
 }
 
 impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
-        let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+        let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
         let memory = Memory::new();
 
         Processor {
             sleigh,
             emulator,
             memory,
-            executed_instructions: Default::default(),
         }
+    }
+
+    pub fn emulator(&self) -> &TracingEmulator {
+        &self.emulator
     }
 
     pub fn init_registers(&mut self) {
@@ -120,12 +162,6 @@ impl Processor {
         self.write_data(output, instructions);
     }
 
-    pub fn executed_instructions(&self) -> impl Iterator<Item = (OpCode, usize)> + '_ {
-        self.executed_instructions
-            .iter()
-            .map(|(&op, &count)| (op, count))
-    }
-
     pub fn single_step(&mut self) {
         let rip: u64 = self.read_register("RIP");
         let address = Address {
@@ -154,10 +190,6 @@ impl Processor {
         for instruction in pcode.pcode_instructions {
             println!("Emulating {instruction}");
             let result = self.emulator.emulate(&mut self.memory, &instruction);
-            *self
-                .executed_instructions
-                .entry(instruction.op_code.into())
-                .or_default() += 1;
             // self.emulator.memory().dump();
 
             if let Err(err) = result {

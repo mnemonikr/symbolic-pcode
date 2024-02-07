@@ -171,7 +171,7 @@ impl PcodeEmulator for StandardPcodeEmulator {
 }
 
 impl StandardPcodeEmulator {
-    pub fn new(address_spaces: Vec<AddressSpace>) -> Self {
+    pub fn new(address_spaces: impl IntoIterator<Item = AddressSpace>) -> Self {
         Self {
             address_spaces_by_id: address_spaces
                 .into_iter()

@@ -1,6 +1,6 @@
 use thiserror;
 
-use crate::emulator::{ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator};
+use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::SymbolicMemory;
 use sla::{Address, AddressSpace, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicByte};
@@ -35,23 +35,27 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Processor {
+pub struct Processor<E: PcodeEmulator> {
     sleigh: Sleigh,
     memory: crate::mem::Memory,
-    emulator: StandardPcodeEmulator,
+    emulator: E,
 }
 
-impl Processor {
-    pub fn new(sleigh: Sleigh) -> Self {
+impl<E: PcodeEmulator> Processor<E> {
+    pub fn new(sleigh: Sleigh, emulator: E) -> Self {
         Processor {
             memory: crate::mem::Memory::new(),
-            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
+            emulator,
             sleigh,
         }
     }
 
     pub fn sleigh(&self) -> &Sleigh {
         &self.sleigh
+    }
+
+    pub fn emulator(&self) -> &E {
+        &self.emulator
     }
 
     pub fn write_register_concrete(
