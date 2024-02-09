@@ -612,6 +612,11 @@ impl StandardPcodeEmulator {
         Ok(())
     }
 
+    /// This is an integer multiplication operation. The result of multiplying input0 and input1,
+    /// viewed as integers, is stored in output. Both inputs and output must be the same size. The
+    /// multiplication is performed modulo the size, and the result is true for either a signed or
+    /// unsigned interpretation of the inputs and output. To get extended precision results, the
+    /// inputs must first by zero-extended or sign-extended to the desired size.
     fn int_multiply(
         &self,
         memory: &mut impl SymbolicMemory,
@@ -1441,6 +1446,8 @@ fn require_output_size_at_least(
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use super::*;
     use mem::Memory;
     use sym::{SymbolicBitVec, SymbolicByte};
@@ -1448,7 +1455,7 @@ mod tests {
     fn processor_address_space() -> AddressSpace {
         AddressSpace {
             id: 0,
-            name: "ram".to_string(),
+            name: Cow::Borrowed("ram"),
             word_size: 1,
             address_size: 4,
             space_type: AddressSpaceType::Processor,
@@ -1459,7 +1466,7 @@ mod tests {
     fn unique_address_space() -> AddressSpace {
         AddressSpace {
             id: 1,
-            name: "unique".to_string(),
+            name: Cow::Borrowed("unique"),
             word_size: 1,
             address_size: 8,
             space_type: AddressSpaceType::Internal,
@@ -1470,7 +1477,7 @@ mod tests {
     fn constant_address_space() -> AddressSpace {
         AddressSpace {
             id: 2,
-            name: "constant".to_string(),
+            name: Cow::Borrowed("constant"),
             word_size: 1,
             address_size: 8,
             space_type: AddressSpaceType::Constant,

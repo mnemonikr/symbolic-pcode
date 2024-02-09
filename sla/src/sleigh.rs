@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Once;
 
 use crate::ffi::api;
@@ -84,7 +85,7 @@ impl From<&sys::VarnodeData> for VarnodeData {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AddressSpace {
     pub id: usize,
-    pub name: String,
+    pub name: Cow<'static, str>,
     pub word_size: usize,
     pub address_size: usize,
     pub space_type: AddressSpaceType,
@@ -107,7 +108,7 @@ impl From<&sys::AddrSpace> for AddressSpace {
     fn from(address_space: &sys::AddrSpace) -> Self {
         Self {
             id: (address_space as *const _) as usize,
-            name: address_space.name().to_string(),
+            name: Cow::Owned(address_space.name().to_string()),
             word_size: address_space.word_size().try_into().unwrap(),
             address_size: address_space.address_size().try_into().unwrap(),
             space_type: address_space.space_type().into(),

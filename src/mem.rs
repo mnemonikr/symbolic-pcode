@@ -312,6 +312,8 @@ impl sla::LoadImage for Memory {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use sla::AddressSpace;
     use sym::SymbolicBitVec;
 
@@ -320,7 +322,7 @@ mod tests {
     fn address_space(id: usize) -> AddressSpace {
         AddressSpace {
             id,
-            name: String::from("test_space"),
+            name: Cow::Borrowed("test_space"),
             word_size: 1,
             address_size: 8, // 64-bit
             space_type: AddressSpaceType::Processor,
@@ -331,7 +333,7 @@ mod tests {
     fn const_space() -> AddressSpace {
         AddressSpace {
             id: 0,
-            name: String::from("constant_space"),
+            name: Cow::Borrowed("constant_space"),
             word_size: 1,
             address_size: 8, // 64-bit
             space_type: AddressSpaceType::Constant,
