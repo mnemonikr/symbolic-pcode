@@ -86,8 +86,7 @@ impl<E: PcodeEmulator> Processor<E> {
             .as_ref()
             .into_iter()
             .copied()
-            .map(Into::<SymbolicByte>::into)
-            .collect::<Vec<_>>();
+            .map(Into::<SymbolicByte>::into);
 
         self.memory.write(&varnode, bytes)
     }

@@ -196,7 +196,7 @@ impl StandardPcodeEmulator {
         instruction: &PcodeInstruction,
         result: Vec<SymbolicByte>,
     ) -> Result<()> {
-        memory.write(&instruction.output.as_ref().unwrap(), result)?;
+        memory.write(&instruction.output.as_ref().unwrap(), result.into_iter())?;
         Ok(())
     }
 
@@ -271,8 +271,8 @@ impl StandardPcodeEmulator {
             size: input.size,
         };
 
-        let data = memory.read(&input)?.into_iter().collect();
-        memory.write(&output, data)?;
+        let data = memory.read(&input)?;
+        memory.write(&output, data.into_iter())?;
 
         Ok(())
     }
@@ -1491,7 +1491,7 @@ mod tests {
             size: bytes.len(),
         };
 
-        memory.write(&varnode, bytes)?;
+        memory.write(&varnode, bytes.into_iter())?;
         Ok(varnode)
     }
 
@@ -1525,7 +1525,7 @@ mod tests {
             output: Some(output.clone()),
         };
 
-        memory.write(&input, data)?;
+        memory.write(&input, data.into_iter())?;
         emulator.emulate(&mut memory, &instruction)?;
         memory.read(&output)?;
         assert_eq!(memory.read_concrete_value::<u32>(&input)?, 0xDEADBEEF);
@@ -1548,7 +1548,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&data_input, data)?;
+        memory.write(&data_input, data.into_iter())?;
 
         // Write 0x04030201 to 0x0. This is the load indirection
         let offset_data = vec![0x01u8.into(), 0x02u8.into(), 0x03u8.into(), 0x04u8.into()];
@@ -1559,7 +1559,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&offset_input, offset_data)?;
+        memory.write(&offset_input, offset_data.into_iter())?;
 
         // Set the address space input offset to the space id of the processor addr space
         // It is important that the address space of this varnode is the constant space.
@@ -1611,7 +1611,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&data_input, data)?;
+        memory.write(&data_input, data.into_iter())?;
 
         // Write 0x04030201 to 0x0. This is the store indirection
         let offset_data = vec![0x01u8.into(), 0x02u8.into(), 0x03u8.into(), 0x04u8.into()];
@@ -1622,7 +1622,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&offset_input, offset_data)?;
+        memory.write(&offset_input, offset_data.into_iter())?;
 
         // Set the address space input offset to the space id of the processor addr space
         // It is important that the address space of this varnode is the constant space.
@@ -1675,7 +1675,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&lhs_input, lhs_data)?;
+        memory.write(&lhs_input, lhs_data.into_iter())?;
 
         let rhs_data = vec![0xEFu8.into(), 0xBEu8.into(), 0x00u8.into(), 0x00u8.into()];
         let rhs_input = VarnodeData {
@@ -1685,7 +1685,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&rhs_input, rhs_data)?;
+        memory.write(&rhs_input, rhs_data.into_iter())?;
 
         let output = VarnodeData {
             address: Address {
@@ -1773,7 +1773,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&lhs_input, lhs_data)?;
+        memory.write(&lhs_input, lhs_data.into_iter())?;
 
         let rhs_data = vec![0xEFu8.into(), 0xBEu8.into(), 0x00u8.into(), 0x00u8.into()];
         let rhs_input = VarnodeData {
@@ -1783,7 +1783,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&rhs_input, rhs_data)?;
+        memory.write(&rhs_input, rhs_data.into_iter())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2110,7 +2110,7 @@ mod tests {
             },
             size: 1,
         };
-        memory.write(&input, data)?;
+        memory.write(&input, data.into_iter())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2149,7 +2149,7 @@ mod tests {
             },
             size: 2,
         };
-        memory.write(&data_varnode, data)?;
+        memory.write(&data_varnode, data.into_iter())?;
 
         let input_positive = VarnodeData {
             address: Address {
@@ -2217,7 +2217,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&lhs_input, data.clone())?;
+        memory.write(&lhs_input, data.iter().cloned())?;
 
         let rhs_input = VarnodeData {
             address: Address {
@@ -2226,7 +2226,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&rhs_input, data.clone())?;
+        memory.write(&rhs_input, data.iter().cloned())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2255,7 +2255,7 @@ mod tests {
 
         memory.write(
             &rhs_input,
-            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()],
+            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()].into_iter(),
         )?;
 
         emulator.emulate(&mut memory, &instruction)?;
@@ -2281,7 +2281,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&lhs_input, data.clone())?;
+        memory.write(&lhs_input, data.iter().cloned())?;
 
         let rhs_input = VarnodeData {
             address: Address {
@@ -2290,7 +2290,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&rhs_input, data.clone())?;
+        memory.write(&rhs_input, data.iter().cloned())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2319,7 +2319,7 @@ mod tests {
 
         memory.write(
             &rhs_input,
-            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()],
+            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()].into_iter(),
         )?;
         emulator.emulate(&mut memory, &instruction)?;
         assert_eq!(
@@ -2375,7 +2375,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&data_input, data)?;
+        memory.write(&data_input, data.into_iter())?;
 
         let truncation_input = VarnodeData {
             address: Address {
