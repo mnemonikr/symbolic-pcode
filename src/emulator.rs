@@ -155,9 +155,9 @@ impl PcodeEmulator for StandardPcodeEmulator {
             OpCode::Bool(BoolOp::Xor) => self.bool_xor(memory, &instruction)?,
             OpCode::Return => return self.return_instruction(memory, &instruction),
             OpCode::BranchIndirect => return self.branch_ind(memory, &instruction),
-            OpCode::Branch => return self.branch(memory, &instruction),
+            OpCode::Branch => return self.branch(&instruction),
             OpCode::BranchConditional => return self.conditional_branch(memory, &instruction),
-            OpCode::Call => return self.call(memory, &instruction),
+            OpCode::Call => return self.call(&instruction),
             OpCode::CallIndirect => return self.call_ind(memory, &instruction),
             _ => {
                 return Err(Error::UnsupportedInstruction {
@@ -297,11 +297,7 @@ impl StandardPcodeEmulator {
     /// instruction. For example, if the BRANCH occurs as the pcode operation with index 5 for the
     /// instruction, it can branch to operation with index 8 by specifying a constant destination
     /// "address" of 3. Negative constants can be used for backward branches.
-    fn branch(
-        &self,
-        memory: &mut impl SymbolicMemory,
-        instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    fn branch(&self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
         require_num_inputs(&instruction, 1)?;
         require_has_output(&instruction, false)?;
         Ok(ControlFlow::Jump(Self::branch_destination(
@@ -344,12 +340,8 @@ impl StandardPcodeEmulator {
     /// recovery of the parameters being passed to the logical call represented by this operation.
     /// These additional parameters have no effect on the original semantics of the raw p-code but
     /// naturally hold the varnode values flowing into the call.
-    fn call(
-        &self,
-        memory: &mut impl SymbolicMemory,
-        instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
-        self.branch(memory, instruction)
+    fn call(&self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+        self.branch(instruction)
     }
 
     /// This instruction is semantically equivalent to the BRANCHIND instruction. It does not
@@ -612,6 +604,11 @@ impl StandardPcodeEmulator {
         Ok(())
     }
 
+    /// This is an integer multiplication operation. The result of multiplying input0 and input1,
+    /// viewed as integers, is stored in output. Both inputs and output must be the same size. The
+    /// multiplication is performed modulo the size, and the result is true for either a signed or
+    /// unsigned interpretation of the inputs and output. To get extended precision results, the
+    /// inputs must first by zero-extended or sign-extended to the desired size.
     fn int_multiply(
         &self,
         memory: &mut impl SymbolicMemory,
@@ -1441,6 +1438,8 @@ fn require_output_size_at_least(
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
     use super::*;
     use mem::Memory;
     use sym::{SymbolicBitVec, SymbolicByte};
@@ -1448,7 +1447,7 @@ mod tests {
     fn processor_address_space() -> AddressSpace {
         AddressSpace {
             id: 0,
-            name: "ram".to_string(),
+            name: Cow::Borrowed("ram"),
             word_size: 1,
             address_size: 4,
             space_type: AddressSpaceType::Processor,
@@ -1459,7 +1458,7 @@ mod tests {
     fn unique_address_space() -> AddressSpace {
         AddressSpace {
             id: 1,
-            name: "unique".to_string(),
+            name: Cow::Borrowed("unique"),
             word_size: 1,
             address_size: 8,
             space_type: AddressSpaceType::Internal,
@@ -1470,7 +1469,7 @@ mod tests {
     fn constant_address_space() -> AddressSpace {
         AddressSpace {
             id: 2,
-            name: "constant".to_string(),
+            name: Cow::Borrowed("constant"),
             word_size: 1,
             address_size: 8,
             space_type: AddressSpaceType::Constant,

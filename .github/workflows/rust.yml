@@ -20,9 +20,9 @@ jobs:
         submodules: recursive
     - name: Build
       run: cargo build --verbose
-    - name: Run tests
+    - name: Unit Tests
       run: cargo test --workspace --verbose
-    - name: Run coverage report
+    - name: Coverage Report
       run: |
         rustup component add llvm-tools-preview
         PATH=$(rustup show home | xargs -I '{}' find {} -name 'llvm-profdata' | xargs -I '{}' dirname {}):$PATH
