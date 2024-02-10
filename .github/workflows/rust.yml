@@ -22,8 +22,6 @@ jobs:
       run: cargo build --verbose
     - name: Unit Tests
       run: cargo test --workspace --verbose
-    - name: Benchmarks
-      run: cargo bench
     - name: Coverage Report
       run: |
         rustup component add llvm-tools-preview
