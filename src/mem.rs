@@ -7,13 +7,8 @@ use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub trait SymbolicMemory {
+pub trait SymbolicMemoryReader {
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>>;
-    fn write(
-        &mut self,
-        output: &VarnodeData,
-        data: impl ExactSizeIterator<Item = SymbolicByte>,
-    ) -> Result<()>;
 
     fn read_bit(&self, varnode: &VarnodeData) -> Result<SymbolicBit> {
         if varnode.size != 1 {
@@ -27,6 +22,24 @@ pub trait SymbolicMemory {
         Ok(byte[0].clone())
     }
 }
+
+pub trait SymbolicMemoryWriter {
+    fn write(
+        &mut self,
+        output: &VarnodeData,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
+    ) -> Result<()>;
+
+    fn write_address(
+        &mut self,
+        address: Address,
+        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+    ) -> Result<()> {
+        self.write(&VarnodeData::new(address, data.len()), data)
+    }
+}
+
+pub trait SymbolicMemory: SymbolicMemoryReader + SymbolicMemoryWriter {}
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -58,7 +71,9 @@ pub struct Memory {
     data: BTreeMap<usize, BTreeMap<u64, SymbolicByte>>,
 }
 
-impl SymbolicMemory for Memory {
+impl<T: SymbolicMemoryReader + SymbolicMemoryWriter> SymbolicMemory for T {}
+
+impl SymbolicMemoryReader for Memory {
     /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
     /// and only if data is successfully read from the requested addresses.
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
@@ -118,29 +133,89 @@ impl SymbolicMemory for Memory {
             }))
         }
     }
+}
 
+impl SymbolicMemoryWriter for Memory {
     /// Writes the given data to the location specified by the provided varnode. The number of
     /// bytes provided must match the size of the varnode or else an error will be returned.
     fn write(
         &mut self,
         varnode: &VarnodeData,
-        data: impl ExactSizeIterator<Item = SymbolicByte>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
-        if data.len() != varnode.size {
+        let data = data.into_iter();
+        let (lower_size, upper_size) = data.size_hint();
+
+        if upper_size
+            .filter(|&size| size == lower_size && size == varnode.size)
+            .is_none()
+        {
+            // Bounds do not exactly match varnode size. Check if size falls out of bounds
+            if varnode.size < lower_size {
+                return Err(Error::InvalidArguments(format!(
+                    "requested {} bytes to be written, provided lower bound {lower_size} bytes",
+                    varnode.size
+                )));
+            }
+
+            if let Some(upper_size) = upper_size {
+                if upper_size < varnode.size {
+                    return Err(Error::InvalidArguments(format!(
+                        "requested {} bytes to be written, provided upper bound {upper_size} bytes",
+                        varnode.size
+                    )));
+                }
+            }
+        }
+
+        // Make sure the varnode does not overflow the offset
+        let overflows = u64::try_from(varnode.size)
+            .ok()
+            .map(|size| varnode.address.offset.checked_add(size))
+            .flatten()
+            .is_none();
+
+        if overflows {
             return Err(Error::InvalidArguments(format!(
-                "requested {} bytes to be written, provided {} bytes",
-                varnode.size,
-                data.len()
+                "varnode size {size} overflows address offset {offset}",
+                size = varnode.size,
+                offset = varnode.address.offset
             )));
         }
 
         let space_id = varnode.address.address_space.id;
         let memory = self.data.entry(space_id).or_default();
+        let rollback_fn = |memory: &mut BTreeMap<u64, SymbolicByte>, rollback| {
+            let mut offset = varnode.address.offset;
+            for rollback_value in rollback {
+                if let Some(value) = rollback_value {
+                    memory.insert(offset, value);
+                }
+                offset += 1;
+            }
+        };
 
         let mut offset = varnode.address.offset;
+        let mut rollback = Vec::with_capacity(varnode.size);
         for byte in data {
-            memory.insert(offset, byte);
+            if rollback.len() == varnode.size {
+                rollback_fn(memory, rollback);
+                return Err(Error::InvalidArguments(format!(
+                    "too many bytes provided, expected {}",
+                    varnode.size
+                )));
+            }
+            rollback.push(memory.insert(offset, byte.into()));
             offset += 1;
+        }
+
+        let bytes_written = rollback.len();
+        if bytes_written < varnode.size {
+            rollback_fn(memory, rollback);
+            return Err(Error::InvalidArguments(format!(
+                "not enough bytes provided, {bytes_written} < expected {size}",
+                size = varnode.size
+            )));
         }
 
         Ok(())
@@ -229,7 +304,7 @@ impl MemoryTree {
     }
 }
 
-impl SymbolicMemory for MemoryTree {
+impl SymbolicMemoryReader for MemoryTree {
     /// Read the bytes for this varnode.
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self.memory.read(&varnode);
@@ -267,19 +342,39 @@ impl SymbolicMemory for MemoryTree {
 
         result
     }
+}
 
+impl SymbolicMemoryWriter for MemoryTree {
     /// Write the data to the location specified by the varnode.
     fn write(
         &mut self,
         varnode: &VarnodeData,
-        data: impl ExactSizeIterator<Item = SymbolicByte>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
         self.memory.write(varnode, data)
     }
 }
 
+pub struct ExecutableMemory<M: SymbolicMemory>(pub M);
+
+impl<M: SymbolicMemory> SymbolicMemoryReader for ExecutableMemory<M> {
+    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        self.0.read(varnode)
+    }
+}
+
+impl<M: SymbolicMemory> SymbolicMemoryWriter for ExecutableMemory<M> {
+    fn write(
+        &mut self,
+        output: &VarnodeData,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
+    ) -> Result<()> {
+        self.0.write(output, data)
+    }
+}
+
 /// Implementation of the LoadImage trait to enable loading instructions from memory
-impl sla::LoadImage for Memory {
+impl<M: SymbolicMemory> sla::LoadImage for ExecutableMemory<M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
         let bytes = self.read(&input);
 

@@ -24,6 +24,15 @@ pub struct Address {
     pub address_space: AddressSpace,
 }
 
+impl Address {
+    pub fn new(address_space: AddressSpace, offset: u64) -> Self {
+        Self {
+            address_space,
+            offset,
+        }
+    }
+}
+
 impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -59,6 +68,10 @@ impl std::fmt::Display for VarnodeData {
 }
 
 impl VarnodeData {
+    pub fn new(address: Address, size: usize) -> Self {
+        Self { address, size }
+    }
+
     pub fn range(&self) -> std::ops::Range<u64> {
         let offset = self.address.offset * self.address.address_space.word_size as u64;
         let size: u64 = self

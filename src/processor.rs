@@ -1,9 +1,9 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::SymbolicMemory;
+use crate::mem::{ExecutableMemory, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter};
 use sla::{Address, AddressSpace, Sleigh, VarnodeData};
-use sym::{SymbolicBit, SymbolicByte};
+use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
 // derivation that converts emulator errors into processor errors.
@@ -29,22 +29,25 @@ pub enum Error {
         expected: AddressSpace,
     },
 
+    #[error("invalid argument: {0}")]
+    InvalidArgument(String),
+
     #[error("internal error: {0}")]
     InternalError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Processor<E: PcodeEmulator> {
+pub struct Processor<E: PcodeEmulator, M: SymbolicMemory> {
     sleigh: Sleigh,
-    memory: crate::mem::Memory,
     emulator: E,
+    memory: ExecutableMemory<M>,
 }
 
-impl<E: PcodeEmulator> Processor<E> {
-    pub fn new(sleigh: Sleigh, emulator: E) -> Self {
+impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
+    pub fn new(sleigh: Sleigh, emulator: E, memory: M) -> Self {
         Processor {
-            memory: crate::mem::Memory::new(),
+            memory: ExecutableMemory(memory),
             emulator,
             sleigh,
         }
@@ -58,53 +61,54 @@ impl<E: PcodeEmulator> Processor<E> {
         &self.emulator
     }
 
-    pub fn write_register_concrete(
-        &mut self,
-        register_name: impl AsRef<str>,
-        data: impl AsRef<[u8]>,
-    ) -> crate::mem::Result<()> {
-        let output = self.sleigh.register_from_name(register_name);
-        self.write_concrete(output, data)
+    pub fn register(&self, name: impl AsRef<str>) -> VarnodeData {
+        self.sleigh.register_from_name(name)
     }
 
-    pub fn read_register<T>(&mut self, register_name: impl AsRef<str>) -> Result<T>
-    where
-        T: TryFrom<usize>,
-        <T as TryFrom<usize>>::Error: std::error::Error + 'static,
-    {
-        let input = self.sleigh.register_from_name(register_name);
-        let value = self.memory.read_concrete_value::<T>(&input)?;
-        Ok(value)
-    }
-
-    pub fn write_concrete(
-        &mut self,
-        varnode: VarnodeData,
-        data: impl AsRef<[u8]>,
-    ) -> crate::mem::Result<()> {
-        let bytes = data
-            .as_ref()
+    pub fn address_space(&self, name: impl AsRef<str>) -> Result<AddressSpace> {
+        let name = name.as_ref();
+        self.sleigh
+            .address_spaces()
             .into_iter()
-            .copied()
-            .map(Into::<SymbolicByte>::into);
-
-        self.memory.write(&varnode, bytes)
+            .find(|addr_space| addr_space.name == name)
+            .ok_or_else(|| Error::InvalidArgument(format!("unknown address space: {name}")))
     }
 
-    pub fn write_instructions(
+    pub fn memory_mut(&mut self) -> &mut impl SymbolicMemory {
+        &mut self.memory
+    }
+
+    pub fn read_register(&self, name: impl AsRef<str>) -> Result<Vec<SymbolicByte>> {
+        let register = self.register(name);
+        let result = self.memory.read(&register)?;
+        Ok(result)
+    }
+
+    pub fn write_register(
         &mut self,
-        base_address: u64,
-        instructions: impl AsRef<[u8]>,
+        name: impl AsRef<str>,
+        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+    ) -> Result<()> {
+        let register = self.register(name);
+        let result = self.memory.write(&register, data)?;
+        Ok(result)
+    }
+
+    pub fn write_address(
+        &mut self,
+        address: Address,
+        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
         let varnode = VarnodeData {
-            address: Address {
-                offset: base_address,
-                address_space: self.sleigh.default_code_space(),
-            },
-            size: instructions.as_ref().len(),
+            address,
+            size: data.len(),
         };
-        self.write_concrete(varnode, instructions)?;
+        self.memory.write(&varnode, data)?;
         Ok(())
+    }
+
+    pub fn default_code_space(&self) -> AddressSpace {
+        self.sleigh.default_code_space()
     }
 
     /// Emulates the current instruction in the instruction register. This assumes the instruction
@@ -113,7 +117,14 @@ impl<E: PcodeEmulator> Processor<E> {
     /// If the next instruction is an address into a different address space, the error variant
     /// [Error::InvalidAddressSpace] is returned.
     pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
-        let rip: u64 = self.read_register(&instruction_register_name)?;
+        // TODO Better error here
+        let rip = self
+            .read_register(&instruction_register_name)?
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .map_err(|_| Error::InternalError("symbolic instruction address".into()))?;
+
         let next_instr = self.emulate(Address {
             offset: rip,
             address_space: self.sleigh.default_code_space(),
@@ -126,7 +137,15 @@ impl<E: PcodeEmulator> Processor<E> {
             });
         }
 
-        self.write_register_concrete(instruction_register_name, next_instr.offset.to_le_bytes())?;
+        self.write_register(
+            instruction_register_name,
+            next_instr
+                .offset
+                .to_le_bytes()
+                .into_iter()
+                .map(SymbolicByte::from),
+        )?;
+
         Ok(())
     }
 
@@ -146,6 +165,9 @@ impl<E: PcodeEmulator> Processor<E> {
             };
 
             match self.emulator.emulate(&mut self.memory, &instruction)? {
+                ControlFlow::NextInstruction => {
+                    instruction_index += 1;
+                }
                 ControlFlow::Jump(destination) => match destination {
                     Destination::MachineAddress(addr) => {
                         return Ok(addr);
@@ -154,28 +176,22 @@ impl<E: PcodeEmulator> Processor<E> {
                         instruction_index += offset;
                     }
                 },
-                ControlFlow::ConditionalBranch(condition, destination) => {
-                    if let sym::SymbolicBit::Literal(condition) = condition {
-                        if condition {
-                            match destination {
-                                Destination::MachineAddress(addr) => {
-                                    assert_eq!(
-                                        addr.address_space,
-                                        self.sleigh.default_code_space()
-                                    );
-                                    return Ok(addr);
-                                }
-                                Destination::PcodeAddress(offset) => {
-                                    instruction_index += offset;
-                                }
-                            }
+                ControlFlow::ConditionalBranch(sym::SymbolicBit::Literal(true), destination) => {
+                    match destination {
+                        Destination::MachineAddress(addr) => {
+                            assert_eq!(addr.address_space, self.sleigh.default_code_space());
+                            return Ok(addr);
                         }
-                    } else {
-                        return Err(Error::SymbolicCondition(condition));
+                        Destination::PcodeAddress(offset) => {
+                            instruction_index += offset;
+                        }
                     }
                 }
-                ControlFlow::NextInstruction => {
+                ControlFlow::ConditionalBranch(sym::SymbolicBit::Literal(false), _) => {
                     instruction_index += 1;
+                }
+                ControlFlow::ConditionalBranch(condition, _) => {
+                    return Err(Error::SymbolicCondition(condition));
                 }
             }
         }
