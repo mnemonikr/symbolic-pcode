@@ -178,7 +178,6 @@ fn x86_64_registers() {
 /// ram:000000000000000a | ADD EAX,EAX
 /// ram:000000000000000c | POP RBP
 /// ram:000000000000000d | RET
-#[ignore]
 #[test]
 fn doubler_32b() -> Result<(), processor::Error> {
     let sleigh = x86_64_sleigh();
@@ -276,7 +275,7 @@ fn pcode_coverage() -> processor::Result<()> {
     }
 
     let rax: u64 = processor
-        .read_register("RIP")?
+        .read_register("RAX")?
         .into_iter()
         .collect::<SymbolicBitVec>()
         .try_into()
