@@ -8,7 +8,7 @@ use sla::{
 };
 use sym::SymbolicByte;
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
-use symbolic_pcode::mem::{Memory, SymbolicMemory};
+use symbolic_pcode::mem::{Memory, SymbolicMemoryWriter};
 
 const fn processor_space() -> AddressSpace {
     AddressSpace {
