@@ -71,68 +71,6 @@ pub struct Memory {
     data: BTreeMap<usize, BTreeMap<u64, SymbolicByte>>,
 }
 
-pub enum UndefinedDataBehavior<'a> {
-    ReadFromAuthority(&'a dyn SymbolicMemoryReader),
-    WriteSymbolicData,
-    Error,
-}
-
-pub struct FallbackMemory<'a, M: SymbolicMemory> {
-    address_space_behaviors: BTreeMap<usize, UndefinedDataBehavior<'a>>,
-    memory: std::cell::RefCell<M>,
-}
-
-impl<'a, M: SymbolicMemory> FallbackMemory<'a, M> {
-    pub fn undefined_data_behavior(
-        &mut self,
-        address_space: &AddressSpace,
-        behavior: UndefinedDataBehavior<'a>,
-    ) {
-        self.address_space_behaviors
-            .insert(address_space.id, behavior);
-    }
-}
-
-impl<'a, M: SymbolicMemory> SymbolicMemoryReader for FallbackMemory<'a, M> {
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        let result = self.memory.borrow().read(varnode);
-        if matches!(result, Err(Error::UndefinedData(_))) {
-            let behavior = self
-                .address_space_behaviors
-                .get(&varnode.address.address_space.id)
-                .unwrap_or(&UndefinedDataBehavior::Error);
-
-            match behavior {
-                UndefinedDataBehavior::WriteSymbolicData => {
-                    todo!("create symbolic data, write to memory")
-                }
-                UndefinedDataBehavior::Error => {
-                    return result;
-                }
-                UndefinedDataBehavior::ReadFromAuthority(authority) => {
-                    return authority.read(varnode);
-                }
-            }
-        } else {
-            // Data is not undefined, no special handling required
-            return result;
-        }
-    }
-}
-
-impl<'a, M> SymbolicMemoryWriter for FallbackMemory<'a, M>
-where
-    M: SymbolicMemory,
-{
-    fn write(
-        &mut self,
-        output: &VarnodeData,
-        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        self.memory.borrow_mut().write(output, data)
-    }
-}
-
 impl<T: SymbolicMemoryReader + SymbolicMemoryWriter> SymbolicMemory for T {}
 
 impl SymbolicMemoryReader for Memory {
