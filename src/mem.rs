@@ -27,7 +27,7 @@ pub trait SymbolicMemoryWriter {
     fn write(
         &mut self,
         output: &VarnodeData,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()>;
 
     fn write_address(
@@ -127,7 +127,7 @@ where
     fn write(
         &mut self,
         output: &VarnodeData,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
         self.memory.borrow_mut().write(output, data)
     }
@@ -203,23 +203,81 @@ impl SymbolicMemoryWriter for Memory {
     fn write(
         &mut self,
         varnode: &VarnodeData,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
-        if data.len() != varnode.size {
+        let data = data.into_iter();
+        let (lower_size, upper_size) = data.size_hint();
+
+        if upper_size
+            .filter(|&size| size == lower_size && size == varnode.size)
+            .is_none()
+        {
+            // Bounds do not exactly match varnode size. Check if size falls out of bounds
+            if varnode.size < lower_size {
+                return Err(Error::InvalidArguments(format!(
+                    "requested {} bytes to be written, provided lower bound {lower_size} bytes",
+                    varnode.size
+                )));
+            }
+
+            if let Some(upper_size) = upper_size {
+                if upper_size < varnode.size {
+                    return Err(Error::InvalidArguments(format!(
+                        "requested {} bytes to be written, provided upper bound {upper_size} bytes",
+                        varnode.size
+                    )));
+                }
+            }
+        }
+
+        // Make sure the varnode does not overflow the offset
+        let overflows = u64::try_from(varnode.size)
+            .ok()
+            .map(|size| varnode.address.offset.checked_add(size))
+            .flatten()
+            .is_none();
+
+        if overflows {
             return Err(Error::InvalidArguments(format!(
-                "requested {} bytes to be written, provided {} bytes",
-                varnode.size,
-                data.len()
+                "varnode size {size} overflows address offset {offset}",
+                size = varnode.size,
+                offset = varnode.address.offset
             )));
         }
 
         let space_id = varnode.address.address_space.id;
         let memory = self.data.entry(space_id).or_default();
+        let rollback_fn = |memory: &mut BTreeMap<u64, SymbolicByte>, rollback| {
+            let mut offset = varnode.address.offset;
+            for rollback_value in rollback {
+                if let Some(value) = rollback_value {
+                    memory.insert(offset, value);
+                }
+                offset += 1;
+            }
+        };
 
         let mut offset = varnode.address.offset;
+        let mut rollback = Vec::with_capacity(varnode.size);
         for byte in data {
-            memory.insert(offset, byte.into());
+            if rollback.len() == varnode.size {
+                rollback_fn(memory, rollback);
+                return Err(Error::InvalidArguments(format!(
+                    "too many bytes provided, expected {}",
+                    varnode.size
+                )));
+            }
+            rollback.push(memory.insert(offset, byte.into()));
             offset += 1;
+        }
+
+        let bytes_written = rollback.len();
+        if bytes_written < varnode.size {
+            rollback_fn(memory, rollback);
+            return Err(Error::InvalidArguments(format!(
+                "not enough bytes provided, {bytes_written} < expected {size}",
+                size = varnode.size
+            )));
         }
 
         Ok(())
@@ -353,7 +411,7 @@ impl SymbolicMemoryWriter for MemoryTree {
     fn write(
         &mut self,
         varnode: &VarnodeData,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
         self.memory.write(varnode, data)
     }
@@ -371,7 +429,7 @@ impl<M: SymbolicMemory> SymbolicMemoryWriter for ExecutableMemory<M> {
     fn write(
         &mut self,
         output: &VarnodeData,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
+        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
         self.0.write(output, data)
     }
