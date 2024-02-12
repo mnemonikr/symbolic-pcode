@@ -61,15 +61,6 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         &self.emulator
     }
 
-    pub fn write_register_concrete(
-        &mut self,
-        register_name: impl AsRef<str>,
-        data: impl AsRef<[u8]>,
-    ) -> crate::mem::Result<()> {
-        let output = self.sleigh.register_from_name(register_name);
-        self.write_concrete(output, data)
-    }
-
     pub fn register(&self, name: impl AsRef<str>) -> VarnodeData {
         self.sleigh.register_from_name(name)
     }
@@ -103,24 +94,6 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         Ok(result)
     }
 
-    pub fn read_address_space(
-        &self,
-        name: impl AsRef<str>,
-        offset: u64,
-        size: usize,
-    ) -> Result<Vec<SymbolicByte>> {
-        let varnode = VarnodeData {
-            address: Address {
-                address_space: self.address_space(name)?,
-                offset,
-            },
-            size,
-        };
-
-        let result = self.memory.read(&varnode)?;
-        Ok(result)
-    }
-
     pub fn write_address(
         &mut self,
         address: Address,
@@ -134,38 +107,8 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         Ok(())
     }
 
-    pub fn write_concrete(
-        &mut self,
-        varnode: VarnodeData,
-        data: impl AsRef<[u8]>,
-    ) -> crate::mem::Result<()> {
-        let bytes = data
-            .as_ref()
-            .into_iter()
-            .copied()
-            .map(Into::<SymbolicByte>::into);
-
-        self.memory.write(&varnode, bytes)
-    }
-
     pub fn default_code_space(&self) -> AddressSpace {
         self.sleigh.default_code_space()
-    }
-
-    pub fn write_instructions(
-        &mut self,
-        base_address: u64,
-        instructions: impl AsRef<[u8]>,
-    ) -> Result<()> {
-        let varnode = VarnodeData {
-            address: Address {
-                offset: base_address,
-                address_space: self.sleigh.default_code_space(),
-            },
-            size: instructions.as_ref().len(),
-        };
-        self.write_concrete(varnode, instructions)?;
-        Ok(())
     }
 
     /// Emulates the current instruction in the instruction register. This assumes the instruction
