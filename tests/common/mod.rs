@@ -1,11 +1,8 @@
 use std::{collections::BTreeMap, fs};
 
-use sla::{Address, OpCode, Sleigh, VarnodeData};
-use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
-use symbolic_pcode::emulator::{
-    self, ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator,
-};
-use symbolic_pcode::mem::{ExecutableMemory, Memory, SymbolicMemory, SymbolicMemoryWriter};
+use sla::{OpCode, Sleigh};
+use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
+use symbolic_pcode::mem::SymbolicMemory;
 
 pub struct TracingEmulator {
     inner: StandardPcodeEmulator,
