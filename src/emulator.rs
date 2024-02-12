@@ -5,7 +5,7 @@ use sla::{
 use sym::SymbolicByte;
 use thiserror;
 
-use crate::mem::{self, Memory, SymbolicMemory};
+use crate::mem::{self, SymbolicMemory};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -1441,7 +1441,7 @@ mod tests {
     use std::borrow::Cow;
 
     use super::*;
-    use mem::Memory;
+    use mem::{Memory, SymbolicMemoryReader, SymbolicMemoryWriter};
     use sym::{SymbolicBitVec, SymbolicByte};
 
     fn processor_address_space() -> AddressSpace {
@@ -1499,7 +1499,7 @@ mod tests {
         let mut memory = Memory::new();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let input = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
@@ -1539,7 +1539,7 @@ mod tests {
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
         // Write 0xDEADBEEF to 0x04030201
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let data_input = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
@@ -1550,7 +1550,7 @@ mod tests {
         memory.write(&data_input, data.into_iter())?;
 
         // Write 0x04030201 to 0x0. This is the load indirection
-        let offset_data = vec![0x01u8.into(), 0x02u8.into(), 0x03u8.into(), 0x04u8.into()];
+        let offset_data = vec![0x01u8, 0x02u8, 0x03u8, 0x04u8];
         let offset_input = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
@@ -1602,7 +1602,7 @@ mod tests {
 
         // Write 0xDEADBEEF somewhere. This value will be retrieved and stored to the specified
         // address determined through the space id and offset indirection.
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let data_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -1613,7 +1613,7 @@ mod tests {
         memory.write(&data_input, data.into_iter())?;
 
         // Write 0x04030201 to 0x0. This is the store indirection
-        let offset_data = vec![0x01u8.into(), 0x02u8.into(), 0x03u8.into(), 0x04u8.into()];
+        let offset_data = vec![0x01u8, 0x02u8, 0x03u8, 0x04u8];
         let offset_input = VarnodeData {
             address: Address {
                 address_space: processor_address_space(),
@@ -1666,7 +1666,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let lhs_data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let lhs_data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let lhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -1676,7 +1676,7 @@ mod tests {
         };
         memory.write(&lhs_input, lhs_data.into_iter())?;
 
-        let rhs_data = vec![0xEFu8.into(), 0xBEu8.into(), 0x00u8.into(), 0x00u8.into()];
+        let rhs_data = vec![0xEFu8, 0xBEu8, 0x00u8, 0x00u8];
         let rhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -1764,7 +1764,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let lhs_data = vec![0x00u8.into(), 0x00u8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let lhs_data = vec![0x00u8, 0x00u8, 0xADu8, 0xDEu8];
         let lhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -1774,7 +1774,7 @@ mod tests {
         };
         memory.write(&lhs_input, lhs_data.into_iter())?;
 
-        let rhs_data = vec![0xEFu8.into(), 0xBEu8.into(), 0x00u8.into(), 0x00u8.into()];
+        let rhs_data = vec![0xEFu8, 0xBEu8, 0x00u8, 0x00u8];
         let rhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -2101,7 +2101,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xFFu8.into()];
+        let data = vec![0xFFu8];
         let input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -2140,7 +2140,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0x7Fu8.into(), 0x80u8.into()];
+        let data = vec![0x7Fu8, 0x80u8];
         let data_varnode = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -2208,7 +2208,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let lhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -2252,10 +2252,7 @@ mod tests {
             "Expected 0xDEADBEEF == 0xDEADBEEF to be 1"
         );
 
-        memory.write(
-            &rhs_input,
-            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()].into_iter(),
-        )?;
+        memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
 
         emulator.emulate(&mut memory, &instruction)?;
         assert_eq!(
@@ -2272,7 +2269,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let lhs_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),
@@ -2316,10 +2313,7 @@ mod tests {
             "Expected 0xDEADBEEF != 0xDEADBEEF to be 0"
         );
 
-        memory.write(
-            &rhs_input,
-            vec![0x0u8.into(), 0x0u8.into(), 0x0u8.into(), 0x0u8.into()].into_iter(),
-        )?;
+        memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
         emulator.emulate(&mut memory, &instruction)?;
         assert_eq!(
             memory.read_concrete_value::<u8>(&output)?,
@@ -2366,7 +2360,7 @@ mod tests {
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
+        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
         let data_input = VarnodeData {
             address: Address {
                 address_space: unique_address_space(),

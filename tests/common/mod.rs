@@ -5,7 +5,7 @@ use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::emulator::{
     self, ControlFlow, Destination, PcodeEmulator, StandardPcodeEmulator,
 };
-use symbolic_pcode::mem::{Memory, SymbolicMemory};
+use symbolic_pcode::mem::{ExecutableMemory, Memory, SymbolicMemory, SymbolicMemoryWriter};
 
 pub struct TracingEmulator {
     inner: StandardPcodeEmulator,
@@ -19,6 +19,7 @@ impl PcodeEmulator for TracingEmulator {
         instruction: &sla::PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
         let result = self.inner.emulate(memory, instruction)?;
+        println!("Emulating {instruction}");
         *self
             .executed_instructions
             .borrow_mut()
@@ -44,18 +45,18 @@ impl TracingEmulator {
             .collect::<Vec<_>>()
     }
 }
-
+/*
 pub struct Processor {
     sleigh: Sleigh,
     emulator: TracingEmulator,
-    memory: Memory,
+    memory: ExecutableMemory<Memory>,
 }
 
 impl Processor {
     pub fn new() -> Self {
         let sleigh = x86_64_sleigh();
         let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
-        let memory = Memory::new();
+        let memory = ExecutableMemory(Memory::new());
 
         Processor {
             sleigh,
@@ -233,7 +234,7 @@ impl Processor {
         Ok(next_addr)
     }
 }
-
+*/
 pub fn x86_64_sleigh() -> Sleigh {
     let mut sleigh = Sleigh::new();
     let sleigh_spec =
