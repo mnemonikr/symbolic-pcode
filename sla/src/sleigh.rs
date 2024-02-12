@@ -598,7 +598,7 @@ mod tests {
             .initialize(&sleigh_spec, &processor_spec)
             .expect("Failed to initialize sleigh");
 
-        let rax = sleigh.register_from_name("RAX");
+        let rax = sleigh.register_from_name("RAX").expect("invalid register");
         assert_eq!(rax.address.address_space.name, "register");
         assert_eq!(rax.address.offset, 0);
         assert_eq!(rax.size, 8);
