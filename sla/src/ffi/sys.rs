@@ -302,7 +302,7 @@ mod default {
 
         // TODO Change this to return Result<..> since exception thrown on invalid name
         #[rust_name = "register_from_name"]
-        fn getRegister<'a>(self: &'a SleighProxy, name: &CxxString) -> &'a VarnodeData;
+        fn getRegister<'a>(self: &'a SleighProxy, name: &CxxString) -> Result<&'a VarnodeData>;
 
         #[rust_name = "register_name"]
         unsafe fn getRegisterNameProxy(

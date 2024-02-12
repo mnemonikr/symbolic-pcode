@@ -346,9 +346,15 @@ impl Sleigh {
         None
     }
 
-    pub fn register_from_name(&self, name: impl AsRef<str>) -> VarnodeData {
+    pub fn register_from_name(
+        &self,
+        name: impl AsRef<str>,
+    ) -> std::result::Result<VarnodeData, String> {
         let_cxx_string!(name = name.as_ref());
-        self.sleigh.register_from_name(&name).into()
+        self.sleigh
+            .register_from_name(&name)
+            .map(VarnodeData::from)
+            .map_err(|err| format!("failed to get register {name}: {err}"))
     }
 
     ///
