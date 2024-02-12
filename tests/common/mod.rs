@@ -19,7 +19,6 @@ impl PcodeEmulator for TracingEmulator {
         instruction: &sla::PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
         let result = self.inner.emulate(memory, instruction)?;
-        println!("Emulating {instruction}");
         *self
             .executed_instructions
             .borrow_mut()

@@ -112,7 +112,7 @@ fn init_registers<E: PcodeEmulator, M: SymbolicMemory>(processor: &mut Processor
 }
 
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
-/*#[test]
+#[test]
 fn x86_64_registers() {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
@@ -121,53 +121,137 @@ fn x86_64_registers() {
 
     let registers = vec!['A', 'B', 'C', 'D'];
     for register in registers {
-        processor.write_register(
-            format!("R{register}X"),
-            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
-        );
-        let rax: u64 = processor.read_register(format!("R{register}X"));
+        processor
+            .write_register(
+                format!("R{register}X"),
+                vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
+            )
+            .expect("failed to write register");
+        let rax: u64 = processor
+            .read_register(format!("R{register}X"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(rax, 0x8877665544332211);
-        let eax: u32 = processor.read_register(format!("E{register}X"));
+        let eax: u32 = processor
+            .read_register(format!("E{register}X"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(eax, 0x44332211);
-        let ax: u16 = processor.read_register(format!("{register}X"));
+        let ax: u16 = processor
+            .read_register(format!("{register}X"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(ax, 0x2211);
-        let ah: u8 = processor.read_register(format!("{register}H"));
+        let ah: u8 = processor
+            .read_register(format!("{register}H"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(ah, 0x22);
-        let al: u8 = processor.read_register(format!("{register}L"));
+        let al: u8 = processor
+            .read_register(format!("{register}L"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(al, 0x11);
     }
 
     let registers = vec!["SI", "DI", "BP", "SP"];
     for register in registers {
-        processor.write_register(
-            format!("R{register}"),
-            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
-        );
-        let r: u64 = processor.read_register(format!("R{register}"));
+        processor
+            .write_register(
+                format!("R{register}"),
+                vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
+            )
+            .expect("failed to write register");
+        let r: u64 = processor
+            .read_register(format!("R{register}"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let e: u32 = processor.read_register(format!("E{register}"));
+        let e: u32 = processor
+            .read_register(format!("E{register}"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(e, 0x44332211);
-        let b: u16 = processor.read_register(format!("{register}"));
+        let b: u16 = processor
+            .read_register(format!("{register}"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(b, 0x2211);
-        let l: u8 = processor.read_register(format!("{register}L"));
+        let l: u8 = processor
+            .read_register(format!("{register}L"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(l, 0x11);
     }
 
     for register in 8..=15 {
-        processor.write_register(
-            format!("R{register}"),
-            vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
-        );
-        let r: u64 = processor.read_register(format!("R{register}"));
+        processor
+            .write_register(
+                format!("R{register}"),
+                vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
+            )
+            .expect("failed to write register");
+        let r: u64 = processor
+            .read_register(format!("R{register}"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let rd: u32 = processor.read_register(format!("R{register}D"));
+        let rd: u32 = processor
+            .read_register(format!("R{register}D"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(rd, 0x44332211);
-        let rw: u16 = processor.read_register(format!("R{register}W"));
+        let rw: u16 = processor
+            .read_register(format!("R{register}W"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(rw, 0x2211);
-        let rb: u8 = processor.read_register(format!("R{register}B"));
+        let rb: u8 = processor
+            .read_register(format!("R{register}B"))
+            .expect("failed to read register")
+            .into_iter()
+            .collect::<SymbolicBitVec>()
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(rb, 0x11);
     }
-}*/
+}
 
 /// Emulates the following x86-64 instructions:
 ///
