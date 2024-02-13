@@ -346,9 +346,15 @@ impl Sleigh {
         None
     }
 
-    pub fn register_from_name(&self, name: impl AsRef<str>) -> VarnodeData {
+    pub fn register_from_name(
+        &self,
+        name: impl AsRef<str>,
+    ) -> std::result::Result<VarnodeData, String> {
         let_cxx_string!(name = name.as_ref());
-        self.sleigh.register_from_name(&name).into()
+        self.sleigh
+            .register_from_name(&name)
+            .map(VarnodeData::from)
+            .map_err(|err| format!("failed to get register {name}: {err}"))
     }
 
     ///
@@ -592,7 +598,7 @@ mod tests {
             .initialize(&sleigh_spec, &processor_spec)
             .expect("Failed to initialize sleigh");
 
-        let rax = sleigh.register_from_name("RAX");
+        let rax = sleigh.register_from_name("RAX").expect("invalid register");
         assert_eq!(rax.address.address_space.name, "register");
         assert_eq!(rax.address.offset, 0);
         assert_eq!(rax.size, 8);

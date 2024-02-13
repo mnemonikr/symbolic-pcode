@@ -61,8 +61,11 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         &self.emulator
     }
 
-    pub fn register(&self, name: impl AsRef<str>) -> VarnodeData {
-        self.sleigh.register_from_name(name)
+    pub fn register(&self, name: impl AsRef<str>) -> Result<VarnodeData> {
+        let name = name.as_ref();
+        self.sleigh
+            .register_from_name(name)
+            .map_err(|err| Error::InvalidArgument(format!("invalid register {name}: {err}")))
     }
 
     pub fn address_space(&self, name: impl AsRef<str>) -> Result<AddressSpace> {
@@ -79,7 +82,7 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
     }
 
     pub fn read_register(&self, name: impl AsRef<str>) -> Result<Vec<SymbolicByte>> {
-        let register = self.register(name);
+        let register = self.register(name)?;
         let result = self.memory.read(&register)?;
         Ok(result)
     }
@@ -89,7 +92,7 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         name: impl AsRef<str>,
         data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
     ) -> Result<()> {
-        let register = self.register(name);
+        let register = self.register(name)?;
         let result = self.memory.write(&register, data)?;
         Ok(result)
     }

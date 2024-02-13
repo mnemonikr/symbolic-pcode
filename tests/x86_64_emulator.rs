@@ -37,7 +37,7 @@ fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor<Tracin
         .expect("failed to write image into memory");
 
     // Init RIP to entry
-    let rip = processor.register("RIP");
+    let rip = processor.register("RIP").expect("invalid register");
     let data = entry.to_le_bytes().into_iter().map(SymbolicByte::from);
     processor
         .memory_mut()
@@ -45,7 +45,7 @@ fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor<Tracin
         .expect("failed to initialize RIP");
 
     // Init RBP to magic EXIT_RIP value
-    let rbp = processor.register("RBP");
+    let rbp = processor.register("RBP").expect("invalid register");
     let data = EXIT_RIP.to_le_bytes().into_iter().map(SymbolicByte::from);
     processor
         .memory_mut()
@@ -66,7 +66,7 @@ fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor<Tracin
         .expect("failed to initialize stack");
 
     // Init RSP to stack address
-    let rsp = processor.register("RSP");
+    let rsp = processor.register("RSP").expect("invalid register");
     let data = INITIAL_STACK
         .to_le_bytes()
         .into_iter()
