@@ -4,7 +4,7 @@ use std::path::Path;
 
 use common::{x86_64_sleigh, TracingEmulator};
 use sla::{Address, VarnodeData};
-use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::{
     emulator::{PcodeEmulator, StandardPcodeEmulator},
     mem::{Memory, SymbolicMemory, SymbolicMemoryWriter},
@@ -127,45 +127,45 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let rax: u64 = processor
-            .read_register(format!("R{register}X"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u64");
+        let rax = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}X"))
+                .expect("failed to read register"),
+            u64::from_le_bytes,
+        )
+        .expect("failed to convert to u64");
         assert_eq!(rax, 0x8877665544332211);
-        let eax: u32 = processor
-            .read_register(format!("E{register}X"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u32");
+        let eax = sym::try_concretize(
+            processor
+                .read_register(format!("E{register}X"))
+                .expect("failed to read register"),
+            u32::from_le_bytes,
+        )
+        .expect("failed to convert to u32");
         assert_eq!(eax, 0x44332211);
-        let ax: u16 = processor
-            .read_register(format!("{register}X"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u16");
+        let ax = sym::try_concretize(
+            processor
+                .read_register(format!("{register}X"))
+                .expect("failed to read register"),
+            u16::from_le_bytes,
+        )
+        .expect("failed to convert to u16");
         assert_eq!(ax, 0x2211);
-        let ah: u8 = processor
-            .read_register(format!("{register}H"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u8");
+        let ah = sym::try_concretize(
+            processor
+                .read_register(format!("{register}H"))
+                .expect("failed to read register"),
+            u8::from_le_bytes,
+        )
+        .expect("failed to convert to u8");
         assert_eq!(ah, 0x22);
-        let al: u8 = processor
-            .read_register(format!("{register}L"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u8");
+        let al = sym::try_concretize(
+            processor
+                .read_register(format!("{register}L"))
+                .expect("failed to read register"),
+            u8::from_le_bytes,
+        )
+        .expect("failed to convert to u8");
         assert_eq!(al, 0x11);
     }
 
@@ -177,37 +177,37 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let r: u64 = processor
-            .read_register(format!("R{register}"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u64");
+        let r = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}"))
+                .expect("failed to read register"),
+            u64::from_le_bytes,
+        )
+        .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let e: u32 = processor
-            .read_register(format!("E{register}"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u32");
+        let e = sym::try_concretize(
+            processor
+                .read_register(format!("E{register}"))
+                .expect("failed to read register"),
+            u32::from_le_bytes,
+        )
+        .expect("failed to convert to u32");
         assert_eq!(e, 0x44332211);
-        let b: u16 = processor
-            .read_register(format!("{register}"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u16");
+        let b = sym::try_concretize(
+            processor
+                .read_register(format!("{register}"))
+                .expect("failed to read register"),
+            u16::from_le_bytes,
+        )
+        .expect("failed to convert to u16");
         assert_eq!(b, 0x2211);
-        let l: u8 = processor
-            .read_register(format!("{register}L"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u8");
+        let l = sym::try_concretize(
+            processor
+                .read_register(format!("{register}L"))
+                .expect("failed to read register"),
+            u8::from_le_bytes,
+        )
+        .expect("failed to convert to u8");
         assert_eq!(l, 0x11);
     }
 
@@ -218,37 +218,37 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let r: u64 = processor
-            .read_register(format!("R{register}"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u64");
+        let r: u64 = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}"))
+                .expect("failed to read register"),
+            u64::from_le_bytes,
+        )
+        .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let rd: u32 = processor
-            .read_register(format!("R{register}D"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u32");
+        let rd: u32 = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}D"))
+                .expect("failed to read register"),
+            u32::from_le_bytes,
+        )
+        .expect("failed to convert to u32");
         assert_eq!(rd, 0x44332211);
-        let rw: u16 = processor
-            .read_register(format!("R{register}W"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u16");
+        let rw: u16 = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}W"))
+                .expect("failed to read register"),
+            u16::from_le_bytes,
+        )
+        .expect("failed to convert to u16");
         assert_eq!(rw, 0x2211);
-        let rb: u8 = processor
-            .read_register(format!("R{register}B"))
-            .expect("failed to read register")
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .expect("failed to convert to u8");
+        let rb: u8 = sym::try_concretize(
+            processor
+                .read_register(format!("R{register}B"))
+                .expect("failed to read register"),
+            u8::from_le_bytes,
+        )
+        .expect("failed to convert to u8");
         assert_eq!(rb, 0x11);
     }
 }
@@ -306,22 +306,14 @@ fn doubler_32b() -> Result<(), processor::Error> {
         processor.single_step("RIP")?;
     }
 
-    let rip: u64 = processor
-        .read_register("RIP")?
-        .into_iter()
-        .collect::<SymbolicBitVec>()
-        .try_into()
+    let rip = sym::try_concretize(processor.read_register("RIP")?, u64::from_le_bytes)
         .expect("failed to convert rip value to u64");
     assert_eq!(rip, 0x66778899aabbccdd, "return address on stack");
 
-    let rax: u32 = processor
-        .read_register("RAX")?
-        .into_iter()
-        .collect::<SymbolicBitVec>()
-        .try_into()
-        .expect("failed to convert rax value to u32");
+    let rax = sym::try_concretize(processor.read_register("RAX")?, u64::from_le_bytes)
+        .expect("failed to convert rax value to u64");
     assert_eq!(
-        rax,
+        u32::try_from(rax).expect("failed to convert rax to u32"),
         2 * initial_value,
         "result should be double initial value: {initial_value}",
     );
@@ -347,22 +339,14 @@ fn pcode_coverage() -> processor::Result<()> {
         processor.single_step("RIP")?;
 
         // Check if RIP is the magic value
-        let rip: u64 = processor
-            .read_register("RIP")?
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
+        let rip = sym::try_concretize(processor.read_register("RIP")?, u64::from_le_bytes)
             .expect("failed to convert RIP to u64");
         if rip == EXIT_RIP {
             break;
         }
     }
 
-    let rax: u64 = processor
-        .read_register("RAX")?
-        .into_iter()
-        .collect::<SymbolicBitVec>()
-        .try_into()
+    let rax = sym::try_concretize(processor.read_register("RAX")?, u64::from_le_bytes)
         .expect("failed to convert RAX to u64");
     assert_eq!(rax, 0);
 
