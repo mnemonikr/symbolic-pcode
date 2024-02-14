@@ -2,7 +2,7 @@ use sla::{
     Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode, PcodeInstruction,
     VarnodeData,
 };
-use sym::SymbolicByte;
+use sym::{try_concretize, SymbolicByte};
 use thiserror;
 
 use crate::mem::{self, SymbolicMemory};
@@ -1231,36 +1231,19 @@ impl StandardPcodeEmulator {
         // This assumes the number of inputs has already been validated
         require_input_size_equals(instruction, input_index, target_space.address_size)?;
 
+        // TODO Validate that target_space.address_size <= 8 to ensure no overflow
+
         // Get concrete bytes. Can return an error if byte is symbolic
         let offset_bytes = memory.read(&instruction.inputs[input_index])?;
-        let offset_bytes: Vec<u8> = memory
-            .read(&instruction.inputs[input_index])?
-            .into_iter()
-            .map(u8::try_from)
-            .collect::<std::result::Result<_, sym::ConcretizationError<_>>>()
-            .map_err(|_| Error::SymbolicAddress {
+        try_concretize(offset_bytes.clone(), u64::from_le_bytes).map_err(|_| {
+            // TODO Handle errors here instead of assuming symbolic address issue
+            Error::SymbolicAddress {
+                // Overflow is impossible so if None then must be due to symbolic data
                 instruction: instruction.clone(),
                 varnode: instruction.inputs[input_index].clone(),
                 address: offset_bytes,
-            })?;
-
-        // Convert vector into array of bytes
-        let offset = match target_space.address_size {
-            1 => u8::from_le_bytes(offset_bytes.try_into().unwrap()).into(),
-            2 => u16::from_le_bytes(offset_bytes.try_into().unwrap()).into(),
-            4 => u32::from_le_bytes(offset_bytes.try_into().unwrap()).into(),
-            8 => u64::from_le_bytes(offset_bytes.try_into().unwrap()).into(),
-            _ => {
-                // Other values less than 8 could be supported but requires zext first.
-                // Values greater than 8 are impossible since the offset type is u64
-                return Err(Error::InternalError(format!(
-                    "address space size {size} not supported for indirect lookups",
-                    size = target_space.address_size
-                )));
             }
-        };
-
-        Ok(offset)
+        })
     }
 
     /// Get the address space encoded by the address offset of the specified input.

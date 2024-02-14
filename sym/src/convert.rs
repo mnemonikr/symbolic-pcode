@@ -310,3 +310,31 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
         }
     }
 }
+
+// TODO Use an appropriate error here
+pub fn try_concretize<T, F, const N: usize>(
+    iter: impl IntoIterator<Item = impl Into<SymbolicByte>>,
+    from_le_bytes: F,
+) -> std::result::Result<T, String>
+where
+    F: FnOnce([u8; N]) -> T,
+{
+    // TODO Once we can use this directly in the function signature we can remove N
+    assert_eq!(std::mem::size_of::<T>(), N);
+
+    let mut bytes = [0u8; N];
+    iter.into_iter().enumerate().try_for_each(|(i, byte)| {
+        if i >= N {
+            return Err("overflow");
+        }
+
+        let byte = byte.into();
+        byte.try_into()
+            .map(|byte| {
+                bytes[i] = byte;
+            })
+            .map_err(|_| "symbolic")
+    })?;
+
+    Ok(from_le_bytes(bytes))
+}
