@@ -14,6 +14,23 @@ pub enum Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// TODO Rename this to Sleigh and current Sleigh to GhidraSleigh
+pub trait Slegh {
+    /// Get the default address space for code execution
+    fn default_code_space(&self) -> AddressSpace;
+
+    /// List all available address spaces
+    fn address_spaces(&self) -> Vec<AddressSpace>;
+
+    fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData>;
+
+    fn disassemble_pcode(
+        &self,
+        loader: &dyn LoadImage,
+        address: &Address,
+    ) -> std::result::Result<PcodeResponse, String>;
+}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
