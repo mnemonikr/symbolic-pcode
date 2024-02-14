@@ -313,7 +313,7 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
 
 // TODO Use an appropriate error here
 pub fn try_concretize<T, F, const N: usize>(
-    iter: impl IntoIterator<Item = impl Into<SymbolicByte>>,
+    iter: impl IntoIterator<Item = SymbolicByte>,
     from_le_bytes: F,
 ) -> std::result::Result<T, String>
 where
@@ -328,7 +328,6 @@ where
             return Err("overflow");
         }
 
-        let byte = byte.into();
         byte.try_into()
             .map(|byte| {
                 bytes[i] = byte;
