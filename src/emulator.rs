@@ -2,7 +2,7 @@ use sla::{
     Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode, PcodeInstruction,
     VarnodeData,
 };
-use sym::{try_concretize, SymbolicByte};
+use sym::{self, SymbolicByte};
 use thiserror;
 
 use crate::mem::{self, SymbolicMemory};
@@ -1235,7 +1235,7 @@ impl StandardPcodeEmulator {
 
         // Get concrete bytes. Can return an error if byte is symbolic
         let offset_bytes = memory.read(&instruction.inputs[input_index])?;
-        try_concretize(offset_bytes.clone(), u64::from_le_bytes).map_err(|_| {
+        sym::concretize_u64(offset_bytes.iter()).map_err(|_| {
             // TODO Handle errors here instead of assuming symbolic address issue
             Error::SymbolicAddress {
                 // Overflow is impossible so if None then must be due to symbolic data

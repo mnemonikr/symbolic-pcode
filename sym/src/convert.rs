@@ -311,8 +311,107 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
     }
 }
 
+pub fn concretize_into_u8(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<u8, String> {
+    concretize_into(iter, u8::from_le_bytes)
+}
+
+pub fn concretize_into_u16(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<u16, String> {
+    concretize_into(iter, u16::from_le_bytes)
+}
+
+pub fn concretize_into_u32(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<u32, String> {
+    concretize_into(iter, u32::from_le_bytes)
+}
+
+pub fn concretize_into_u64(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<u64, String> {
+    concretize_into(iter, u64::from_le_bytes)
+}
+
+pub fn concretize_into_u128(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<u128, String> {
+    concretize_into(iter, u128::from_le_bytes)
+}
+
+pub fn concretize_into_usize(
+    iter: impl IntoIterator<Item = SymbolicByte>,
+) -> std::result::Result<usize, String> {
+    concretize_into(iter, usize::from_le_bytes)
+}
+
+pub fn concretize_u8<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<u8, String> {
+    concretize(iter, u8::from_le_bytes)
+}
+
+pub fn concretize_u16<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<u16, String> {
+    concretize(iter, u16::from_le_bytes)
+}
+
+pub fn concretize_u32<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<u32, String> {
+    concretize(iter, u32::from_le_bytes)
+}
+
+pub fn concretize_u64<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<u64, String> {
+    concretize(iter, u64::from_le_bytes)
+}
+
+pub fn concretize_u128<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<u128, String> {
+    concretize(iter, u128::from_le_bytes)
+}
+
+pub fn concretize_usize<'a>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+) -> std::result::Result<usize, String> {
+    concretize(iter, usize::from_le_bytes)
+}
+
 // TODO Use an appropriate error here
-pub fn try_concretize<T, F, const N: usize>(
+pub fn concretize<'a, T, F, const N: usize>(
+    iter: impl Iterator<Item = &'a SymbolicByte>,
+    from_le_bytes: F,
+) -> std::result::Result<T, String>
+where
+    F: FnOnce([u8; N]) -> T,
+{
+    // TODO Once we can use this directly in the function signature we can remove N
+    assert_eq!(std::mem::size_of::<T>(), N);
+
+    let mut bytes = [0u8; N];
+    iter.enumerate().try_for_each(|(i, byte)| {
+        if i >= N {
+            return Err("overflow");
+        }
+
+        byte.try_into()
+            .map(|byte| {
+                bytes[i] = byte;
+            })
+            .map_err(|_| "symbolic")
+    })?;
+
+    Ok(from_le_bytes(bytes))
+}
+
+// TODO Use an appropriate error here
+pub fn concretize_into<T, F, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicByte>,
     from_le_bytes: F,
 ) -> std::result::Result<T, String>
