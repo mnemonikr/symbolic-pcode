@@ -34,51 +34,51 @@ impl TryFrom<SymbolicBit> for bool {
 impl TryFrom<SymbolicBitBuf<1>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<1>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<2>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<2>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<3>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<3>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<4>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<4>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<5>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<5>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 impl TryFrom<SymbolicBitBuf<6>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<6>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 
 impl TryFrom<SymbolicBitBuf<7>> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<7>) -> Result<Self, Self::Error> {
-        concretize_bits_u8((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 
 impl TryFrom<SymbolicBitBuf<16>> for u16 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitBuf<16>) -> Result<Self, Self::Error> {
-        concretize_bits_u16((&value).iter())
+        concretize_bits((&value).iter())
     }
 }
 
@@ -105,70 +105,70 @@ impl<const BYTES: usize, const BITS: usize> From<[u8; BYTES]> for SymbolicBitBuf
 impl TryFrom<SymbolicByte> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicByte) -> Result<Self, Self::Error> {
-        concretize_into_u8(std::iter::once(value))
+        concretize_into(std::iter::once(value))
     }
 }
 
 impl TryFrom<&SymbolicByte> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicByte) -> Result<Self, Self::Error> {
-        concretize_u8(std::iter::once(value))
+        concretize(std::iter::once(value))
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u16 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u16(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u16 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u16(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u32 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u32(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u32 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u32(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for u64 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u64(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u64 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u64(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<SymbolicBitVec> for usize {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_usize(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for usize {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_usize(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
@@ -283,14 +283,14 @@ impl From<&[SymbolicBit]> for SymbolicBitVec {
 impl TryFrom<SymbolicBitVec> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u8(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
 impl TryFrom<&SymbolicBitVec> for u8 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits_u8(value.iter())
+        concretize_bits(value.iter())
     }
 }
 
@@ -314,85 +314,12 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
     }
 }
 
-pub fn concretize_into_u8(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<u8, ConcretizationError> {
-    concretize_into(iter, u8::from_le_bytes)
-}
-
-pub fn concretize_into_u16(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<u16, ConcretizationError> {
-    concretize_into(iter, u16::from_le_bytes)
-}
-
-pub fn concretize_into_u32(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<u32, ConcretizationError> {
-    concretize_into(iter, u32::from_le_bytes)
-}
-
-pub fn concretize_into_u64(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<u64, ConcretizationError> {
-    concretize_into(iter, u64::from_le_bytes)
-}
-
-pub fn concretize_into_u128(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<u128, ConcretizationError> {
-    concretize_into(iter, u128::from_le_bytes)
-}
-
-pub fn concretize_into_usize(
-    iter: impl IntoIterator<Item = SymbolicByte>,
-) -> std::result::Result<usize, ConcretizationError> {
-    concretize_into(iter, usize::from_le_bytes)
-}
-
-pub fn concretize_u8<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<u8, ConcretizationError> {
-    concretize(iter, u8::from_le_bytes)
-}
-
-pub fn concretize_u16<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<u16, ConcretizationError> {
-    concretize(iter, u16::from_le_bytes)
-}
-
-pub fn concretize_u32<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<u32, ConcretizationError> {
-    concretize(iter, u32::from_le_bytes)
-}
-
-pub fn concretize_u64<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<u64, ConcretizationError> {
-    concretize(iter, u64::from_le_bytes)
-}
-
-pub fn concretize_u128<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<u128, ConcretizationError> {
-    concretize(iter, u128::from_le_bytes)
-}
-
-pub fn concretize_usize<'a>(
-    iter: impl Iterator<Item = &'a SymbolicByte>,
-) -> std::result::Result<usize, ConcretizationError> {
-    concretize(iter, usize::from_le_bytes)
-}
-
 // TODO Use an appropriate error here
-pub fn concretize<'a, T, F, const N: usize>(
+pub fn concretize<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicByte>,
-    from_le_bytes: F,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    F: FnOnce([u8; N]) -> T,
+    T: FromBytes<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -401,17 +328,15 @@ where
         iter.map(|byte| byte.as_ref())
             .map(|bits| bits.iter())
             .flatten(),
-        from_le_bytes,
     )
 }
 
 // TODO Use an appropriate error here
-pub fn concretize_into<T, F, const N: usize>(
+pub fn concretize_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicByte>,
-    from_le_bytes: F,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    F: FnOnce([u8; N]) -> T,
+    T: FromBytes<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -421,52 +346,14 @@ where
             .map(|byte| byte.into_inner())
             .map(|bits| bits.into_iter())
             .flatten(),
-        from_le_bytes,
     )
 }
 
-pub fn concretize_bits_u8<'a>(
+pub fn concretize_bits<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<u8, ConcretizationError> {
-    concretize_bits(iter, u8::from_le_bytes)
-}
-
-pub fn concretize_bits_u16<'a>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<u16, ConcretizationError> {
-    concretize_bits(iter, u16::from_le_bytes)
-}
-
-pub fn concretize_bits_u32<'a>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<u32, ConcretizationError> {
-    concretize_bits(iter, u32::from_le_bytes)
-}
-
-pub fn concretize_bits_u64<'a>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<u64, ConcretizationError> {
-    concretize_bits(iter, u64::from_le_bytes)
-}
-
-pub fn concretize_bits_u128<'a>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<u128, ConcretizationError> {
-    concretize_bits(iter, u128::from_le_bytes)
-}
-
-pub fn concretize_bits_usize<'a>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-) -> std::result::Result<usize, ConcretizationError> {
-    concretize_bits(iter, usize::from_le_bytes)
-}
-
-pub fn concretize_bits<'a, T, F, const N: usize>(
-    iter: impl Iterator<Item = &'a SymbolicBit>,
-    from_le_bytes: F,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    F: FnOnce([u8; N]) -> T,
+    T: FromBytes<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -499,15 +386,14 @@ where
         }
     }
 
-    Ok(from_le_bytes(bytes))
+    Ok(T::from_le_bytes(bytes))
 }
 
-pub fn concretize_bits_into<T, F, const N: usize>(
+pub fn concretize_bits_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicBit>,
-    from_le_bytes: F,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    F: FnOnce([u8; N]) -> T,
+    T: FromBytes<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -540,5 +426,26 @@ where
         }
     }
 
-    Ok(from_le_bytes(bytes))
+    Ok(T::from_le_bytes(bytes))
 }
+
+pub trait FromBytes<const N: usize> {
+    fn from_le_bytes(bytes: [u8; N]) -> Self;
+}
+
+macro_rules! impl_from_bytes {
+    ($target:ty) => {
+        impl FromBytes<{ std::mem::size_of::<$target>() }> for $target {
+            fn from_le_bytes(bytes: [u8; std::mem::size_of::<$target>()]) -> Self {
+                Self::from_le_bytes(bytes)
+            }
+        }
+    };
+}
+
+impl_from_bytes!(usize);
+impl_from_bytes!(u128);
+impl_from_bytes!(u64);
+impl_from_bytes!(u32);
+impl_from_bytes!(u16);
+impl_from_bytes!(u8);

@@ -127,35 +127,35 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let rax = sym::concretize_into_u64(
+        let rax: u64 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}X"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u64");
         assert_eq!(rax, 0x8877665544332211);
-        let eax = sym::concretize_into_u32(
+        let eax: u32 = sym::concretize_into(
             processor
                 .read_register(format!("E{register}X"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u32");
         assert_eq!(eax, 0x44332211);
-        let ax = sym::concretize_into_u16(
+        let ax: u16 = sym::concretize_into(
             processor
                 .read_register(format!("{register}X"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u16");
         assert_eq!(ax, 0x2211);
-        let ah = sym::concretize_into_u8(
+        let ah: u8 = sym::concretize_into(
             processor
                 .read_register(format!("{register}H"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u8");
         assert_eq!(ah, 0x22);
-        let al = sym::concretize_into_u8(
+        let al: u8 = sym::concretize_into(
             processor
                 .read_register(format!("{register}L"))
                 .expect("failed to read register"),
@@ -172,28 +172,28 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let r = sym::concretize_into_u64(
+        let r: u64 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let e = sym::concretize_into_u32(
+        let e: u32 = sym::concretize_into(
             processor
                 .read_register(format!("E{register}"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u32");
         assert_eq!(e, 0x44332211);
-        let b = sym::concretize_into_u16(
+        let b: u16 = sym::concretize_into(
             processor
                 .read_register(format!("{register}"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u16");
         assert_eq!(b, 0x2211);
-        let l = sym::concretize_into_u8(
+        let l: u8 = sym::concretize_into(
             processor
                 .read_register(format!("{register}L"))
                 .expect("failed to read register"),
@@ -209,28 +209,28 @@ fn x86_64_registers() {
                 vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].into_iter(),
             )
             .expect("failed to write register");
-        let r = sym::concretize_into_u64(
+        let r: u64 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
-        let rd = sym::concretize_into_u32(
+        let rd: u32 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}D"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u32");
         assert_eq!(rd, 0x44332211);
-        let rw = sym::concretize_into_u16(
+        let rw: u16 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}W"))
                 .expect("failed to read register"),
         )
         .expect("failed to convert to u16");
         assert_eq!(rw, 0x2211);
-        let rb = sym::concretize_into_u8(
+        let rb: u8 = sym::concretize_into(
             processor
                 .read_register(format!("R{register}B"))
                 .expect("failed to read register"),
@@ -293,11 +293,11 @@ fn doubler_32b() -> Result<(), processor::Error> {
         processor.single_step("RIP")?;
     }
 
-    let rip = sym::concretize_into_u64(processor.read_register("RIP")?)
+    let rip: u64 = sym::concretize_into(processor.read_register("RIP")?)
         .expect("failed to convert rip value to u64");
     assert_eq!(rip, 0x66778899aabbccdd, "return address on stack");
 
-    let rax = sym::concretize_into_u64(processor.read_register("RAX")?)
+    let rax: u64 = sym::concretize_into(processor.read_register("RAX")?)
         .expect("failed to convert rax value to u64");
     assert_eq!(
         u32::try_from(rax).expect("failed to convert rax to u32"),
@@ -326,14 +326,14 @@ fn pcode_coverage() -> processor::Result<()> {
         processor.single_step("RIP")?;
 
         // Check if RIP is the magic value
-        let rip = sym::concretize_into_u64(processor.read_register("RIP")?)
+        let rip: u64 = sym::concretize_into(processor.read_register("RIP")?)
             .expect("failed to convert RIP to u64");
         if rip == EXIT_RIP {
             break;
         }
     }
 
-    let rax = sym::concretize_into_u64(processor.read_register("RAX")?)
+    let rax: u64 = sym::concretize_into(processor.read_register("RAX")?)
         .expect("failed to convert RAX to u64");
     assert_eq!(rax, 0);
 

@@ -2,7 +2,7 @@ use sla::{
     Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode, PcodeInstruction,
     VarnodeData,
 };
-use sym::{self, SymbolicByte};
+use sym::{self, ConcretizationError, SymbolicByte};
 use thiserror;
 
 use crate::mem::{self, SymbolicMemory};
@@ -30,6 +30,8 @@ pub enum Error {
         instruction: PcodeInstruction,
         varnode: VarnodeData,
         address: Vec<SymbolicByte>,
+        byte_index: usize,
+        bit_index: usize,
     },
 
     #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
@@ -1231,18 +1233,26 @@ impl StandardPcodeEmulator {
         // This assumes the number of inputs has already been validated
         require_input_size_equals(instruction, input_index, target_space.address_size)?;
 
-        // TODO Validate that target_space.address_size <= 8 to ensure no overflow
-
         // Get concrete bytes. Can return an error if byte is symbolic
         let offset_bytes = memory.read(&instruction.inputs[input_index])?;
-        sym::concretize_u64(offset_bytes.iter()).map_err(|_| {
-            // TODO Handle errors here instead of assuming symbolic address issue
-            Error::SymbolicAddress {
-                // Overflow is impossible so if None then must be due to symbolic data
+        sym::concretize(offset_bytes.iter()).map_err(|err| match err {
+            ConcretizationError::Overflow { max_bytes } => Error::IllegalInstruction {
+                instruction: instruction.clone(),
+                reason: format!(
+                    "requested offset size ({size}) exceeds maximum possible ({max_bytes})",
+                    size = instruction.inputs[input_index].size,
+                ),
+            },
+            ConcretizationError::NonLiteralBit {
+                bit_index,
+                byte_index,
+            } => Error::SymbolicAddress {
                 instruction: instruction.clone(),
                 varnode: instruction.inputs[input_index].clone(),
                 address: offset_bytes,
-            }
+                byte_index,
+                bit_index,
+            },
         })
     }
 
@@ -1510,10 +1520,9 @@ mod tests {
         memory.write(&input, data.into_iter())?;
         emulator.emulate(&mut memory, &instruction)?;
         memory.read(&output)?;
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEADBEEF
-        );
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEADBEEF);
 
         Ok(())
     }
@@ -1576,10 +1585,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEADBEEF
-        );
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
@@ -1645,10 +1653,9 @@ mod tests {
             },
             size: 4,
         };
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEADBEEF
-        );
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
@@ -1697,10 +1704,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEAD0000
-        );
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEAD0000);
         Ok(())
     }
 
@@ -1743,12 +1749,9 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed borrow of {lhs} - {rhs}"
-            );
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            assert_eq!(result, expected_result, "failed borrow of {lhs} - {rhs}");
         }
 
         Ok(())
@@ -1799,10 +1802,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEADBEEF
-        );
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
@@ -1840,12 +1842,9 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs * rhs,
-                    "failed {lhs} * {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+                assert_eq!(result, lhs * rhs, "failed {lhs} * {rhs}");
             }
         }
 
@@ -1885,12 +1884,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            lhs as u16 * rhs as u16,
-            "failed {lhs} * {rhs}"
-        );
+        assert_eq!(result, lhs as u16 * rhs as u16, "failed {lhs} * {rhs}");
 
         Ok(())
     }
@@ -1928,12 +1925,9 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs / rhs,
-                    "failed {lhs} / {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+                assert_eq!(result, lhs / rhs, "failed {lhs} / {rhs}");
             }
         }
 
@@ -1973,12 +1967,9 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs % rhs,
-                    "failed {lhs} % {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+                assert_eq!(result, lhs % rhs, "failed {lhs} % {rhs}");
             }
         }
 
@@ -2030,12 +2021,9 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output") as i8,
-                    lhs / rhs,
-                    "failed signed {lhs} / {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+                assert_eq!(result as i8, lhs / rhs, "failed signed {lhs} / {rhs}");
             }
         }
 
@@ -2087,12 +2075,9 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output") as i8,
-                    lhs % rhs,
-                    "failed signed {lhs} % {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+                assert_eq!(result as i8, lhs % rhs, "failed signed {lhs} % {rhs}");
             }
         }
 
@@ -2134,10 +2119,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            0x00FF
-        );
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x00FF);
         Ok(())
     }
 
@@ -2192,10 +2176,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            0x007F
-        );
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x007F);
 
         let instruction = PcodeInstruction {
             address: Address {
@@ -2208,10 +2191,9 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            0xFF80
-        );
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xFF80);
         Ok(())
     }
 
@@ -2259,20 +2241,16 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0x1,
-            "Expected 0xDEADBEEF == 0xDEADBEEF to be 1"
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x1, "Expected 0xDEADBEEF == 0xDEADBEEF to be 1");
 
         memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0x0,
-            "Expected 0xDEADBEEF == 0x0 to be 0"
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x0, "Expected 0xDEADBEEF == 0x0 to be 0");
         Ok(())
     }
 
@@ -2320,19 +2298,15 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0x0,
-            "Expected 0xDEADBEEF != 0xDEADBEEF to be 0"
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x0, "Expected 0xDEADBEEF != 0xDEADBEEF to be 0");
 
         memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0x1,
-            "Expected 0xDEADBEEF != 0x0 to be 1"
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0x1, "Expected 0xDEADBEEF != 0x0 to be 1");
         Ok(())
     }
 
@@ -2362,11 +2336,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u32 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u32(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEADBEEF
-        );
+        assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
@@ -2414,10 +2387,9 @@ mod tests {
 
         // Expect to truncate 2 least-significant bytes
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            0xDEAD
-        );
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xDEAD);
 
         let output = VarnodeData {
             address: Address {
@@ -2440,10 +2412,9 @@ mod tests {
         // Expect to truncate 2 least-significant bytes and 1 most significant byte
         // since the output size is less than the input size
         emulator.emulate(&mut memory, &instruction)?;
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0xAD
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, 0xAD);
         Ok(())
     }
 
@@ -2523,12 +2494,9 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                (!value) & 0x1,
-                "failed !{value}"
-            );
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            assert_eq!(result, (!value) & 0x1, "failed !{value}");
         }
 
         Ok(())
@@ -2563,12 +2531,10 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs & rhs,
-                    "failed {lhs} & {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+
+                assert_eq!(result, lhs & rhs, "failed {lhs} & {rhs}");
             }
         }
 
@@ -2604,12 +2570,10 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs | rhs,
-                    "failed {lhs} | {rhs}"
-                );
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
+
+                assert_eq!(result, lhs | rhs, "failed {lhs} | {rhs}");
             }
         }
 
@@ -2644,13 +2608,10 @@ mod tests {
                 };
 
                 emulator.emulate(&mut memory, &instruction)?;
+                let result: u8 = sym::concretize_into(memory.read(&output)?)
+                    .expect("failed to concretize output");
 
-                assert_eq!(
-                    sym::concretize_into_u8(memory.read(&output)?)
-                        .expect("failed to concretize output"),
-                    lhs ^ rhs,
-                    "failed {lhs} ^ {rhs}"
-                );
+                assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
             }
         }
 
@@ -2684,11 +2645,9 @@ mod tests {
 
         emulator.emulate(&mut memory, &instruction)?;
 
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            !lhs,
-            "failed !{lhs}"
-        );
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        assert_eq!(result, !lhs, "failed !{lhs}");
 
         Ok(())
     }
@@ -2719,12 +2678,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            0xFF, // Negative 1
-            "failed -{lhs}"
-        );
+        assert_eq!(result, -1i8 as u8, "failed -{lhs}");
 
         Ok(())
     }
@@ -2757,12 +2714,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            lhs & rhs,
-            "failed {lhs} & {rhs}"
-        );
+        assert_eq!(result, lhs & rhs, "failed {lhs} & {rhs}");
 
         Ok(())
     }
@@ -2795,12 +2750,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u8 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u8(memory.read(&output)?).expect("failed to concretize output"),
-            lhs | rhs,
-            "failed {lhs} | {rhs}"
-        );
+        assert_eq!(result, lhs | rhs, "failed {lhs} | {rhs}");
 
         Ok(())
     }
@@ -2833,12 +2786,10 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
+        let result: u16 =
+            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-        assert_eq!(
-            sym::concretize_into_u16(memory.read(&output)?).expect("failed to concretize output"),
-            lhs ^ rhs,
-            "failed {lhs} ^ {rhs}"
-        );
+        assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
 
         Ok(())
     }
@@ -2878,12 +2829,9 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed {lhs} < {rhs}"
-            );
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            assert_eq!(result, expected_result, "failed {lhs} < {rhs}");
         }
 
         Ok(())
@@ -2923,13 +2871,10 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed {lhs} <= {rhs}"
-            );
+            assert_eq!(result, expected_result, "failed {lhs} <= {rhs}");
         }
 
         Ok(())
@@ -2969,11 +2914,11 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
             assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
+                result, expected_result,
                 "failed signed comparison {lhs} < {rhs}"
             );
         }
@@ -3015,11 +2960,11 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
             assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
+                result, expected_result,
                 "failed signed comparison {lhs} <= {rhs}"
             );
         }
@@ -3054,14 +2999,11 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
             let expected_result = if n < 8 { 1 << n } else { 0 };
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed 1 << {n}"
-            );
+            assert_eq!(result, expected_result, "failed 1 << {n}");
         }
 
         Ok(())
@@ -3094,14 +3036,11 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
             let expected_result = if n < 8 { 0x80 >> n } else { 0 };
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed 0x80 >> {n}"
-            );
+            assert_eq!(result, expected_result, "failed 0x80 >> {n}");
         }
 
         Ok(())
@@ -3134,14 +3073,11 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
             let expected_result = if n < 8 { (-128i8 >> n) as u8 } else { 0xFF };
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed signed shift 0x80 >> {n}"
-            );
+            assert_eq!(result, expected_result, "failed signed shift 0x80 >> {n}");
         }
 
         Ok(())
@@ -3349,13 +3285,10 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
             let expected_result = n;
+            let result: u8 =
+                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
 
-            assert_eq!(
-                sym::concretize_into_u8(memory.read(&output)?)
-                    .expect("failed to concretize output"),
-                expected_result,
-                "failed popcount of {value:#02x}"
-            );
+            assert_eq!(result, expected_result, "failed popcount of {value:#02x}");
         }
 
         Ok(())
