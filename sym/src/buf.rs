@@ -10,6 +10,15 @@ pub struct SymbolicBitBuf<const N: usize> {
     bits: [SymbolicBit; N],
 }
 
+impl<const N: usize> IntoIterator for SymbolicBitBuf<N> {
+    type Item = SymbolicBit;
+    type IntoIter = std::array::IntoIter<SymbolicBit, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.bits.into_iter()
+    }
+}
+
 /// An 8-bit byte of symbolic bits.
 pub type SymbolicByte = SymbolicBitBuf<8>;
 
