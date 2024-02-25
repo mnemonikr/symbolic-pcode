@@ -9,58 +9,6 @@ impl std::ops::Deref for SymbolicBitVec {
     }
 }
 
-fn symbolize<const BYTES: usize, T: FromBytes<BYTES>>(
-    value: ConcreteValue<BYTES, T>,
-) -> Vec<SymbolicBit> {
-    let mut bits = Vec::with_capacity(8 * BYTES);
-    let bytes = value.into_inner().to_le_bytes();
-
-    for i in 0..BYTES {
-        for b in 0..8 {
-            bits.push(SymbolicBit::Literal((bytes[i] & (1 << b)) > 0));
-        }
-    }
-
-    bits
-}
-
-fn symbolize_bytes<const BYTES: usize, const BITS: usize>(
-    bytes: [u8; BYTES],
-) -> [SymbolicBit; BITS] {
-    assert_eq!(8 * BYTES, BITS);
-    let mut bits = [sym::FALSE; BITS];
-
-    for i in 0..BYTES {
-        for b in 0..8 {
-            bits[8 * i + b] = SymbolicBit::Literal((bytes[i] & (1 << b)) > 0);
-        }
-    }
-
-    bits
-}
-
-impl<const BYTES: usize, const BITS: usize> From<[u8; BYTES]> for SymbolicBitBuf<BITS> {
-    fn from(bytes: [u8; BYTES]) -> Self {
-        symbolize_bytes(bytes).into()
-    }
-}
-
-// Note: This cannot make use of symbolize_bytes because the BITS parameter cannot be computed. See
-// TODO issue for more details.
-impl<const N: usize> From<[u8; N]> for SymbolicBitVec {
-    fn from(bytes: [u8; N]) -> Self {
-        let mut bits = Vec::with_capacity(8 * N);
-
-        for i in 0..N {
-            for b in 0..8 {
-                bits.push(SymbolicBit::Literal((bytes[i] & (1 << b)) > 0));
-            }
-        }
-
-        SymbolicBitVec { bits }
-    }
-}
-
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
         SymbolicBit::Literal(value)
@@ -109,7 +57,7 @@ impl From<&[SymbolicBit]> for SymbolicBitVec {
 }
 
 #[repr(transparent)]
-struct ConcreteValue<const N: usize, T: FromBytes<N>> {
+pub struct ConcreteValue<const N: usize, T: FromBytes<N>> {
     value: T,
 }
 
@@ -120,6 +68,10 @@ impl<const N: usize, T: FromBytes<N>> ConcreteValue<N, T> {
 
     pub fn into_inner(self) -> T {
         self.value
+    }
+
+    pub fn symbolize(self) -> Vec<SymbolicBit> {
+        symbolize(self.value.to_le_bytes()).collect()
     }
 }
 impl<const N: usize, T: FromBytes<N>> From<T> for ConcreteValue<N, T> {
@@ -140,13 +92,24 @@ impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<Symboli
     }
 }
 
+impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<&SymbolicBitBuf<BITS>>
+    for ConcreteValue<BYTES, T>
+{
+    type Error = ConcretizationError;
+    fn try_from(value: &SymbolicBitBuf<BITS>) -> Result<Self, Self::Error> {
+        concretize_bits::<T, BYTES>(value.iter()).map(ConcreteValue::from)
+    }
+}
+
 impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> From<ConcreteValue<BYTES, T>>
     for SymbolicBitBuf<BITS>
 {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
         assert_eq!(8 * BYTES, BITS);
-        let vec = symbolize(value);
-        let array: [SymbolicBit; BITS] = vec.try_into().unwrap();
+
+        // SAFETY: Asserted BITS agrees with BYTES, so the vec length is BITS
+        let array: [SymbolicBit; BITS] = unsafe { value.symbolize().try_into().unwrap_unchecked() };
+
         array.into()
     }
 }
@@ -154,6 +117,13 @@ impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> From<ConcreteVa
 impl<const BYTES: usize, T: FromBytes<BYTES>> TryFrom<SymbolicBitVec> for ConcreteValue<BYTES, T> {
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
+        concretize_bits_into::<T, BYTES>(value).map(ConcreteValue::from)
+    }
+}
+
+impl<const BYTES: usize, T: FromBytes<BYTES>> TryFrom<&SymbolicBitVec> for ConcreteValue<BYTES, T> {
+    type Error = ConcretizationError;
+    fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
         concretize_bits::<T, BYTES>(value.iter()).map(ConcreteValue::from)
     }
 }
@@ -161,112 +131,71 @@ impl<const BYTES: usize, T: FromBytes<BYTES>> TryFrom<SymbolicBitVec> for Concre
 impl<const BYTES: usize, T: FromBytes<BYTES>> From<ConcreteValue<BYTES, T>> for SymbolicBitVec {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
         SymbolicBitVec {
-            bits: symbolize(value),
+            bits: value.symbolize(),
         }
     }
 }
 
-/// Try to convert from SymbolicBitBuf or &SymbolicBitBuf to given target type.
-///
-/// If the number of bits for SymbolicBitBuf is not provided, then the number of bits required to
-/// represent the target type is used.
-macro_rules! tryfrom_bitbuf {
-    ($target:ty) => {
-        tryfrom_bitbuf!($target, { 8 * std::mem::size_of::<$target>() });
-    };
-    ($target:ty, $size:expr) => {
-        impl TryFrom<SymbolicBitBuf<$size>> for $target {
-            type Error = ConcretizationError;
-            fn try_from(value: SymbolicBitBuf<$size>) -> Result<Self, Self::Error> {
-                concretize_bits_into(value)
-            }
-        }
-
-        impl TryFrom<&SymbolicBitBuf<$size>> for $target {
-            type Error = ConcretizationError;
-            fn try_from(value: &SymbolicBitBuf<$size>) -> Result<Self, Self::Error> {
-                concretize_bits(value.iter())
-            }
-        }
-    };
-}
-
-tryfrom_bitbuf!(u8);
-tryfrom_bitbuf!(u8, 1);
-tryfrom_bitbuf!(u8, 2);
-tryfrom_bitbuf!(u8, 3);
-tryfrom_bitbuf!(u8, 4);
-tryfrom_bitbuf!(u8, 5);
-tryfrom_bitbuf!(u8, 6);
-tryfrom_bitbuf!(u8, 7);
-tryfrom_bitbuf!(u16);
-tryfrom_bitbuf!(u32);
-tryfrom_bitbuf!(u64);
-tryfrom_bitbuf!(u128);
-tryfrom_bitbuf!(usize);
-
-/// Convert from the given source type into a SymbolicBitBuf. The number of bits in the
-/// SymbolicBitBuf is the number of bits required to represent the source type.
-macro_rules! bitbuf_from {
-    ($source:ty) => {
-        impl From<$source> for SymbolicBitBuf<{ 8 * std::mem::size_of::<$source>() }> {
-            fn from(value: $source) -> Self {
-                value.to_le_bytes().into()
-            }
-        }
-    };
-}
-
-bitbuf_from!(u8);
-bitbuf_from!(u16);
-bitbuf_from!(u32);
-bitbuf_from!(u64);
-bitbuf_from!(u128);
-bitbuf_from!(usize);
-
-/// Convert from SymbolicBitVec or &SymbolicBitVec into the given target type.
-macro_rules! tryfrom_bitvec {
+macro_rules! concrete_type {
     ($target:ty) => {
         impl TryFrom<SymbolicBitVec> for $target {
             type Error = ConcretizationError;
             fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
-                concretize_bits(value.iter())
+                ConcreteValue::try_from(value).map(ConcreteValue::into_inner)
             }
         }
 
         impl TryFrom<&SymbolicBitVec> for $target {
             type Error = ConcretizationError;
             fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-                concretize_bits(value.iter())
+                ConcreteValue::try_from(value).map(ConcreteValue::into_inner)
             }
         }
-    };
-}
 
-tryfrom_bitvec!(u8);
-tryfrom_bitvec!(u16);
-tryfrom_bitvec!(u32);
-tryfrom_bitvec!(u64);
-tryfrom_bitvec!(u128);
-tryfrom_bitvec!(usize);
-
-/// Convert from the given target type into SymbolicBitVec
-macro_rules! from_bitvec {
-    ($target:ty) => {
         impl From<$target> for SymbolicBitVec {
             fn from(value: $target) -> Self {
-                value.to_le_bytes().into()
+                ConcreteValue::new(value).into()
+            }
+        }
+
+        impl From<$target> for SymbolicBitBuf<{ 8 * std::mem::size_of::<$target>() }> {
+            fn from(value: $target) -> Self {
+                ConcreteValue::new(value).into()
+            }
+        }
+
+        concrete_type!($target, { 8 * std::mem::size_of::<$target>() });
+    };
+    ($target:ty, $size:expr) => {
+        impl TryFrom<SymbolicBitBuf<$size>> for $target {
+            type Error = ConcretizationError;
+            fn try_from(value: SymbolicBitBuf<$size>) -> Result<Self, Self::Error> {
+                ConcreteValue::try_from(value).map(ConcreteValue::into_inner)
+            }
+        }
+
+        impl TryFrom<&SymbolicBitBuf<$size>> for $target {
+            type Error = ConcretizationError;
+            fn try_from(value: &SymbolicBitBuf<$size>) -> Result<Self, Self::Error> {
+                ConcreteValue::try_from(value).map(ConcreteValue::into_inner)
             }
         }
     };
 }
 
-from_bitvec!(u8);
-from_bitvec!(u16);
-from_bitvec!(u32);
-from_bitvec!(u64);
-from_bitvec!(u128);
-from_bitvec!(usize);
+concrete_type!(u8);
+concrete_type!(u8, 1);
+concrete_type!(u8, 2);
+concrete_type!(u8, 3);
+concrete_type!(u8, 4);
+concrete_type!(u8, 5);
+concrete_type!(u8, 6);
+concrete_type!(u8, 7);
+concrete_type!(u16);
+concrete_type!(u32);
+concrete_type!(u64);
+concrete_type!(u128);
+concrete_type!(usize);
 
 impl FromIterator<SymbolicBitVec> for SymbolicBitVec {
     fn from_iter<T: IntoIterator<Item = SymbolicBitVec>>(iter: T) -> Self {
@@ -298,6 +227,18 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
                 .collect(),
         }
     }
+}
+
+pub fn symbolize(iter: impl IntoIterator<Item = u8>) -> impl Iterator<Item = SymbolicBit> {
+    iter.into_iter().flat_map(|byte| {
+        let mut bits = [sym::FALSE; 8];
+
+        for b in 0..8 {
+            bits[b] = SymbolicBit::Literal((byte & (1 << b)) > 0);
+        }
+
+        bits
+    })
 }
 
 pub fn concretize<'a, T, const N: usize>(
@@ -404,12 +345,15 @@ pub trait FromBytes<const N: usize> {
 
 macro_rules! impl_frombytes {
     ($target:ty) => {
-        impl FromBytes<{ std::mem::size_of::<$target>() }> for $target {
-            fn from_le_bytes(bytes: [u8; std::mem::size_of::<$target>()]) -> Self {
+        impl_frombytes!($target, { std::mem::size_of::<$target>() });
+    };
+    ($target:ty, $size:expr) => {
+        impl FromBytes<$size> for $target {
+            fn from_le_bytes(bytes: [u8; $size]) -> Self {
                 Self::from_le_bytes(bytes)
             }
 
-            fn to_le_bytes(self) -> [u8; std::mem::size_of::<$target>()] {
+            fn to_le_bytes(self) -> [u8; $size] {
                 self.to_le_bytes()
             }
         }

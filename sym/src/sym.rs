@@ -136,6 +136,15 @@ impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
     }
 }
 
+impl IntoIterator for SymbolicBitVec {
+    type Item = SymbolicBit;
+    type IntoIter = std::vec::IntoIter<SymbolicBit>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.bits.into_iter()
+    }
+}
+
 static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 impl SymbolicBitVec {
     pub fn with_size(num_bits: usize) -> Self {
