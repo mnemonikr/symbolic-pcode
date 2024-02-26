@@ -48,15 +48,18 @@ impl TryFrom<SymbolicBitVec> for SymbolicBit {
     }
 }
 
-impl From<&[SymbolicBit]> for SymbolicBitVec {
-    fn from(bits: &[SymbolicBit]) -> Self {
-        Self {
-            bits: bits.to_vec(),
-        }
-    }
-}
-
+/// A wrapper around a value that implements [FromBytes]. This wrapper implements conversions to
+/// and from [SymbolicBitVec] and [SymbolicBitBuf]. Use the macro [concrete_type!] to automatically
+/// implement the conversions for a type using this wrapper.
+///
+/// ```
+/// # use sym::{ConcreteValue, SymbolicBitBuf};
+/// let value = ConcreteValue::new(0xDEADBEEFu32);
+/// let buf = SymbolicBitBuf::<32>::from(value);
+/// assert_eq!(value, buf.try_into().unwrap());
+/// ```
 #[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteValue<const N: usize, T: FromBytes<N>> {
     value: T,
 }
@@ -74,15 +77,13 @@ impl<const N: usize, T: FromBytes<N>> ConcreteValue<N, T> {
         symbolize(self.value.to_le_bytes()).collect()
     }
 }
+
 impl<const N: usize, T: FromBytes<N>> From<T> for ConcreteValue<N, T> {
     fn from(value: T) -> Self {
         ConcreteValue { value }
     }
 }
 
-// TODO: This is equivalent to the below macros. However it cannot operate on the target type
-// directly since that type does not name BYTES. Instead it must operate on the wrapper
-// ConcreteValue.
 impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<SymbolicBitBuf<BITS>>
     for ConcreteValue<BYTES, T>
 {
@@ -136,6 +137,7 @@ impl<const BYTES: usize, T: FromBytes<BYTES>> From<ConcreteValue<BYTES, T>> for 
     }
 }
 
+#[macro_export]
 macro_rules! concrete_type {
     ($target:ty) => {
         impl TryFrom<SymbolicBitVec> for $target {
@@ -202,8 +204,7 @@ impl FromIterator<SymbolicBitVec> for SymbolicBitVec {
         Self {
             bits: iter
                 .into_iter()
-                .map(|bitvec| bitvec.bits.into_iter())
-                .flatten()
+                .flat_map(|bitvec| bitvec.bits.into_iter())
                 .collect(),
         }
     }
@@ -222,8 +223,7 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
         Self {
             bits: iter
                 .into_iter()
-                .map(|byte| byte.into_inner().into_iter())
-                .flatten()
+                .flat_map(|byte| byte.into_inner().into_iter())
                 .collect(),
         }
     }
@@ -250,11 +250,7 @@ where
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
 
-    concretize_bits(
-        iter.map(|byte| byte.as_ref())
-            .map(|bits| bits.iter())
-            .flatten(),
-    )
+    concretize_bits(iter.map(|byte| byte.as_ref()).flat_map(|bits| bits.iter()))
 }
 
 pub fn concretize_into<T, const N: usize>(
@@ -269,8 +265,7 @@ where
     concretize_bits_into(
         iter.into_iter()
             .map(|byte| byte.into_inner())
-            .map(|bits| bits.into_iter())
-            .flatten(),
+            .flat_map(|bits| bits.into_iter()),
     )
 }
 
@@ -388,19 +383,29 @@ mod tests {
     #[test]
     fn symbolicbitbuf_conversions() {
         let value: u8 = 0x5A;
-        assert_eq!(value, u8::try_from(SymbolicBitBuf::from(value)).unwrap());
+        let buf = SymbolicBitBuf::from(value);
+        assert_eq!(value, u8::try_from(&buf).unwrap());
+        assert_eq!(value, u8::try_from(buf).unwrap());
 
         let value: u16 = 0xBEEF;
-        assert_eq!(value, u16::try_from(SymbolicBitBuf::from(value)).unwrap());
+        let buf = SymbolicBitBuf::from(value);
+        assert_eq!(value, u16::try_from(&buf).unwrap());
+        assert_eq!(value, u16::try_from(buf).unwrap());
 
         let value: u32 = 0xDEADBEEF;
-        assert_eq!(value, u32::try_from(SymbolicBitBuf::from(value)).unwrap());
+        let buf = SymbolicBitBuf::from(value);
+        assert_eq!(value, u32::try_from(&buf).unwrap());
+        assert_eq!(value, u32::try_from(buf).unwrap());
 
         let value: u64 = 0xFEEDBEEF_0BADF00D;
-        assert_eq!(value, u64::try_from(SymbolicBitBuf::from(value)).unwrap());
+        let buf = SymbolicBitBuf::from(value);
+        assert_eq!(value, u64::try_from(&buf).unwrap());
+        assert_eq!(value, u64::try_from(buf).unwrap());
 
         let value: u128 = 0xFEEDBEEF_0BADF00D_DEADBEEF_DEAD4BED;
-        assert_eq!(value, u128::try_from(SymbolicBitBuf::from(value)).unwrap());
+        let buf = SymbolicBitBuf::from(value);
+        assert_eq!(value, u128::try_from(&buf).unwrap());
+        assert_eq!(value, u128::try_from(buf).unwrap());
     }
 
     #[test]
@@ -419,5 +424,123 @@ mod tests {
 
         let value: u128 = 0xFEEDBEEF_0BADF00D_DEADBEEF_DEAD4BED;
         assert_eq!(value, u128::try_from(SymbolicBitVec::from(value)).unwrap());
+    }
+
+    #[test]
+    fn bool_happy() {
+        assert!(bool::try_from(SymbolicBit::from(true)).unwrap());
+    }
+
+    #[test]
+    fn bool_error() {
+        let err = bool::try_from(SymbolicBit::Variable(0)).unwrap_err();
+        assert!(matches!(
+            err,
+            ConcretizationError::NonLiteralBit {
+                byte_index: 0,
+                bit_index: 0,
+            }
+        ));
+    }
+
+    #[test]
+    fn bit_bitvec_happy() {
+        let bit = SymbolicBit::Variable(0);
+        let vec = SymbolicBitVec::from(bit.clone());
+        assert_eq!(bit, vec.try_into().unwrap());
+    }
+
+    #[test]
+    fn bitvec_bit_err() {
+        let err = SymbolicBit::try_from(SymbolicBitVec::constant(2, 2)).unwrap_err();
+        assert_eq!("value has 2 bits", err);
+    }
+
+    #[test]
+    fn combine_bitvecs() {
+        let zero = SymbolicBitVec::constant(0, 1);
+        let one = SymbolicBitVec::constant(1, 1);
+        let array = [zero, one];
+
+        // Little endian format means this should be 0b10 when combined
+        let combined: SymbolicBitVec = array.into_iter().collect();
+        assert_eq!(0b10u8, combined.try_into().unwrap());
+    }
+
+    #[test]
+    fn combine_symbytes_into_vec() {
+        let zero = SymbolicByte::from(0u8);
+        let one = SymbolicByte::from(1u8);
+        let array = [zero, one];
+
+        // Little endian format means this should be 0x0100 when combined
+        let combined: SymbolicBitVec = array.into_iter().collect();
+        assert_eq!(0x0100u16, combined.try_into().unwrap());
+    }
+
+    #[test]
+    fn concretize_happy() {
+        let zero = SymbolicByte::from(0u8);
+        let one = SymbolicByte::from(1u8);
+        let array = [zero, one];
+
+        assert_eq!(0x0100u16, concretize(array.iter()).unwrap());
+        assert_eq!(0x0100u16, concretize_into(array).unwrap());
+    }
+
+    #[test]
+    fn concretize_overflow_err() {
+        let zero = SymbolicByte::from(0u8);
+        let one = SymbolicByte::from(1u8);
+        let array = [zero, one];
+
+        let err = concretize::<u8, 1>(array.iter()).unwrap_err();
+        assert!(matches!(
+            err,
+            ConcretizationError::Overflow { max_bytes: 1 }
+        ));
+
+        let err = concretize_into::<u8, 1>(array).unwrap_err();
+        assert!(matches!(
+            err,
+            ConcretizationError::Overflow { max_bytes: 1 }
+        ));
+    }
+
+    #[test]
+    fn concretize_symbolic_err() {
+        let byte = SymbolicByte::from(SymbolicBit::Variable(0));
+        let array = [byte];
+        let err = concretize::<u8, 1>(array.iter()).unwrap_err();
+        assert!(matches!(
+            err,
+            ConcretizationError::NonLiteralBit {
+                byte_index: 0,
+                bit_index: 0
+            }
+        ));
+
+        let err = concretize_into::<u8, 1>(array).unwrap_err();
+        assert!(matches!(
+            err,
+            ConcretizationError::NonLiteralBit {
+                byte_index: 0,
+                bit_index: 0
+            }
+        ));
+    }
+
+    #[test]
+    fn concrete_value_derives() {
+        let x = ConcreteValue::new(1u8);
+
+        // Clone
+        let y = x.clone();
+
+        // PartialEq
+        assert_eq!(x, y);
+
+        // Debug
+        assert_eq!("ConcreteValue { value: 1 }", format!("{x:?}"));
     }
 }
