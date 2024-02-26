@@ -245,27 +245,23 @@ pub fn symbolize(iter: impl IntoIterator<Item = u8>) -> impl Iterator<Item = Sym
     })
 }
 
+#[must_use]
 pub fn concretize<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
 where
     T: LittleEndian<N>,
 {
-    // TODO Once we can use this directly in the function signature we can remove N
-    assert_eq!(std::mem::size_of::<T>(), N);
-
     concretize_bits(iter.map(|byte| byte.as_ref()).flat_map(|bits| bits.iter()))
 }
 
+#[must_use]
 pub fn concretize_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
 where
     T: LittleEndian<N>,
 {
-    // TODO Once we can use this directly in the function signature we can remove N
-    assert_eq!(std::mem::size_of::<T>(), N);
-
     concretize_bits_into(
         iter.into_iter()
             .map(|byte| byte.into_inner())
@@ -273,6 +269,7 @@ where
     )
 }
 
+#[must_use]
 pub fn concretize_bits_cow<'a, T, const N: usize>(
     iter: impl Iterator<Item = std::borrow::Cow<'a, SymbolicBit>>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -315,6 +312,7 @@ where
     Ok(T::from_words(bytes))
 }
 
+#[must_use]
 pub fn concretize_bits<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -324,6 +322,7 @@ where
     concretize_bits_cow(iter.map(std::borrow::Cow::Borrowed))
 }
 
+#[must_use]
 pub fn concretize_bits_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
