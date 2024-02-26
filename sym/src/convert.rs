@@ -52,6 +52,8 @@ impl TryFrom<SymbolicBitVec> for SymbolicBit {
 /// and from [SymbolicBitVec] and [SymbolicBitBuf]. Use the macro [concrete_type!] to automatically
 /// implement the conversions for a type using this wrapper.
 ///
+/// # Examples
+///
 /// ```
 /// # use sym::{ConcreteValue, SymbolicBitBuf};
 /// let value = ConcreteValue::new(0xDEADBEEFu32);
