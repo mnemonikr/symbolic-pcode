@@ -277,6 +277,8 @@ where
     T: LittleEndian<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
+    //
+    // Tracking issue: https://github.com/mnemonikr/symbolic-pcode/issues/108
     assert_eq!(std::mem::size_of::<T>(), N);
 
     let mut bytes = [0u8; N];
