@@ -28,49 +28,12 @@ pub enum SymbolicBit {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum ConcretizationError<T>
-where
-    T: TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: std::error::Error + 'static,
-{
-    #[error("Non-literal bit at index {0}")]
-    NonLiteralBit(usize),
+pub enum ConcretizationError {
+    #[error("non-literal bit in byte {byte_index} at bit index {bit_index}")]
+    NonLiteralBit { byte_index: usize, bit_index: usize },
 
-    #[error("Failed to convert {value} to type: {source}")]
-    ConversionError {
-        value: usize,
-        source: <T as TryFrom<usize>>::Error,
-    },
-}
-
-pub fn concretize_bit_iter<'a, T, I>(iter: I) -> Result<T, ConcretizationError<T>>
-where
-    T: TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: std::error::Error,
-    I: Iterator<Item = &'a SymbolicBit>,
-{
-    let mut result: usize = 0;
-    let mut bit_value = 1;
-    let mut bit_index = 0;
-    for bit in iter {
-        match *bit {
-            SymbolicBit::Literal(is_set) => {
-                if is_set {
-                    result += bit_value;
-                }
-            }
-            _ => return Err(ConcretizationError::NonLiteralBit(bit_index)),
-        }
-        bit_value <<= 1;
-        bit_index += 1;
-    }
-
-    result
-        .try_into()
-        .map_err(|err| ConcretizationError::ConversionError {
-            value: result,
-            source: err,
-        })
+    #[error("value exceeded maximum number of bytes ({max_bytes})")]
+    Overflow { max_bytes: usize },
 }
 
 impl SymbolicBit {
@@ -170,6 +133,15 @@ impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
                 len = self.bits.len()
             ))
         }
+    }
+}
+
+impl IntoIterator for SymbolicBitVec {
+    type Item = SymbolicBit;
+    type IntoIter = std::vec::IntoIter<SymbolicBit>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.bits.into_iter()
     }
 }
 

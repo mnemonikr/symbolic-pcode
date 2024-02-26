@@ -228,27 +228,6 @@ impl Memory {
         Self::default()
     }
 
-    /// Read the value specified by the varnode and convert it into the concrete type `T`. If any
-    /// portion of the data read is symbolic then an `Error::UnexpectedSymbolicData` will be returned.
-    pub fn read_concrete_value<T>(&self, varnode: &VarnodeData) -> Result<T>
-    where
-        T: TryFrom<usize>,
-        <T as TryFrom<usize>>::Error: std::error::Error + 'static,
-    {
-        sym::concretize_bit_iter(
-            self.read(&varnode)?
-                .iter()
-                .map(|byte| byte.iter())
-                .flatten(),
-        )
-        .map_err(|err| match err {
-            ConcretizationError::NonLiteralBit(index) => {
-                Error::UnexpectedSymbolicData(varnode.address.clone(), index)
-            }
-            _ => Error::InternalError(format!("{}", err)),
-        })
-    }
-
     /// Dumps the contents of memory to stdout. This is a helper function for debugging.
     pub fn dump(&self) {
         for address_space_id in self.data.keys() {

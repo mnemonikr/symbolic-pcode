@@ -1,5 +1,6 @@
 //! Module for a collection of symbolic bits whose count are known at compile-time.
 use std::mem::MaybeUninit;
+use std::ops::Deref;
 
 use crate::SymbolicBit;
 
@@ -7,6 +8,15 @@ use crate::SymbolicBit;
 #[derive(Debug, Clone)]
 pub struct SymbolicBitBuf<const N: usize> {
     bits: [SymbolicBit; N],
+}
+
+impl<const N: usize> IntoIterator for SymbolicBitBuf<N> {
+    type Item = SymbolicBit;
+    type IntoIter = std::array::IntoIter<SymbolicBit, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.bits.into_iter()
+    }
 }
 
 /// An 8-bit byte of symbolic bits.
@@ -17,6 +27,16 @@ impl<const N: usize> std::ops::Deref for SymbolicBitBuf<N> {
 
     fn deref(&self) -> &Self::Target {
         &self.bits
+    }
+}
+
+impl<const N: usize, T> AsRef<T> for SymbolicBitBuf<N>
+where
+    T: ?Sized,
+    <SymbolicBitBuf<N> as std::ops::Deref>::Target: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
     }
 }
 
