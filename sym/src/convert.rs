@@ -48,7 +48,7 @@ impl TryFrom<SymbolicBitVec> for SymbolicBit {
     }
 }
 
-/// A wrapper around a value that implements [FromBytes]. This wrapper implements conversions to
+/// A wrapper around a value that implements [LittleEndian]. This wrapper implements conversions to
 /// and from [SymbolicBitVec] and [SymbolicBitBuf]. Use the macro [concrete_type!] to automatically
 /// implement the conversions for a type using this wrapper.
 ///
@@ -60,11 +60,11 @@ impl TryFrom<SymbolicBitVec> for SymbolicBit {
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ConcreteValue<const N: usize, T: FromBytes<N>> {
+pub struct ConcreteValue<const N: usize, T: LittleEndian<N>> {
     value: T,
 }
 
-impl<const N: usize, T: FromBytes<N>> ConcreteValue<N, T> {
+impl<const N: usize, T: LittleEndian<N>> ConcreteValue<N, T> {
     pub fn new(value: T) -> Self {
         Self { value }
     }
@@ -74,17 +74,17 @@ impl<const N: usize, T: FromBytes<N>> ConcreteValue<N, T> {
     }
 
     pub fn symbolize(self) -> Vec<SymbolicBit> {
-        symbolize(self.value.to_le_bytes()).collect()
+        symbolize(self.value.into_words()).collect()
     }
 }
 
-impl<const N: usize, T: FromBytes<N>> From<T> for ConcreteValue<N, T> {
+impl<const N: usize, T: LittleEndian<N>> From<T> for ConcreteValue<N, T> {
     fn from(value: T) -> Self {
         ConcreteValue { value }
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<SymbolicBitBuf<BITS>>
+impl<const BYTES: usize, T: LittleEndian<BYTES>, const BITS: usize> TryFrom<SymbolicBitBuf<BITS>>
     for ConcreteValue<BYTES, T>
 {
     type Error = ConcretizationError;
@@ -93,7 +93,7 @@ impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<Symboli
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<&SymbolicBitBuf<BITS>>
+impl<const BYTES: usize, T: LittleEndian<BYTES>, const BITS: usize> TryFrom<&SymbolicBitBuf<BITS>>
     for ConcreteValue<BYTES, T>
 {
     type Error = ConcretizationError;
@@ -102,7 +102,7 @@ impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> TryFrom<&Symbol
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> From<ConcreteValue<BYTES, T>>
+impl<const BYTES: usize, T: LittleEndian<BYTES>, const BITS: usize> From<ConcreteValue<BYTES, T>>
     for SymbolicBitBuf<BITS>
 {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
@@ -115,21 +115,25 @@ impl<const BYTES: usize, T: FromBytes<BYTES>, const BITS: usize> From<ConcreteVa
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>> TryFrom<SymbolicBitVec> for ConcreteValue<BYTES, T> {
+impl<const BYTES: usize, T: LittleEndian<BYTES>> TryFrom<SymbolicBitVec>
+    for ConcreteValue<BYTES, T>
+{
     type Error = ConcretizationError;
     fn try_from(value: SymbolicBitVec) -> Result<Self, Self::Error> {
         concretize_bits_into::<T, BYTES>(value).map(ConcreteValue::from)
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>> TryFrom<&SymbolicBitVec> for ConcreteValue<BYTES, T> {
+impl<const BYTES: usize, T: LittleEndian<BYTES>> TryFrom<&SymbolicBitVec>
+    for ConcreteValue<BYTES, T>
+{
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
         concretize_bits::<T, BYTES>(value.iter()).map(ConcreteValue::from)
     }
 }
 
-impl<const BYTES: usize, T: FromBytes<BYTES>> From<ConcreteValue<BYTES, T>> for SymbolicBitVec {
+impl<const BYTES: usize, T: LittleEndian<BYTES>> From<ConcreteValue<BYTES, T>> for SymbolicBitVec {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
         SymbolicBitVec {
             bits: value.symbolize(),
@@ -245,7 +249,7 @@ pub fn concretize<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    T: FromBytes<N>,
+    T: LittleEndian<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -257,7 +261,7 @@ pub fn concretize_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    T: FromBytes<N>,
+    T: LittleEndian<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -273,7 +277,7 @@ pub fn concretize_bits_cow<'a, T, const N: usize>(
     iter: impl Iterator<Item = std::borrow::Cow<'a, SymbolicBit>>,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    T: FromBytes<N>,
+    T: LittleEndian<N>,
 {
     // TODO Once we can use this directly in the function signature we can remove N
     assert_eq!(std::mem::size_of::<T>(), N);
@@ -308,14 +312,14 @@ where
         }
     }
 
-    Ok(T::from_le_bytes(bytes))
+    Ok(T::from_words(bytes))
 }
 
 pub fn concretize_bits<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    T: FromBytes<N>,
+    T: LittleEndian<N>,
 {
     concretize_bits_cow(iter.map(std::borrow::Cow::Borrowed))
 }
@@ -324,43 +328,44 @@ pub fn concretize_bits_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
 where
-    T: FromBytes<N>,
+    T: LittleEndian<N>,
 {
     concretize_bits_cow(iter.into_iter().map(std::borrow::Cow::Owned))
 }
 
-/// Create an object from bytes. The object must be constructable from a known, fixed set of bytes.
-/// TODO Rename this trait since it also supports to bytes
-pub trait FromBytes<const N: usize> {
-    /// Create an instance of the object from a little-endian byte representation.
-    fn from_le_bytes(bytes: [u8; N]) -> Self;
+/// Little-endian representation of an object with a known size at compile-time. The default word
+/// size is a byte.
+pub trait LittleEndian<const N: usize, T = u8> {
+    /// Create an instance of this object from a little-endian representation.
+    fn from_words(words: [T; N]) -> Self;
 
-    fn to_le_bytes(self) -> [u8; N];
+    /// Convert self into an array of words.
+    fn into_words(self) -> [T; N];
 }
 
-macro_rules! impl_frombytes {
+macro_rules! impl_little_endian {
     ($target:ty) => {
-        impl_frombytes!($target, { std::mem::size_of::<$target>() });
+        impl_little_endian!($target, { std::mem::size_of::<$target>() });
     };
     ($target:ty, $size:expr) => {
-        impl FromBytes<$size> for $target {
-            fn from_le_bytes(bytes: [u8; $size]) -> Self {
+        impl LittleEndian<$size> for $target {
+            fn from_words(bytes: [u8; $size]) -> Self {
                 Self::from_le_bytes(bytes)
             }
 
-            fn to_le_bytes(self) -> [u8; $size] {
+            fn into_words(self) -> [u8; $size] {
                 self.to_le_bytes()
             }
         }
     };
 }
 
-impl_frombytes!(usize);
-impl_frombytes!(u128);
-impl_frombytes!(u64);
-impl_frombytes!(u32);
-impl_frombytes!(u16);
-impl_frombytes!(u8);
+impl_little_endian!(usize);
+impl_little_endian!(u128);
+impl_little_endian!(u64);
+impl_little_endian!(u32);
+impl_little_endian!(u16);
+impl_little_endian!(u8);
 
 #[cfg(test)]
 mod tests {
