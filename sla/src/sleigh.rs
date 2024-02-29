@@ -14,22 +14,31 @@ pub enum Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Interface for the Sleigh API. See [GhidraSleigh] for the Ghidra implementation.
 pub trait Sleigh {
     /// Get the default address space for code execution
+    #[must_use]
     fn default_code_space(&self) -> AddressSpace;
 
     /// List all available address spaces
+    #[must_use]
     fn address_spaces(&self) -> Vec<AddressSpace>;
 
+    /// Get the [VarnodeData] that represents the named register.
+    #[must_use]
     fn register_from_name(&self, name: impl AsRef<str>)
         -> std::result::Result<VarnodeData, String>;
 
+    /// Disassemble the instructions at the given address into pcode.
+    #[must_use]
     fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
         address: Address,
     ) -> std::result::Result<Disassembly<PcodeInstruction>, String>;
 
+    /// Disassemble the instructions at the given address into native assembly instructions.
+    #[must_use]
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
@@ -42,7 +51,7 @@ pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
     /// However, when used in conjunction with the constant address space, the offset is the actual
     /// value. In some contexts this value may be signed, in which case the offset should be
-    /// considered an `i64` value.
+    /// considered an [i64] value.
     pub offset: u64,
     pub address_space: AddressSpace,
 }
@@ -186,13 +195,28 @@ impl From<sys::spacetype> for AddressSpaceType {
     }
 }
 
+/// A pcode instruction
 #[derive(Clone, Debug)]
 pub struct PcodeInstruction {
-    // TODO This should be separate from the instruction. Note that in that case though the address
-    // becomes a required argument for branch indirect instructions to execute them.
+    /// The originating address for this instruction. This information is necessary to include for
+    /// the [OpCode::BranchIndirect] operation, which determines the destination address space from
+    /// the instruction address space.
     pub address: Address,
+
+    /// The operation this pcode performs. The operation defines the semantics for the inputs and
+    /// optional output of this instruction.
     pub op_code: OpCode,
+
+    /// The inputs this pcode operation requires. The semantics for the inputs is determined by
+    /// the [OpCode]. For example, the [OpCode::Load] operation requires the first input has an
+    /// address in the [AddressSpaceType::Constant] address space, and is interpreted as an address
+    /// space identifier for the ultimate address to load. The second input is interpreted as a
+    /// pointer to the offset of the address to load, meaning its size must match the target
+    /// address space.
     pub inputs: Vec<VarnodeData>,
+
+    /// The output for the pcode operation. The semantics of the output and whether it is expected
+    /// is determined by the [OpCode].
     pub output: Option<VarnodeData>,
 }
 
@@ -217,12 +241,17 @@ pub struct AssemblyInstruction {
     pub body: String,
 }
 
+/// A disassembly of instructions originating from a [VarnodeData].
 pub struct Disassembly<T> {
-    pub instructions: Vec<T>,
-    pub origin: VarnodeData,
+    /// The disassembled instructions
+    instructions: Vec<T>,
+
+    /// The instructions origin
+    origin: VarnodeData,
 }
 
 impl<T> Disassembly<T> {
+    /// Create a new disassembly
     pub fn new(instructions: Vec<T>, origin: VarnodeData) -> Self {
         Self {
             instructions,
@@ -230,19 +259,15 @@ impl<T> Disassembly<T> {
         }
     }
 
+    /// Reference to the disassembled instructions
     pub fn instructions(&self) -> impl AsRef<[T]> + '_ {
         &self.instructions
     }
 
+    /// Reference to the origin of the disassembled instructions
     pub fn origin(&self) -> &VarnodeData {
         &self.origin
     }
-}
-
-#[derive(Default)]
-pub struct PcodeResponse {
-    pub pcode_instructions: Vec<PcodeInstruction>,
-    pub num_bytes_consumed: usize,
 }
 
 impl api::AssemblyEmit for Vec<AssemblyInstruction> {
@@ -310,14 +335,14 @@ pub trait LoadImage {
     fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String>;
 }
 
-pub struct GhidraSleigh {
-    /// The sleigh object. This object holds a reference to the image loader.
-    sleigh: UniquePtr<sys::SleighProxy>,
-}
-
 enum DisassemblyKind<'a> {
     Native(&'a mut Vec<AssemblyInstruction>),
     Pcode(&'a mut Vec<PcodeInstruction>),
+}
+
+pub struct GhidraSleigh {
+    /// The sleigh object. This object holds a reference to the image loader.
+    sleigh: UniquePtr<sys::SleighProxy>,
 }
 
 impl GhidraSleigh {
@@ -417,6 +442,15 @@ impl GhidraSleigh {
             size: bytes_consumed,
         };
 
+        // Sleigh may attempt to read more bytes than are available to read.
+        // Unfortuantely the callback API does not provide any mechanism to
+        // inform the caller that only a subset of the requested bytes are valid.
+        // Since many ISAs are variable-length instructions, it is possible the
+        // valid subset will decode to a valid instruction, and the requested length
+        // was an over-estimation.
+        //
+        // This is a sanity check to determine if the bytes Sleigh used for decoding
+        // are all valid.
         if !loader.readable(&source) {
             return Err("Out-of-bounds read while decoding instruction".to_string());
         }
@@ -462,6 +496,7 @@ impl Sleigh for GhidraSleigh {
             .map_err(|err| format!("failed to get register {name}: {err}"))
     }
 
+    #[must_use]
     fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
@@ -473,6 +508,7 @@ impl Sleigh for GhidraSleigh {
         Ok(Disassembly::new(instructions, origin))
     }
 
+    #[must_use]
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
