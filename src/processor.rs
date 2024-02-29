@@ -2,7 +2,7 @@ use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter};
-use sla::{Address, AddressSpace, Slegh, Sleigh, VarnodeData};
+use sla::{Address, AddressSpace, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -38,14 +38,14 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Processor<E: PcodeEmulator, M: SymbolicMemory> {
-    sleigh: Sleigh,
+pub struct Processor<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> {
+    sleigh: S,
     emulator: E,
     memory: ExecutableMemory<M>,
 }
 
-impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
-    pub fn new(sleigh: Sleigh, emulator: E, memory: M) -> Self {
+impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
+    pub fn new(sleigh: S, emulator: E, memory: M) -> Self {
         Processor {
             memory: ExecutableMemory(memory),
             emulator,
@@ -53,7 +53,7 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         }
     }
 
-    pub fn sleigh(&self) -> &Sleigh {
+    pub fn sleigh(&self) -> &S {
         &self.sleigh
     }
 

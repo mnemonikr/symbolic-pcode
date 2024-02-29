@@ -14,8 +14,7 @@ pub enum Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// TODO Rename this to Sleigh and current Sleigh to GhidraSleigh
-pub trait Slegh {
+pub trait Sleigh {
     /// Get the default address space for code execution
     fn default_code_space(&self) -> AddressSpace;
 
@@ -311,7 +310,7 @@ pub trait LoadImage {
     fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String>;
 }
 
-pub struct Sleigh {
+pub struct GhidraSleigh {
     /// The sleigh object. This object holds a reference to the image loader.
     sleigh: UniquePtr<sys::SleighProxy>,
 }
@@ -321,7 +320,7 @@ enum DisassemblyKind<'a> {
     Pcode(&'a mut Vec<PcodeInstruction>),
 }
 
-impl Sleigh {
+impl GhidraSleigh {
     pub fn new() -> Self {
         Self {
             sleigh: sys::new_sleigh(sys::new_context_internal()),
@@ -436,7 +435,7 @@ impl Sleigh {
     }
 }
 
-impl Slegh for Sleigh {
+impl Sleigh for GhidraSleigh {
     fn default_code_space(&self) -> AddressSpace {
         unsafe { &*self.sleigh.default_code_space() }.into()
     }
@@ -538,7 +537,7 @@ mod tests {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x0f\xaf\xc0\x5d\xc3".to_vec());
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read sleigh spec file");
 
@@ -571,7 +570,7 @@ mod tests {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
@@ -637,7 +636,7 @@ mod tests {
 
     #[test]
     pub fn register_from_name() {
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =

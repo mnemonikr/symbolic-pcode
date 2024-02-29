@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs};
 
-use sla::{OpCode, Sleigh};
+use sla::{GhidraSleigh, OpCode};
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::SymbolicMemory;
 
@@ -42,8 +42,8 @@ impl TracingEmulator {
     }
 }
 
-pub fn x86_64_sleigh() -> Sleigh {
-    let mut sleigh = Sleigh::new();
+pub fn x86_64_sleigh() -> GhidraSleigh {
+    let mut sleigh = GhidraSleigh::new();
     let sleigh_spec =
         fs::read_to_string("tests/data/x86-64.sla").expect("failed to read processor spec file");
     let processor_spec =
