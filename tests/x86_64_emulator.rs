@@ -3,8 +3,8 @@ mod common;
 use std::path::Path;
 
 use common::{x86_64_sleigh, TracingEmulator};
-use sla::{Address, VarnodeData};
-use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sla::{Address, Slegh, VarnodeData};
+use sym::{self, SymbolicBit, SymbolicByte};
 use symbolic_pcode::{
     emulator::{PcodeEmulator, StandardPcodeEmulator},
     mem::{Memory, SymbolicMemory, SymbolicMemoryWriter},

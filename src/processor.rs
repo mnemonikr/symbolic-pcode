@@ -2,7 +2,7 @@ use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter};
-use sla::{Address, AddressSpace, Sleigh, VarnodeData};
+use sla::{Address, AddressSpace, Disassembly, Slegh, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -155,16 +155,17 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
     pub fn emulate(&mut self, address: Address) -> Result<Address> {
         let pcode = self
             .sleigh
-            .pcode(&self.memory, &address)
+            .disassemble_pcode(&self.memory, address)
             .map_err(|err| Error::InstructionDecoding(err))?;
-        let next_addr = address.offset + pcode.num_bytes_consumed as u64;
+        let next_addr = pcode.origin().address.offset + pcode.origin().size as u64;
         let mut instruction_index = 0;
-        let max_index =
-            i64::try_from(pcode.pcode_instructions.len()).expect("too many instructions");
+        let pcode_instructions = pcode.instructions();
+        let pcode_instructions = pcode_instructions.as_ref();
+        let max_index = i64::try_from(pcode_instructions.len()).expect("too many instructions");
         while (0..max_index).contains(&instruction_index) {
             // SAFETY: Index is already bound by size of array
             let instruction = unsafe {
-                &pcode.pcode_instructions[usize::try_from(instruction_index).unwrap_unchecked()]
+                &pcode_instructions[usize::try_from(instruction_index).unwrap_unchecked()]
             };
 
             match self.emulator.emulate(&mut self.memory, &instruction)? {
@@ -205,7 +206,7 @@ impl<E: PcodeEmulator, M: SymbolicMemory> Processor<E, M> {
         // correct behavior is.
         Ok(Address {
             offset: next_addr,
-            address_space: address.address_space,
+            address_space: pcode.origin().address.address_space.clone(),
         })
     }
 }
