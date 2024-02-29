@@ -2,7 +2,7 @@ use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter};
-use sla::{Address, AddressSpace, Disassembly, Slegh, Sleigh, VarnodeData};
+use sla::{Address, AddressSpace, Slegh, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom

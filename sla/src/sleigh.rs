@@ -29,13 +29,13 @@ pub trait Slegh {
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<DecodeResponse<PcodeInstruction>, String>;
+    ) -> std::result::Result<Disassembly<PcodeInstruction>, String>;
 
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<DecodeResponse<AssemblyInstruction>, String>;
+    ) -> std::result::Result<Disassembly<AssemblyInstruction>, String>;
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -212,42 +212,31 @@ impl std::fmt::Display for PcodeInstruction {
     }
 }
 
-pub trait Disassembly {
-    type Instruction;
-
-    fn instructions(&self) -> impl AsRef<[Self::Instruction]>;
-    fn origin(&self) -> &VarnodeData;
-}
-
-impl<T> Disassembly for DecodeResponse<T> {
-    type Instruction = T;
-
-    fn instructions(&self) -> impl AsRef<[Self::Instruction]> {
-        &self.instructions
-    }
-
-    fn origin(&self) -> &VarnodeData {
-        &self.origin
-    }
-}
-
 pub struct AssemblyInstruction {
     pub address: Address,
     pub mnemonic: String,
     pub body: String,
 }
 
-pub struct DecodeResponse<T> {
+pub struct Disassembly<T> {
     pub instructions: Vec<T>,
     pub origin: VarnodeData,
 }
 
-impl<T> DecodeResponse<T> {
+impl<T> Disassembly<T> {
     pub fn new(instructions: Vec<T>, origin: VarnodeData) -> Self {
         Self {
             instructions,
             origin,
         }
+    }
+
+    pub fn instructions(&self) -> impl AsRef<[T]> + '_ {
+        &self.instructions
+    }
+
+    pub fn origin(&self) -> &VarnodeData {
+        &self.origin
     }
 }
 
@@ -478,22 +467,22 @@ impl Slegh for Sleigh {
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<DecodeResponse<PcodeInstruction>, String> {
+    ) -> std::result::Result<Disassembly<PcodeInstruction>, String> {
         let mut instructions = Vec::new();
         let origin =
             self.disassemble(loader, address, DisassemblyKind::Pcode(&mut instructions))?;
-        Ok(DecodeResponse::new(instructions, origin))
+        Ok(Disassembly::new(instructions, origin))
     }
 
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<DecodeResponse<AssemblyInstruction>, String> {
+    ) -> std::result::Result<Disassembly<AssemblyInstruction>, String> {
         let mut instructions = Vec::new();
         let origin =
             self.disassemble(loader, address, DisassemblyKind::Native(&mut instructions))?;
-        Ok(DecodeResponse::new(instructions, origin))
+        Ok(Disassembly::new(instructions, origin))
     }
 }
 
@@ -517,7 +506,7 @@ mod tests {
         }
     }
 
-    fn dump_pcode_response(response: &DecodeResponse<PcodeInstruction>) {
+    fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
         for instruction in response.instructions().as_ref() {
             print!(
                 "{}:{:016x} | {:?}",
