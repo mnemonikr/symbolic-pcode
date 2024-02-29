@@ -10,6 +10,7 @@ use cxx::{let_cxx_string, UniquePtr};
 
 static INIT: Once = Once::new();
 
+// TODO. Need to replace string errors with sleigh errors
 pub enum Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -496,7 +497,6 @@ impl Sleigh for GhidraSleigh {
             .map_err(|err| format!("failed to get register {name}: {err}"))
     }
 
-    #[must_use]
     fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
@@ -508,7 +508,6 @@ impl Sleigh for GhidraSleigh {
         Ok(Disassembly::new(instructions, origin))
     }
 
-    #[must_use]
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
