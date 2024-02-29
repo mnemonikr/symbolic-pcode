@@ -246,7 +246,7 @@ pub struct Disassembly<T> {
     /// The disassembled instructions
     instructions: Vec<T>,
 
-    /// The instructions origin
+    /// The origin of the instructions
     origin: VarnodeData,
 }
 
