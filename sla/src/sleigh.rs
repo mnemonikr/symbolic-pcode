@@ -21,7 +21,7 @@ pub enum Error {
 
     #[error("dependency error: {message}: {source}")]
     DependencyError {
-        message: String,
+        message: Cow<'static, str>,
         source: Box<dyn std::error::Error>,
     },
 
@@ -370,11 +370,7 @@ impl GhidraSleigh {
         }
     }
 
-    pub fn initialize(
-        &mut self,
-        sleigh_spec: &str,
-        processor_spec: &str,
-    ) -> std::result::Result<(), String> {
+    pub fn initialize(&mut self, sleigh_spec: &str, processor_spec: &str) -> Result<()> {
         // This global libsla initialization is required for parsing sleigh document
         INIT.call_once(|| {
             sys::initialize_element_id();
@@ -385,21 +381,35 @@ impl GhidraSleigh {
         let_cxx_string!(processor_spec = processor_spec);
 
         let mut store = sys::new_document_storage();
-        sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec)
-            .map_err(|_err| "Failed to parse sleigh spec")?;
+        sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec).map_err(|err| {
+            Error::DependencyError {
+                message: Cow::Borrowed("failed to parse sleigh specification"),
+                source: Box::new(err),
+            }
+        })?;
 
-        sys::parse_document_and_register_root(store.pin_mut(), &processor_spec)
-            .map_err(|_err| "Failed to parse processor spec")?;
+        sys::parse_document_and_register_root(store.pin_mut(), &processor_spec).map_err(|err| {
+            Error::DependencyError {
+                message: Cow::Borrowed("failed to parse processor specification"),
+                source: Box::new(err),
+            }
+        })?;
 
         self.sleigh
             .pin_mut()
             .initialize(store.pin_mut())
-            .map_err(|_err| "Failed to initialize sleigh")?;
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to initialize Ghidra sleigh"),
+                source: Box::new(err),
+            })?;
 
         self.sleigh
             .pin_mut()
             .parse_processor_config(&store)
-            .map_err(|err| format!("Failed to import processor config: {:?}", err))?;
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to import processor config"),
+                source: Box::new(err),
+            })?;
 
         Ok(())
     }
@@ -452,7 +462,7 @@ impl GhidraSleigh {
 
         let bytes_consumed = response
             .map_err(|err| Error::DependencyError {
-                message: format!("failed to decode instruction"),
+                message: Cow::Borrowed("failed to decode instruction"),
                 source: Box::new(err),
             })?
             .try_into()
@@ -504,7 +514,7 @@ impl Sleigh for GhidraSleigh {
             .register_from_name(&name)
             .map(VarnodeData::from)
             .map_err(|err| Error::DependencyError {
-                message: format!("failed to get register {name}"),
+                message: Cow::Owned(format!("failed to get register {name}")),
                 source: Box::new(err),
             })
     }
