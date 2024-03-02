@@ -45,7 +45,7 @@ pub trait Sleigh {
     #[must_use]
     fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData>;
 
-    ///Disassemble the instructions at the given address into pcode.
+    /// Disassemble the instructions at the given address into pcode.
     #[must_use]
     fn disassemble_pcode(
         &self,
