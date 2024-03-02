@@ -12,6 +12,8 @@ use crate::opcodes::OpCode;
 
 static INIT: Once = Once::new();
 
+/// Errors returned by this crate. Note that some APIs that may pass through FFI boundaries return
+/// [String] since those errors are ultimately serialized anyway.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("insufficient data at varnode {0}")]
