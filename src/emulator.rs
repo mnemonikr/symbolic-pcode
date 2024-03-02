@@ -1,6 +1,6 @@
 use sla::{
-    Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode, PcodeInstruction,
-    VarnodeData,
+    Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
+    PcodeInstruction, VarnodeData,
 };
 use sym::{self, ConcretizationError, SymbolicByte};
 use thiserror;
@@ -38,7 +38,7 @@ pub enum Error {
     UnknownAddressSpace {
         instruction: PcodeInstruction,
         varnode: VarnodeData,
-        space_id: usize,
+        space_id: AddressSpaceId,
     },
 
     #[error("internal error: {0}")]
@@ -49,7 +49,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// The pcode emulator structure that holds the necessary data for emulation.
 pub struct StandardPcodeEmulator {
-    address_spaces_by_id: std::collections::BTreeMap<usize, AddressSpace>,
+    address_spaces_by_id: std::collections::BTreeMap<AddressSpaceId, AddressSpace>,
 }
 
 /// Destination of a control flow instruction.
@@ -1263,12 +1263,13 @@ impl StandardPcodeEmulator {
         input_index: usize,
     ) -> Result<&AddressSpace> {
         let input = &instruction.inputs[input_index];
-        let space_id = input.address.offset.try_into().map_err(|err| {
+        let space_id = usize::try_from(input.address.offset).map_err(|err| {
             Error::InternalError(format!(
                 "unable to convert offset {offset} into address space id: {err}",
                 offset = input.address.offset,
             ))
         })?;
+        let space_id = AddressSpaceId::new(space_id);
 
         self.address_spaces_by_id
             .get(&space_id)
@@ -1439,7 +1440,7 @@ mod tests {
 
     fn processor_address_space() -> AddressSpace {
         AddressSpace {
-            id: 0,
+            id: AddressSpaceId::new(0),
             name: Cow::Borrowed("ram"),
             word_size: 1,
             address_size: 4,
@@ -1450,7 +1451,7 @@ mod tests {
 
     fn unique_address_space() -> AddressSpace {
         AddressSpace {
-            id: 1,
+            id: AddressSpaceId::new(1),
             name: Cow::Borrowed("unique"),
             word_size: 1,
             address_size: 8,
@@ -1461,7 +1462,7 @@ mod tests {
 
     fn constant_address_space() -> AddressSpace {
         AddressSpace {
-            id: 2,
+            id: AddressSpaceId::new(2),
             name: Cow::Borrowed("constant"),
             word_size: 1,
             address_size: 8,
@@ -1560,7 +1561,7 @@ mod tests {
         let addr_space_input = VarnodeData {
             address: Address {
                 address_space: constant_address_space(),
-                offset: processor_address_space().id as u64,
+                offset: processor_address_space().id.raw_id() as u64,
             },
             size: 8, // This value doesn't really matter
         };
@@ -1625,7 +1626,7 @@ mod tests {
         let addr_space_input = VarnodeData {
             address: Address {
                 address_space: constant_address_space(),
-                offset: processor_address_space().id as u64,
+                offset: processor_address_space().id.raw_id() as u64,
             },
             size: 8, // This value doesn't really matter
         };

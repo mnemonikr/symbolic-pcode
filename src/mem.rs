@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
-use sla::{Address, AddressSpaceType, VarnodeData};
+use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
 use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -68,7 +68,7 @@ pub struct MemoryTree {
 #[derive(Default)]
 pub struct Memory {
     /// Structure for looking up data based on the id of an AddressSpace.
-    data: BTreeMap<usize, BTreeMap<u64, SymbolicByte>>,
+    data: BTreeMap<AddressSpaceId, BTreeMap<u64, SymbolicByte>>,
 }
 
 impl<T: SymbolicMemoryReader + SymbolicMemoryWriter> SymbolicMemory for T {}
@@ -395,7 +395,7 @@ mod tests {
 
     fn address_space(id: usize) -> AddressSpace {
         AddressSpace {
-            id,
+            id: AddressSpaceId::new(id),
             name: Cow::Borrowed("test_space"),
             word_size: 1,
             address_size: 8, // 64-bit
@@ -406,7 +406,7 @@ mod tests {
 
     fn const_space() -> AddressSpace {
         AddressSpace {
-            id: 0,
+            id: AddressSpaceId::new(0),
             name: Cow::Borrowed("constant_space"),
             word_size: 1,
             address_size: 8, // 64-bit
