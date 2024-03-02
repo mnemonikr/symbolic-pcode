@@ -3,8 +3,8 @@ mod common;
 use std::path::Path;
 
 use common::{x86_64_sleigh, TracingEmulator};
-use sla::{Address, VarnodeData};
-use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sla::{Address, GhidraSleigh, Sleigh, VarnodeData};
+use sym::{self, SymbolicBit, SymbolicByte};
 use symbolic_pcode::{
     emulator::{PcodeEmulator, StandardPcodeEmulator},
     mem::{Memory, SymbolicMemory, SymbolicMemoryWriter},
@@ -14,7 +14,10 @@ use symbolic_pcode::{
 const INITIAL_STACK: u64 = 0x8000000000;
 const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
 
-fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor<TracingEmulator, Memory> {
+fn processor_with_image(
+    image: impl AsRef<Path>,
+    entry: u64,
+) -> Processor<GhidraSleigh, TracingEmulator, Memory> {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
     let memory = Memory::new();
@@ -79,7 +82,9 @@ fn processor_with_image(image: impl AsRef<Path>, entry: u64) -> Processor<Tracin
     processor
 }
 
-fn init_registers<E: PcodeEmulator, M: SymbolicMemory>(processor: &mut Processor<E, M>) {
+fn init_registers<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory>(
+    processor: &mut Processor<S, E, M>,
+) {
     let mut bitvar = 0;
     let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI"]
         .into_iter()

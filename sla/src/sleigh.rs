@@ -1,25 +1,73 @@
 use std::borrow::Cow;
 use std::sync::Once;
 
+use cxx::{let_cxx_string, UniquePtr};
+use thiserror;
+
 use crate::ffi::api;
 use crate::ffi::rust;
 use crate::ffi::sys;
 use crate::ffi::sys::AddrSpace;
-pub use crate::opcodes::OpCode;
-use cxx::{let_cxx_string, UniquePtr};
+use crate::opcodes::OpCode;
 
 static INIT: Once = Once::new();
 
-pub enum Error {}
+/// Errors returned by this crate. Note that some APIs that may pass through FFI boundaries return
+/// [String] since those errors are ultimately serialized anyway.
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("insufficient data at varnode {0}")]
+    InsufficientData(VarnodeData),
+
+    #[error("dependency error: {message}: {source}")]
+    DependencyError {
+        message: Cow<'static, str>,
+        source: Box<dyn std::error::Error>,
+    },
+
+    #[error("internal error: {0}")]
+    InternalError(String),
+}
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Interface for the Sleigh API. See [GhidraSleigh] for the Ghidra implementation.
+pub trait Sleigh {
+    /// Get the default address space for code execution
+    #[must_use]
+    fn default_code_space(&self) -> AddressSpace;
+
+    /// List all available address spaces
+    #[must_use]
+    fn address_spaces(&self) -> Vec<AddressSpace>;
+
+    /// Get the [VarnodeData] that represents the named register.
+    #[must_use]
+    fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData>;
+
+    /// Disassemble the instructions at the given address into pcode.
+    #[must_use]
+    fn disassemble_pcode(
+        &self,
+        loader: &dyn LoadImage,
+        address: Address,
+    ) -> Result<Disassembly<PcodeInstruction>>;
+
+    /// Disassemble the instructions at the given address into native assembly instructions.
+    #[must_use]
+    fn disassemble_native(
+        &self,
+        loader: &dyn LoadImage,
+        address: Address,
+    ) -> Result<Disassembly<AssemblyInstruction>>;
+}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
     /// However, when used in conjunction with the constant address space, the offset is the actual
     /// value. In some contexts this value may be signed, in which case the offset should be
-    /// considered an `i64` value.
+    /// considered an [i64] value.
     pub offset: u64,
     pub address_space: AddressSpace,
 }
@@ -163,13 +211,28 @@ impl From<sys::spacetype> for AddressSpaceType {
     }
 }
 
+/// A pcode instruction
 #[derive(Clone, Debug)]
 pub struct PcodeInstruction {
-    // TODO This should be separate from the instruction. Note that in that case though the address
-    // becomes a required argument for branch indirect instructions to execute them.
+    /// The originating address for this instruction. This information is necessary to include for
+    /// the [OpCode::BranchIndirect] operation, which determines the destination address space from
+    /// the instruction address space.
     pub address: Address,
+
+    /// The operation this pcode performs. The operation defines the semantics for the inputs and
+    /// optional output of this instruction.
     pub op_code: OpCode,
+
+    /// The inputs this pcode operation requires. The semantics for the inputs is determined by
+    /// the [OpCode]. For example, the [OpCode::Load] operation requires the first input has an
+    /// address in the [AddressSpaceType::Constant] address space, and is interpreted as an address
+    /// space identifier for the ultimate address to load. The second input is interpreted as a
+    /// pointer to the offset of the address to load, meaning its size must match the target
+    /// address space.
     pub inputs: Vec<VarnodeData>,
+
+    /// The output for the pcode operation. The semantics of the output and whether it is expected
+    /// is determined by the [OpCode].
     pub output: Option<VarnodeData>,
 }
 
@@ -188,37 +251,52 @@ impl std::fmt::Display for PcodeInstruction {
     }
 }
 
-#[derive(Default)]
 pub struct AssemblyInstruction {
+    pub address: Address,
     pub mnemonic: String,
     pub body: String,
 }
 
-#[derive(Default)]
-pub struct DecodeResponse<T> {
-    pub instructions: Vec<(Address, T)>,
-    pub num_bytes_consumed: usize,
+/// A disassembly of instructions originating from a [VarnodeData].
+pub struct Disassembly<T> {
+    /// The disassembled instructions
+    instructions: Vec<T>,
+
+    /// The origin of the instructions
+    origin: VarnodeData,
 }
 
-#[derive(Default)]
-pub struct PcodeResponse {
-    pub pcode_instructions: Vec<PcodeInstruction>,
-    pub num_bytes_consumed: usize,
-}
+impl<T> Disassembly<T> {
+    /// Create a new disassembly
+    pub fn new(instructions: Vec<T>, origin: VarnodeData) -> Self {
+        Self {
+            instructions,
+            origin,
+        }
+    }
 
-impl api::AssemblyEmit for DecodeResponse<AssemblyInstruction> {
-    fn dump(&mut self, address: &sys::Address, mnemonic: &cxx::CxxString, body: &cxx::CxxString) {
-        self.instructions.push((
-            address.into(),
-            AssemblyInstruction {
-                mnemonic: mnemonic.to_string(),
-                body: body.to_string(),
-            },
-        ));
+    /// Reference to the disassembled instructions
+    pub fn instructions(&self) -> impl AsRef<[T]> + '_ {
+        &self.instructions
+    }
+
+    /// Reference to the origin of the disassembled instructions
+    pub fn origin(&self) -> &VarnodeData {
+        &self.origin
     }
 }
 
-impl api::PcodeEmit for PcodeResponse {
+impl api::AssemblyEmit for Vec<AssemblyInstruction> {
+    fn dump(&mut self, address: &sys::Address, mnemonic: &cxx::CxxString, body: &cxx::CxxString) {
+        self.push(AssemblyInstruction {
+            address: address.into(),
+            mnemonic: mnemonic.to_string(),
+            body: body.to_string(),
+        });
+    }
+}
+
+impl api::PcodeEmit for Vec<PcodeInstruction> {
     fn dump(
         &mut self,
         address: &sys::Address,
@@ -226,7 +304,7 @@ impl api::PcodeEmit for PcodeResponse {
         output_variable: Option<&sys::VarnodeData>,
         input_variables: &cxx::CxxVector<sys::VarnodeData>,
     ) {
-        self.pcode_instructions.push(PcodeInstruction {
+        self.push(PcodeInstruction {
             address: address.into(),
             op_code: op_code.into(),
             inputs: input_variables
@@ -269,31 +347,30 @@ impl<'a> api::LoadImage for InstructionLoader<'a> {
     }
 }
 
+// TODO This should be renamed. The GhidraSleigh API is called LoadImage but the external trait we
+// ask users to implement can be named in a more Rustic fashion.
 pub trait LoadImage {
     fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String>;
 }
 
-pub struct Sleigh {
+enum DisassemblyKind<'a> {
+    Native(&'a mut Vec<AssemblyInstruction>),
+    Pcode(&'a mut Vec<PcodeInstruction>),
+}
+
+pub struct GhidraSleigh {
     /// The sleigh object. This object holds a reference to the image loader.
     sleigh: UniquePtr<sys::SleighProxy>,
 }
 
-impl Sleigh {
+impl GhidraSleigh {
     pub fn new() -> Self {
         Self {
             sleigh: sys::new_sleigh(sys::new_context_internal()),
         }
     }
 
-    pub fn default_code_space(&self) -> AddressSpace {
-        unsafe { &*self.sleigh.default_code_space() }.into()
-    }
-
-    pub fn initialize(
-        &mut self,
-        sleigh_spec: &str,
-        processor_spec: &str,
-    ) -> std::result::Result<(), String> {
+    pub fn initialize(&mut self, sleigh_spec: &str, processor_spec: &str) -> Result<()> {
         // This global libsla initialization is required for parsing sleigh document
         INIT.call_once(|| {
             sys::initialize_element_id();
@@ -304,34 +381,37 @@ impl Sleigh {
         let_cxx_string!(processor_spec = processor_spec);
 
         let mut store = sys::new_document_storage();
-        sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec)
-            .map_err(|_err| "Failed to parse sleigh spec")?;
+        sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec).map_err(|err| {
+            Error::DependencyError {
+                message: Cow::Borrowed("failed to parse sleigh specification"),
+                source: Box::new(err),
+            }
+        })?;
 
-        sys::parse_document_and_register_root(store.pin_mut(), &processor_spec)
-            .map_err(|_err| "Failed to parse processor spec")?;
+        sys::parse_document_and_register_root(store.pin_mut(), &processor_spec).map_err(|err| {
+            Error::DependencyError {
+                message: Cow::Borrowed("failed to parse processor specification"),
+                source: Box::new(err),
+            }
+        })?;
 
         self.sleigh
             .pin_mut()
             .initialize(store.pin_mut())
-            .map_err(|_err| "Failed to initialize sleigh")?;
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to initialize Ghidra sleigh"),
+                source: Box::new(err),
+            })?;
 
         self.sleigh
             .pin_mut()
             .parse_processor_config(&store)
-            .map_err(|err| format!("Failed to import processor config: {:?}", err))?;
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to import processor config"),
+                source: Box::new(err),
+            })?;
 
         Ok(())
-    }
-
-    pub fn address_spaces(&self) -> Vec<AddressSpace> {
-        let num_spaces = self.sleigh.num_spaces();
-        let mut addr_spaces = Vec::with_capacity(num_spaces as usize);
-        for i in 0..num_spaces {
-            // SAFETY: Address spaces returned from sleigh are safe to dereference
-            let raw_addr_space = unsafe { &*self.sleigh.address_space(i) };
-            addr_spaces.push(raw_addr_space.into());
-        }
-        addr_spaces
     }
 
     fn sys_address_space(&self, space_id: usize) -> Option<*mut AddrSpace> {
@@ -346,32 +426,13 @@ impl Sleigh {
         None
     }
 
-    pub fn register_from_name(
-        &self,
-        name: impl AsRef<str>,
-    ) -> std::result::Result<VarnodeData, String> {
-        let_cxx_string!(name = name.as_ref());
-        self.sleigh
-            .register_from_name(&name)
-            .map(VarnodeData::from)
-            .map_err(|err| format!("failed to get register {name}: {err}"))
-    }
-
-    ///
-    ///
-    /// # Safety
-    ///
-    /// The `space_id` must be a valid identifier obtained from a live pcode dump. This identifier
-    /// is NOT portable between sessions.
-    pub unsafe fn address_space(&self, space_id: usize) -> AddressSpace {
-        AddressSpace::from(&*(space_id as *const sys::AddrSpace))
-    }
-
-    pub fn pcode(
+    #[must_use]
+    fn disassemble(
         &self,
         loader: &dyn LoadImage,
-        address: &Address,
-    ) -> std::result::Result<PcodeResponse, String> {
+        address: Address,
+        kind: DisassemblyKind,
+    ) -> Result<VarnodeData> {
         let address = unsafe {
             sys::new_address(
                 self.sys_address_space(address.address_space.id)
@@ -380,64 +441,104 @@ impl Sleigh {
             )
         };
 
-        let mut pcode = PcodeResponse::default();
-        let mut emitter = rust::RustPcodeEmit(&mut pcode);
-
         let loader = InstructionLoader(loader);
         let rust_loader = rust::RustLoadImage(&loader);
-        let bytes_consumed = self
-            .sleigh
-            .disassemble_pcode(&rust_loader, &mut emitter, address.as_ref().unwrap())
-            .map_err(|err| format!("Failed to decode instruction: {err}"))?;
 
-        let bytes_consumed: usize = bytes_consumed
+        let response = match kind {
+            DisassemblyKind::Pcode(instructions) => {
+                let mut emitter = rust::RustPcodeEmit(instructions);
+                self.sleigh
+                    .disassemble_pcode(&rust_loader, &mut emitter, address.as_ref().unwrap())
+            }
+            DisassemblyKind::Native(instructions) => {
+                let mut emitter = rust::RustAssemblyEmit(instructions);
+                self.sleigh.disassemble_native(
+                    &rust_loader,
+                    &mut emitter,
+                    address.as_ref().unwrap(),
+                )
+            }
+        };
+
+        let bytes_consumed = response
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to decode instruction"),
+                source: Box::new(err),
+            })?
             .try_into()
-            .map_err(|err| format!("Invalid number of bytes consumed: {bytes_consumed}: {err}"))?;
+            .map_err(|err| {
+                Error::InternalError(format!("instruction origin size is too large: {err}"))
+            })?;
 
         let source = VarnodeData {
             address: (&*address).into(),
             size: bytes_consumed,
         };
 
+        // Sleigh may attempt to read more bytes than are available to read.
+        // Unfortuantely the callback API does not provide any mechanism to
+        // inform the caller that only a subset of the requested bytes are valid.
+        // Since many ISAs are variable-length instructions, it is possible the
+        // valid subset will decode to a valid instruction, and the requested length
+        // was an over-estimation.
+        //
+        // This is a sanity check to determine if the bytes Sleigh used for decoding
+        // are all valid.
         if !loader.readable(&source) {
-            return Err("Out-of-bounds read while decoding instruction".to_string());
+            return Err(Error::InsufficientData(source));
         }
 
-        pcode.num_bytes_consumed = bytes_consumed as usize;
-        Ok(pcode)
+        Ok(source)
+    }
+}
+
+impl Sleigh for GhidraSleigh {
+    fn default_code_space(&self) -> AddressSpace {
+        unsafe { &*self.sleigh.default_code_space() }.into()
     }
 
-    pub fn assembly(
+    fn address_spaces(&self) -> Vec<AddressSpace> {
+        let num_spaces = self.sleigh.num_spaces();
+        let mut addr_spaces = Vec::with_capacity(num_spaces as usize);
+        for i in 0..num_spaces {
+            // SAFETY: Address spaces returned from sleigh are safe to dereference
+            let raw_addr_space = unsafe { &*self.sleigh.address_space(i) };
+            addr_spaces.push(raw_addr_space.into());
+        }
+        addr_spaces
+    }
+
+    fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData> {
+        let_cxx_string!(name = name.as_ref());
+        self.sleigh
+            .register_from_name(&name)
+            .map(VarnodeData::from)
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Owned(format!("failed to get register {name}")),
+                source: Box::new(err),
+            })
+    }
+
+    fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
-        address: u64,
-    ) -> std::result::Result<DecodeResponse<AssemblyInstruction>, String> {
-        let address = unsafe { sys::new_address(self.sleigh.default_code_space(), address) };
-        let mut response: DecodeResponse<AssemblyInstruction> = Default::default();
-        let mut emitter = rust::RustAssemblyEmit(&mut response);
+        address: Address,
+    ) -> Result<Disassembly<PcodeInstruction>> {
+        let mut instructions = Vec::new();
+        let origin =
+            self.disassemble(loader, address, DisassemblyKind::Pcode(&mut instructions))?;
+        Ok(Disassembly::new(instructions, origin))
+    }
 
-        let loader = InstructionLoader(loader);
-        let rust_loader = rust::RustLoadImage(&loader);
-        let bytes_consumed = self
-            .sleigh
-            .disassemble_native(&rust_loader, &mut emitter, address.as_ref().unwrap())
-            .map_err(|_err| "Failed to decode instruction")?;
-
-        let bytes_consumed: usize = bytes_consumed
-            .try_into()
-            .map_err(|err| format!("Invalid number of bytes consumed: {bytes_consumed}: {err}"))?;
-
-        let data_read = VarnodeData {
-            address: (&*address).into(),
-            size: bytes_consumed,
-        };
-
-        if !loader.readable(&data_read) {
-            return Err("Out-of-bounds read while decoding instruction".to_string());
-        }
-
-        response.num_bytes_consumed = bytes_consumed as usize;
-        Ok(response)
+    fn disassemble_native(
+        &self,
+        loader: &dyn LoadImage,
+        address: Address,
+    ) -> Result<Disassembly<AssemblyInstruction>> {
+        let mut instructions = Vec::new();
+        let origin =
+            self.disassemble(loader, address, DisassemblyKind::Native(&mut instructions))?;
+        Ok(Disassembly::new(instructions, origin))
     }
 }
 
@@ -461,8 +562,8 @@ mod tests {
         }
     }
 
-    fn dump_pcode_response(response: &PcodeResponse) {
-        for instruction in response.pcode_instructions.iter() {
+    fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
+        for instruction in response.instructions().as_ref() {
             print!(
                 "{}:{:016x} | {:?}",
                 instruction.address.address_space.name,
@@ -493,7 +594,7 @@ mod tests {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x0f\xaf\xc0\x5d\xc3".to_vec());
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read sleigh spec file");
 
@@ -513,10 +614,10 @@ mod tests {
             };
 
             let response = sleigh
-                .pcode(&load_image, &address)
+                .disassemble_pcode(&load_image, address)
                 .expect("Failed to decode instruction");
             dump_pcode_response(&response);
-            offset += response.num_bytes_consumed as u64;
+            offset += response.origin().size as u64;
         }
         assert_eq!(offset, 15, "Expected 15 bytes to be decoded");
     }
@@ -526,7 +627,7 @@ mod tests {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
@@ -569,25 +670,30 @@ mod tests {
         ];
 
         for i in 0..NUM_INSTRUCTIONS {
+            let address = Address {
+                offset,
+                address_space: sleigh.default_code_space(),
+            };
+
             let response = sleigh
-                .assembly(&load_image, offset)
+                .disassemble_native(&load_image, address)
                 .expect("Failed to decode instruction");
-            let (addr, instruction) = &response.instructions[0];
-            assert_eq!(addr.address_space.name, expected[i].0);
-            assert_eq!(addr.offset, expected[i].1);
+            let instruction = &response.instructions[0];
+            assert_eq!(instruction.address.address_space.name, expected[i].0);
+            assert_eq!(instruction.address.offset, expected[i].1);
             assert_eq!(instruction.mnemonic, expected[i].2);
             assert_eq!(instruction.body, expected[i].3);
             println!(
                 "{}:{:016x} | {} {}",
                 expected[i].0, expected[i].1, expected[i].2, expected[i].3
             );
-            offset += response.num_bytes_consumed as u64;
+            offset += response.origin().size as u64;
         }
     }
 
     #[test]
     pub fn register_from_name() {
-        let mut sleigh = Sleigh::new();
+        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
