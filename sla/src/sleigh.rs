@@ -12,7 +12,6 @@ use crate::opcodes::OpCode;
 
 static INIT: Once = Once::new();
 
-// TODO. Need to replace string errors with sleigh errors
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("insufficient data at varnode {0}")]
