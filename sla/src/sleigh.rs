@@ -478,16 +478,6 @@ impl GhidraSleigh {
 
         Ok(source)
     }
-
-    ///
-    ///
-    /// # Safety
-    ///
-    /// The `space_id` must be a valid identifier obtained from a live pcode dump. This identifier
-    /// is NOT portable between sessions.
-    pub unsafe fn address_space(&self, space_id: usize) -> AddressSpace {
-        AddressSpace::from(&*(space_id as *const sys::AddrSpace))
-    }
 }
 
 impl Sleigh for GhidraSleigh {
