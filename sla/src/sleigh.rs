@@ -143,9 +143,38 @@ impl From<&sys::VarnodeData> for VarnodeData {
     }
 }
 
+/// Address space identifier
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AddressSpaceId(usize);
+
+impl std::fmt::Display for AddressSpaceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:#0width$x}",
+            self.0,
+            // Each byte is represented by 2 hex characters
+            width = 2 * std::mem::size_of::<usize>()
+        )
+    }
+}
+
+impl AddressSpaceId {
+    /// Construct a new address space id
+    pub fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    /// Get the raw identifier representing this address space id. This identifier should be
+    /// treated as an opaque value.
+    pub fn raw_id(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AddressSpace {
-    pub id: usize,
+    pub id: AddressSpaceId,
     pub name: Cow<'static, str>,
     pub word_size: usize,
     pub address_size: usize,
@@ -156,6 +185,15 @@ pub struct AddressSpace {
 impl AddressSpace {
     pub fn is_constant(&self) -> bool {
         self.space_type == AddressSpaceType::Constant
+    }
+
+    /// Creates an address space from a Ghidra address space id.
+    ///
+    /// # Safety
+    ///
+    /// The address space id must have originated from the Ghidra library in the current process.
+    pub unsafe fn from_ghirda_id(id: AddressSpaceId) -> AddressSpace {
+        AddressSpace::from(&*(id.0 as *const sys::AddrSpace))
     }
 }
 
@@ -168,13 +206,19 @@ impl std::fmt::Display for AddressSpace {
 impl From<&sys::AddrSpace> for AddressSpace {
     fn from(address_space: &sys::AddrSpace) -> Self {
         Self {
-            id: (address_space as *const _) as usize,
+            id: address_space.into(),
             name: Cow::Owned(address_space.name().to_string()),
             word_size: address_space.word_size().try_into().unwrap(),
             address_size: address_space.address_size().try_into().unwrap(),
             space_type: address_space.space_type().into(),
             big_endian: address_space.big_endian(),
         }
+    }
+}
+
+impl From<&sys::AddrSpace> for AddressSpaceId {
+    fn from(address_space: &sys::AddrSpace) -> Self {
+        Self::new((address_space as *const _) as usize)
     }
 }
 
@@ -414,11 +458,13 @@ impl GhidraSleigh {
         Ok(())
     }
 
-    fn sys_address_space(&self, space_id: usize) -> Option<*mut AddrSpace> {
+    fn sys_address_space(&self, space_id: AddressSpaceId) -> Option<*mut AddrSpace> {
         let num_spaces = self.sleigh.num_spaces();
         for i in 0..num_spaces {
             let addr_space = self.sleigh.address_space(i);
-            if (addr_space as usize) == space_id {
+
+            // SAFETY: The address space returned here is safe to dereference
+            if AddressSpaceId::from(unsafe { &*addr_space }) == space_id {
                 return Some(addr_space);
             }
         }
