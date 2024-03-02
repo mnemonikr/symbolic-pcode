@@ -18,7 +18,7 @@ pub enum Error {
     MemoryAccess(#[from] crate::mem::Error),
 
     #[error("failed to decode instruction: {0}")]
-    InstructionDecoding(String),
+    InstructionDecoding(#[from] sla::Error),
 
     #[error("symbolic condition")]
     SymbolicCondition(SymbolicBit),

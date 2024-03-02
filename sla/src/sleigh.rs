@@ -1,17 +1,32 @@
 use std::borrow::Cow;
 use std::sync::Once;
 
+use cxx::{let_cxx_string, UniquePtr};
+use thiserror;
+
 use crate::ffi::api;
 use crate::ffi::rust;
 use crate::ffi::sys;
 use crate::ffi::sys::AddrSpace;
-pub use crate::opcodes::OpCode;
-use cxx::{let_cxx_string, UniquePtr};
+use crate::opcodes::OpCode;
 
 static INIT: Once = Once::new();
 
 // TODO. Need to replace string errors with sleigh errors
-pub enum Error {}
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("insufficient data at varnode {0}")]
+    InsufficientData(VarnodeData),
+
+    #[error("dependency error: {message}: {source}")]
+    DependencyError {
+        message: String,
+        source: Box<dyn std::error::Error>,
+    },
+
+    #[error("internal error: {0}")]
+    InternalError(String),
+}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -27,8 +42,7 @@ pub trait Sleigh {
 
     /// Get the [VarnodeData] that represents the named register.
     #[must_use]
-    fn register_from_name(&self, name: impl AsRef<str>)
-        -> std::result::Result<VarnodeData, String>;
+    fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData>;
 
     /// Disassemble the instructions at the given address into pcode.
     #[must_use]
@@ -36,7 +50,7 @@ pub trait Sleigh {
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<Disassembly<PcodeInstruction>, String>;
+    ) -> Result<Disassembly<PcodeInstruction>>;
 
     /// Disassemble the instructions at the given address into native assembly instructions.
     #[must_use]
@@ -44,7 +58,7 @@ pub trait Sleigh {
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<Disassembly<AssemblyInstruction>, String>;
+    ) -> Result<Disassembly<AssemblyInstruction>>;
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -332,6 +346,8 @@ impl<'a> api::LoadImage for InstructionLoader<'a> {
     }
 }
 
+// TODO This should be renamed. The GhidraSleigh API is called LoadImage but the external trait we
+// ask users to implement can be named in a more Rustic fashion.
 pub trait LoadImage {
     fn instruction_bytes(&self, data: &VarnodeData) -> std::result::Result<Vec<u8>, String>;
 }
@@ -405,7 +421,7 @@ impl GhidraSleigh {
         loader: &dyn LoadImage,
         address: Address,
         kind: DisassemblyKind,
-    ) -> std::result::Result<VarnodeData, String> {
+    ) -> Result<VarnodeData> {
         let address = unsafe {
             sys::new_address(
                 self.sys_address_space(address.address_space.id)
@@ -434,9 +450,14 @@ impl GhidraSleigh {
         };
 
         let bytes_consumed = response
-            .map_err(|err| format!("Failed to decode instruction: {err}"))?
+            .map_err(|err| Error::DependencyError {
+                message: format!("failed to decode instruction"),
+                source: Box::new(err),
+            })?
             .try_into()
-            .map_err(|err| format!("Invalid number of bytes consumed: {err}"))?;
+            .map_err(|err| {
+                Error::InternalError(format!("instruction origin size is too large: {err}"))
+            })?;
 
         let source = VarnodeData {
             address: (&*address).into(),
@@ -453,7 +474,7 @@ impl GhidraSleigh {
         // This is a sanity check to determine if the bytes Sleigh used for decoding
         // are all valid.
         if !loader.readable(&source) {
-            return Err("Out-of-bounds read while decoding instruction".to_string());
+            return Err(Error::InsufficientData(source));
         }
 
         Ok(source)
@@ -486,22 +507,22 @@ impl Sleigh for GhidraSleigh {
         addr_spaces
     }
 
-    fn register_from_name(
-        &self,
-        name: impl AsRef<str>,
-    ) -> std::result::Result<VarnodeData, String> {
+    fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData> {
         let_cxx_string!(name = name.as_ref());
         self.sleigh
             .register_from_name(&name)
             .map(VarnodeData::from)
-            .map_err(|err| format!("failed to get register {name}: {err}"))
+            .map_err(|err| Error::DependencyError {
+                message: format!("failed to get register {name}"),
+                source: Box::new(err),
+            })
     }
 
     fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<Disassembly<PcodeInstruction>, String> {
+    ) -> Result<Disassembly<PcodeInstruction>> {
         let mut instructions = Vec::new();
         let origin =
             self.disassemble(loader, address, DisassemblyKind::Pcode(&mut instructions))?;
@@ -512,7 +533,7 @@ impl Sleigh for GhidraSleigh {
         &self,
         loader: &dyn LoadImage,
         address: Address,
-    ) -> std::result::Result<Disassembly<AssemblyInstruction>, String> {
+    ) -> Result<Disassembly<AssemblyInstruction>> {
         let mut instructions = Vec::new();
         let origin =
             self.disassemble(loader, address, DisassemblyKind::Native(&mut instructions))?;
