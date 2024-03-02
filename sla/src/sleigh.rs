@@ -10,8 +10,8 @@ use crate::ffi::sys;
 use crate::ffi::sys::AddrSpace;
 use crate::opcodes::OpCode;
 
-/// Tracks whether the one-time initialization required for Ghidra has been performed
-static GHIDRA_INIT: Once = Once::new();
+/// Tracks whether the one-time initialization required for libsla has been performed
+static LIBSLA_INIT: Once = Once::new();
 
 /// Errors returned by this crate. Note that some APIs that may pass through FFI boundaries return
 /// [String] since those errors are ultimately serialized anyway.
@@ -417,7 +417,7 @@ impl GhidraSleigh {
 
     pub fn initialize(&mut self, sleigh_spec: &str, processor_spec: &str) -> Result<()> {
         // This global libsla initialization is required for parsing sleigh document
-        GHIDRA_INIT.call_once(|| {
+        LIBSLA_INIT.call_once(|| {
             sys::initialize_element_id();
             sys::initialize_attribute_id();
         });
