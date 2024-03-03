@@ -162,13 +162,13 @@ impl std::fmt::Display for AddressSpaceId {
 
 impl AddressSpaceId {
     /// Construct a new address space id
-    pub fn new(id: usize) -> Self {
+    pub const fn new(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw identifier representing this address space id. This identifier should be
     /// treated as an opaque value.
-    pub fn raw_id(self) -> usize {
+    pub const fn raw_id(self) -> usize {
         self.0
     }
 }
