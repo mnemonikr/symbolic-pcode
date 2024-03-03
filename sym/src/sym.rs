@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -118,7 +119,7 @@ impl std::ops::BitXor for SymbolicBit {
 
 #[derive(Debug, Clone)]
 pub struct SymbolicBitVec {
-    pub(crate) bits: Vec<SymbolicBit>,
+    pub(crate) bits: std::collections::VecDeque<SymbolicBit>,
 }
 
 impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
@@ -138,20 +139,38 @@ impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
 
 impl IntoIterator for SymbolicBitVec {
     type Item = SymbolicBit;
-    type IntoIter = std::vec::IntoIter<SymbolicBit>;
+    type IntoIter = std::collections::vec_deque::IntoIter<SymbolicBit>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.bits.into_iter()
     }
 }
 
+impl std::ops::Index<usize> for SymbolicBitVec {
+    type Output = SymbolicBit;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.bits[index]
+    }
+}
+
+impl std::ops::IndexMut<usize> for SymbolicBitVec {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.bits[index]
+    }
+}
+
 static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 impl SymbolicBitVec {
+    pub fn len(&self) -> usize {
+        self.bits.len()
+    }
+
     pub fn with_size(num_bits: usize) -> Self {
         let start_symbol = START_SYMBOL.fetch_add(num_bits, Ordering::SeqCst);
-        let mut bits = Vec::with_capacity(num_bits);
+        let mut bits = VecDeque::with_capacity(num_bits);
         for i in 0..num_bits {
-            bits.push(SymbolicBit::Variable(start_symbol + i));
+            bits.push_back(SymbolicBit::Variable(start_symbol + i));
         }
 
         Self { bits }
@@ -191,14 +210,14 @@ impl SymbolicBitVec {
 
     pub fn empty() -> Self {
         Self {
-            bits: Vec::with_capacity(0),
+            bits: VecDeque::with_capacity(0),
         }
     }
 
     pub fn constant(mut value: usize, num_bits: usize) -> Self {
-        let mut bits = Vec::with_capacity(num_bits);
+        let mut bits = VecDeque::with_capacity(num_bits);
         for _ in 0..num_bits {
-            bits.push(SymbolicBit::Literal(value & 0x1 > 0));
+            bits.push_back(SymbolicBit::Literal(value & 0x1 > 0));
             value >>= 1;
         }
 
@@ -243,9 +262,9 @@ impl SymbolicBitVec {
             // SAFETY: Know both self and rhs bits length is 1
             unsafe {
                 self.bits
-                    .pop()
+                    .pop_back()
                     .unwrap_unchecked()
-                    .equals(rhs.bits.pop().unwrap_unchecked())
+                    .equals(rhs.bits.pop_back().unwrap_unchecked())
             }
         } else {
             let partition = self.bits.len() / 2;
@@ -258,7 +277,7 @@ impl SymbolicBitVec {
     /// Concatenates the left-hand side with the right-hand side, creating a new `SymbolicBitVec`
     /// with a combined length of both inputs.
     pub fn concat(mut self, mut rhs: Self) -> Self {
-        let mut bits = Vec::with_capacity(self.bits.len() + rhs.bits.len());
+        let mut bits = VecDeque::with_capacity(self.bits.len() + rhs.bits.len());
         bits.append(&mut self.bits);
         bits.append(&mut rhs.bits);
         Self { bits }
@@ -292,10 +311,10 @@ impl SymbolicBitVec {
     /// Create a new `SymbolicBitVec` with the number of additional bits specified as the
     /// most-significant bits. The additional bits are clones of the original most significant-bit.
     pub fn sign_extend(self, num_bits: usize) -> Self {
-        let mut extension = Vec::with_capacity(num_bits);
+        let mut extension = VecDeque::with_capacity(num_bits);
         let msb = &self.bits[self.bits.len() - 1];
         for _ in 0..num_bits {
-            extension.push(msb.clone());
+            extension.push_back(msb.clone());
         }
 
         let extension = Self { bits: extension };
@@ -304,7 +323,7 @@ impl SymbolicBitVec {
 
     pub fn addition_with_carry(self, rhs: Self) -> (Self, SymbolicBit) {
         let mut carry = self.clone().addition_carry_bits(rhs.clone());
-        let overflow = carry.bits.pop().unwrap();
+        let overflow = carry.bits.pop_back().unwrap();
         let sum = self ^ rhs ^ carry;
         (sum, overflow)
     }
@@ -313,14 +332,14 @@ impl SymbolicBitVec {
         let diff = self.clone() - rhs.clone();
 
         // Positive overflow occurs if sign bits are (0, 1) but 1 in sum
-        let positive_overflow = !self.bits.last().cloned().unwrap()
-            & rhs.bits.last().cloned().unwrap()
-            & diff.bits.last().cloned().unwrap();
+        let positive_overflow = !self.bits.back().cloned().unwrap()
+            & rhs.bits.back().cloned().unwrap()
+            & diff.bits.back().cloned().unwrap();
 
         // Negative overflow occurs if sign bits are (1, 0) but 0 in sum
-        let negative_overflow = self.bits.last().cloned().unwrap()
-            & !rhs.bits.last().cloned().unwrap()
-            & !diff.bits.last().cloned().unwrap();
+        let negative_overflow = self.bits.back().cloned().unwrap()
+            & !rhs.bits.back().cloned().unwrap()
+            & !diff.bits.back().cloned().unwrap();
 
         // Overflow occurs if either positive or negative overflow occurs
         (diff, positive_overflow | negative_overflow)
@@ -397,8 +416,11 @@ impl SymbolicBitVec {
 
                 // TODO All of the bits placed into x will be overwritten. It could improve
                 // performance if these bits were extracted instead of cloned.
-                let x: Self = product.bits[rhs_size..rhs_size + num_sum_bits]
+                let x: Self = product
+                    .bits
                     .iter()
+                    .skip(rhs_size)
+                    .take(num_sum_bits)
                     .cloned()
                     .collect();
                 let y = self
@@ -424,7 +446,7 @@ impl SymbolicBitVec {
             // truncated addition. This is to ensure the number of product bits at the conclusion
             // of this loop contains the expected number of output bits.
             if max_sum_bits > self.len() {
-                product.bits.push(carry.unwrap());
+                product.bits.push_back(carry.unwrap());
             }
         }
 
@@ -454,7 +476,6 @@ impl SymbolicBitVec {
         let mut remainder = SymbolicBitVec::constant(0, dividend.len());
 
         for next_bit in dividend.bits.into_iter().rev() {
-            // TODO If we had a VecDeque then this would be constant time instead of O(n)
             remainder.bits.rotate_right(1);
             remainder.bits[0] = next_bit;
 
@@ -463,7 +484,6 @@ impl SymbolicBitVec {
             let diff = remainder.clone() - divisor.clone();
             remainder = remainder.mux(diff, selector.clone());
 
-            // TODO If we had a VecDeque then this would be constant time instead of O(n)
             quotient.bits.rotate_right(1);
             quotient.bits[0] = !selector;
         }
@@ -472,8 +492,8 @@ impl SymbolicBitVec {
     }
 
     pub fn signed_divide(self, dividend: Self) -> (Self, Self) {
-        let divisor_msb = self.bits.last().cloned().unwrap();
-        let dividend_msb = dividend.bits.last().cloned().unwrap();
+        let divisor_msb = self.bits.back().cloned().unwrap();
+        let dividend_msb = dividend.bits.back().cloned().unwrap();
 
         let unsigned_divisor = self.clone().mux(-self, !divisor_msb.clone());
         let unsigned_dividend = dividend.clone().mux(-dividend, !dividend_msb.clone());
@@ -491,11 +511,11 @@ impl SymbolicBitVec {
 
     pub fn addition_carry_bits(self, rhs: Self) -> Self {
         assert_eq!(self.bits.len(), rhs.bits.len());
-        let mut carry = Vec::with_capacity(self.bits.len() + 1);
-        carry.push(SymbolicBit::Literal(false));
-        carry.push(self[0].clone() & rhs[0].clone());
+        let mut carry = VecDeque::with_capacity(self.bits.len() + 1);
+        carry.push_back(SymbolicBit::Literal(false));
+        carry.push_back(self[0].clone() & rhs[0].clone());
         for i in 1..self.bits.len() {
-            carry.push(
+            carry.push_back(
                 (self[i].clone() & rhs[i].clone())
                     | (self[i].clone() & carry[i].clone())
                     | (rhs[i].clone() & carry[i].clone()),
@@ -531,8 +551,8 @@ impl SymbolicBitVec {
         assert_eq!(self.len(), rhs.len());
         let mut lhs = self;
         let mut rhs = rhs;
-        let lhs_msb = lhs.bits.pop().unwrap();
-        let rhs_msb = rhs.bits.pop().unwrap();
+        let lhs_msb = lhs.bits.pop_back().unwrap();
+        let rhs_msb = rhs.bits.pop_back().unwrap();
         let less_than = lhs_msb.clone().equals(SymbolicBit::Literal(false))
             & rhs_msb.clone().equals(SymbolicBit::Literal(true));
 
@@ -551,8 +571,8 @@ impl SymbolicBitVec {
         assert_eq!(self.len(), rhs.len());
         let mut lhs = self;
         let mut rhs = rhs;
-        let lhs_msb = lhs.bits.pop().unwrap();
-        let rhs_msb = rhs.bits.pop().unwrap();
+        let lhs_msb = lhs.bits.pop_back().unwrap();
+        let rhs_msb = rhs.bits.pop_back().unwrap();
         let greater_than = lhs_msb.clone().equals(SymbolicBit::Literal(true))
             & rhs_msb.clone().equals(SymbolicBit::Literal(false));
 
@@ -617,7 +637,7 @@ impl SymbolicBitVec {
     }
 
     pub fn signed_shift_right(self, rhs: Self) -> Self {
-        let sign_bit = self.bits.last().unwrap().clone();
+        let sign_bit = self.bits.back().unwrap().clone();
         let mut bit_shift_value = 1;
         let mut result = self;
         for bit in rhs.bits {
@@ -730,12 +750,16 @@ impl std::ops::Shl<usize> for SymbolicBitVec {
 
     fn shl(self, rhs: usize) -> Self::Output {
         let num_bits = self.bits.len();
-        let mut bits = Vec::with_capacity(num_bits);
+        let mut bits = VecDeque::with_capacity(num_bits);
         let rhs = usize::min(rhs, num_bits);
         for _ in 0..rhs {
-            bits.push(SymbolicBit::Literal(false));
+            bits.push_back(SymbolicBit::Literal(false));
         }
-        bits.append(&mut self.bits[..num_bits - rhs].to_vec());
+
+        self.bits
+            .into_iter()
+            .take(num_bits - rhs)
+            .for_each(|bit| bits.push_back(bit));
 
         Self { bits }
     }

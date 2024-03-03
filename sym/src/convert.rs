@@ -1,14 +1,6 @@
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
-impl std::ops::Deref for SymbolicBitVec {
-    type Target = [SymbolicBit];
-
-    fn deref(&self) -> &Self::Target {
-        &self.bits.as_slice()
-    }
-}
-
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
         SymbolicBit::Literal(value)
@@ -32,7 +24,9 @@ impl TryFrom<SymbolicBit> for bool {
 
 impl From<SymbolicBit> for SymbolicBitVec {
     fn from(value: SymbolicBit) -> Self {
-        Self { bits: vec![value] }
+        Self {
+            bits: [value].into(),
+        }
     }
 }
 
@@ -41,7 +35,7 @@ impl TryFrom<SymbolicBitVec> for SymbolicBit {
 
     fn try_from(mut value: SymbolicBitVec) -> Result<Self, Self::Error> {
         if value.len() == 1 {
-            Ok(value.bits.pop().unwrap())
+            Ok(value.bits.pop_back().unwrap())
         } else {
             Err(format!("value has {num_bits} bits", num_bits = value.len()))
         }
@@ -131,14 +125,14 @@ impl<const BYTES: usize, T: LittleEndian<BYTES>> TryFrom<&SymbolicBitVec>
 {
     type Error = ConcretizationError;
     fn try_from(value: &SymbolicBitVec) -> Result<Self, Self::Error> {
-        concretize_bits::<T, BYTES>(value.iter()).map(ConcreteValue::from)
+        concretize_bits::<T, BYTES>(value.bits.iter()).map(ConcreteValue::from)
     }
 }
 
 impl<const BYTES: usize, T: LittleEndian<BYTES>> From<ConcreteValue<BYTES, T>> for SymbolicBitVec {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
         SymbolicBitVec {
-            bits: value.symbolize(),
+            bits: value.symbolize().into(),
         }
     }
 }
