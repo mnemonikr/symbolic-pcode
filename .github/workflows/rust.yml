@@ -19,7 +19,7 @@ jobs:
       with:
         submodules: recursive
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --all-targets
     - name: Unit Tests
       run: cargo test --workspace --verbose
     - name: Coverage Report
