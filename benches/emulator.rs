@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use sla::{
-    Address, AddressSpace, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode, PcodeInstruction,
-    VarnodeData,
+    Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
+    PcodeInstruction, VarnodeData,
 };
 use sym::SymbolicByte;
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
@@ -12,7 +12,7 @@ use symbolic_pcode::mem::{Memory, SymbolicMemoryWriter};
 
 const fn processor_space() -> AddressSpace {
     AddressSpace {
-        id: 1,
+        id: AddressSpaceId::new(1),
         name: Cow::Borrowed("processor_space"),
         word_size: 1,
         address_size: 8,
@@ -23,7 +23,7 @@ const fn processor_space() -> AddressSpace {
 
 const fn constant_space() -> AddressSpace {
     AddressSpace {
-        id: 2,
+        id: AddressSpaceId::new(2),
         name: Cow::Borrowed("constant_space"),
         word_size: 1,
         address_size: 8,
@@ -34,7 +34,7 @@ const fn constant_space() -> AddressSpace {
 
 const fn internal_space() -> AddressSpace {
     AddressSpace {
-        id: 0,
+        id: AddressSpaceId::new(0),
         name: Cow::Borrowed("internal_space"),
         word_size: 1,
         address_size: 8,
@@ -92,7 +92,7 @@ fn setup_load() -> (Memory, PcodeInstruction) {
         inputs: vec![
             VarnodeData {
                 address: Address {
-                    offset: PROCESSOR_SPACE.id as u64,
+                    offset: PROCESSOR_SPACE.id.raw_id() as u64,
                     address_space: CONSTANT_SPACE,
                 },
                 size: 8,
@@ -154,7 +154,7 @@ fn setup_store() -> (Memory, PcodeInstruction) {
         inputs: vec![
             VarnodeData {
                 address: Address {
-                    offset: PROCESSOR_SPACE.id as u64,
+                    offset: PROCESSOR_SPACE.id.raw_id() as u64,
                     address_space: CONSTANT_SPACE,
                 },
                 size: 8,
