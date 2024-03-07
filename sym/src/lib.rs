@@ -1,3 +1,4 @@
+mod aig;
 mod buf;
 mod convert;
 mod sym;

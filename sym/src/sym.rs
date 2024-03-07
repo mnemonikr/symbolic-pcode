@@ -9,7 +9,7 @@ pub const FALSE: SymbolicBit = SymbolicBit::Literal(false);
 pub const TRUE: SymbolicBit = SymbolicBit::Literal(true);
 
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SymbolicBit {
     /// A literal `true` or `false` value.
     Literal(bool),
@@ -18,13 +18,18 @@ pub enum SymbolicBit {
     /// same identifier are equivalent.
     Variable(usize),
 
+    /// The conjunction of two symbolic bits. The `&` operator should be preferred to this, as it
+    /// has the opportunity to perform simpliciations where a direct construction does not.
+    ///
+    /// # Ordering
+    ///
+    /// For ordering purposes the left-hand side (LHS) should be less than or equal to right-hand
+    /// side (RHS). This property is ensured when using the `&` operator.
+    And(Rc<Self>, Rc<Self>),
+
     /// The negation of a symbolic bit. The `!` operator should be preferred to this, as it has the
     /// opportunity to perform simplications where a direct construction does not.
     Not(Rc<Self>),
-
-    /// The conjunction of two symbolic bits. The `&` operator should be preferred to this, as it
-    /// has the opportunity to perform simpliciations where a direct construction does not.
-    And(Rc<Self>, Rc<Self>),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -96,7 +101,12 @@ impl std::ops::BitAnd for SymbolicBit {
             _ => (),
         }
 
-        SymbolicBit::And(Rc::new(self), Rc::new(rhs))
+        // Ensure that LHS <= RHS when it comes to ordering
+        if self.cmp(&rhs) == std::cmp::Ordering::Greater {
+            SymbolicBit::And(Rc::new(rhs), Rc::new(self))
+        } else {
+            SymbolicBit::And(Rc::new(self), Rc::new(rhs))
+        }
     }
 }
 
@@ -1423,5 +1433,53 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn symbolic_bit_order() {
+        let var0 = SymbolicBit::Variable(0);
+        let var1 = SymbolicBit::Variable(1);
+        let and0 = var0.clone() & var0.clone();
+        let and1 = var1.clone() & var1.clone();
+        let and2 = var1.clone() & var0.clone();
+        let and3 = var0.clone() & var1.clone();
+
+        let mut bits = vec![
+            SymbolicBit::Literal(true),
+            SymbolicBit::Literal(false),
+            var0.clone(),
+            var1.clone(),
+            and0.clone(),
+            and1.clone(),
+            and2.clone(),
+            and3.clone(),
+            !var0.clone(),
+            !var1.clone(),
+            !and0.clone(),
+            !and1.clone(),
+            !and2.clone(),
+            !and3.clone(),
+        ];
+
+        bits.sort();
+
+        let expected = vec![
+            SymbolicBit::Literal(false),
+            SymbolicBit::Literal(true),
+            var0.clone(),
+            var1.clone(),
+            and0.clone(),
+            and2.clone(),
+            and3.clone(),
+            and1.clone(),
+            !var0.clone(),
+            !var1.clone(),
+            !and0.clone(),
+            !and2.clone(),
+            !and3.clone(),
+            !and1.clone(),
+        ];
+
+        assert_eq!(bits, expected);
     }
 }
