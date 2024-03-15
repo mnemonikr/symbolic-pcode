@@ -9,7 +9,7 @@ pub const FALSE: SymbolicBit = SymbolicBit::Literal(false);
 pub const TRUE: SymbolicBit = SymbolicBit::Literal(true);
 
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SymbolicBit {
     /// A literal `true` or `false` value.
     Literal(bool),
@@ -48,6 +48,14 @@ impl SymbolicBit {
 
     pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
+    }
+
+    pub fn filter_map(self, predicate: impl FnOnce(&Self) -> bool, map_value: Self) -> Self {
+        if predicate(&self) {
+            map_value
+        } else {
+            self
+        }
     }
 }
 
@@ -101,12 +109,7 @@ impl std::ops::BitAnd for SymbolicBit {
             _ => (),
         }
 
-        // Ensure that LHS <= RHS when it comes to ordering
-        if self.cmp(&rhs) == std::cmp::Ordering::Greater {
-            SymbolicBit::And(Rc::new(rhs), Rc::new(self))
-        } else {
-            SymbolicBit::And(Rc::new(self), Rc::new(rhs))
-        }
+        SymbolicBit::And(Rc::new(self), Rc::new(rhs))
     }
 }
 
@@ -1433,53 +1436,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn symbolic_bit_order() {
-        let var0 = SymbolicBit::Variable(0);
-        let var1 = SymbolicBit::Variable(1);
-        let and0 = var0.clone() & var0.clone();
-        let and1 = var1.clone() & var1.clone();
-        let and2 = var1.clone() & var0.clone();
-        let and3 = var0.clone() & var1.clone();
-
-        let mut bits = vec![
-            SymbolicBit::Literal(true),
-            SymbolicBit::Literal(false),
-            var0.clone(),
-            var1.clone(),
-            and0.clone(),
-            and1.clone(),
-            and2.clone(),
-            and3.clone(),
-            !var0.clone(),
-            !var1.clone(),
-            !and0.clone(),
-            !and1.clone(),
-            !and2.clone(),
-            !and3.clone(),
-        ];
-
-        bits.sort();
-
-        let expected = vec![
-            SymbolicBit::Literal(false),
-            SymbolicBit::Literal(true),
-            var0.clone(),
-            var1.clone(),
-            and0.clone(),
-            and2.clone(),
-            and3.clone(),
-            and1.clone(),
-            !var0.clone(),
-            !var1.clone(),
-            !and0.clone(),
-            !and2.clone(),
-            !and3.clone(),
-            !and1.clone(),
-        ];
-
-        assert_eq!(bits, expected);
     }
 }

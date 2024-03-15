@@ -1,91 +1,547 @@
-//! Convert symbolic bits into And-Inverter Graph (AIG) format
+//! Convert circuit of [SymbolicBit]s into [AIGER format](https://github.com/arminbiere/aiger/blob/master/FORMAT).
 
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
 use crate::SymbolicBit;
 
-#[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug)]
-enum AigEntry {
-    Gate(usize, usize, usize),
+/// False AIGER literal
+pub const FALSE_LITERAL: AigerLiteral = AigerLiteral::new(0);
+
+/// True AIGER literal
+pub const TRUE_LITERAL: AigerLiteral = FALSE_LITERAL.negated();
+
+/// Object capable of coverting [SymbolicBit]s into AIGER format.
+pub struct Aiger {
+    num_inputs: usize,
+    outputs: Vec<AigerLiteral>,
+    gates: Vec<AigerGate>,
 }
 
-fn create_circuit(outputs: impl Iterator<Item = SymbolicBit>) {
-    let outputs = outputs.collect::<Vec<_>>();
-    let mut indexes = BTreeSet::new();
-    for bit in outputs.iter() {
-        generate_indexes(bit, &mut indexes);
+impl Aiger {
+    /// Create an Aiger object from the given output bits
+    pub fn from_bits(bits: impl IntoIterator<Item = SymbolicBit>) -> Self {
+        let mut indexes = Indexes::new();
+        let bits = bits.into_iter().collect::<Vec<_>>();
+        for bit in bits.iter() {
+            indexes.insert_indexes(bit);
+        }
+
+        let mut gates = Default::default();
+        let mut outputs = Vec::with_capacity(bits.len());
+        for bit in bits {
+            Self::insert_gates(&bit, &indexes, &mut gates);
+            outputs.push(indexes.literal(&bit));
+        }
+        let gates = gates.into_values().collect::<Vec<_>>();
+        Self {
+            num_inputs: indexes.num_input_literals(),
+            outputs,
+            gates,
+        }
     }
 
-    let index_lookup = indexes
-        .iter()
-        .enumerate()
-        .map(|(index, &bit)| (bit, 2 * (index + 1)))
-        .collect::<HashMap<_, _>>();
+    /// Insert all [SymbolicBit::And] gates into the tree. The tree is a mapping from the gate
+    /// index to the [AigerGate] composed of [AigerLiteral]s.
+    fn insert_gates(bit: &SymbolicBit, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>) {
+        match bit {
+            SymbolicBit::And(x, y) => {
+                let index = indexes.index(bit);
 
-    let mut entries = BTreeSet::new();
-    for bit in outputs.iter() {
-        aig_entries(bit, &index_lookup, &mut entries);
+                if gates.get(&index).is_none() {
+                    gates.insert(
+                        index,
+                        AigerGate::new(
+                            indexes.literal(bit),
+                            (indexes.literal(x.as_ref()), indexes.literal(y.as_ref())),
+                        ),
+                    );
+
+                    // Only insert children if this is a new insertion. If this gate has already
+                    // been inserted then its children have also been inserted as well
+                    Self::insert_gates(x.as_ref(), indexes, gates);
+                    Self::insert_gates(y.as_ref(), indexes, gates);
+                }
+            }
+            SymbolicBit::Not(x) => {
+                Self::insert_gates(x, indexes, gates);
+            }
+
+            // No other type can lead to an and gate
+            _ => (),
+        }
+    }
+
+    /// Iterator of input literals
+    pub fn inputs(&self) -> impl Iterator<Item = AigerLiteral> {
+        (1..=self.num_inputs).into_iter().map(AigerLiteral::new)
+    }
+
+    /// Iterator of output literals
+    pub fn outputs(&self) -> impl Iterator<Item = AigerLiteral> + '_ {
+        self.outputs.iter().copied()
+    }
+
+    /// Iterator of and gates literals
+    pub fn gates(&self) -> impl Iterator<Item = AigerGate> + '_ {
+        self.gates.iter().copied()
+    }
+
+    /// Serialize the circuit into the AIGER binary format. The notable difference between the
+    /// binary and ASCII formats:
+    ///
+    /// * Inputs are omitted
+    /// * And gates are encoded in a binary format
+    pub fn serialize_binary(&self) -> Vec<u8> {
+        let header = format!(
+            "aag {M} {I} {L} {O} {A}\n",
+            M = self.num_inputs + self.gates.len(),
+            I = self.num_inputs,
+            L = 0,
+            O = self.outputs.len(),
+            A = self.gates.len()
+        );
+        let mut serialized = Vec::from(header.as_bytes());
+        self.outputs()
+            .for_each(|output| serialized.extend_from_slice(format!("{output}\n").as_bytes()));
+        self.gates()
+            .map(|gate| gate.serialize())
+            .for_each(|mut bytes| serialized.append(&mut bytes));
+
+        serialized
     }
 }
 
-fn generate_indexes<'a>(bit: &'a SymbolicBit, indexes: &mut BTreeSet<&'a SymbolicBit>) {
-    match bit {
-        SymbolicBit::Variable(_) => {
-            indexes.insert(bit);
-        }
-        SymbolicBit::And(ref x, ref y) => {
-            generate_indexes(x.as_ref(), indexes);
-            generate_indexes(y.as_ref(), indexes);
-            indexes.insert(bit);
-        }
-        _ => (),
-    };
-}
+/// An AIGER literal. These are used to represent inputs, outputs, and encode and gates.
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AigerLiteral(usize);
 
-fn generate_aig(bit: &SymbolicBit) {
-    let mut indexes = BTreeSet::new();
-    generate_indexes(bit, &mut indexes);
-
-    let index_lookup = indexes
-        .into_iter()
-        .enumerate()
-        .map(|(index, bit)| (bit, 2 * (index + 1)))
-        .collect::<HashMap<_, _>>();
-
-    let mut entries = Vec::new();
-    aig_entries(bit, &index_lookup, &mut entries);
-}
-
-fn index(bit: &SymbolicBit, index_lookup: &HashMap<&SymbolicBit, usize>) -> usize {
-    match bit {
-        SymbolicBit::Not(x) => index_lookup.get(x.as_ref()).unwrap() + 1,
-        _ => *index_lookup.get(bit).unwrap(),
+impl std::fmt::Display for AigerLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
-fn aig_entries(
-    bit: &SymbolicBit,
-    index_lookup: &HashMap<&SymbolicBit, usize>,
-    entries: &mut BTreeSet<AigEntry>,
-) {
-    let (bit, negation_offset) = if let SymbolicBit::Not(ref x) = bit {
-        (x.as_ref(), 1)
-    } else {
-        (bit, 0)
-    };
+impl AigerLiteral {
+    /// Create a new literal from the given index. Note that this index is a global for the
+    /// circuit, meaning the number of inputs can influence the index of an and gate.
+    pub const fn new(index: usize) -> Self {
+        Self(index << 1)
+    }
 
-    match bit {
-        SymbolicBit::And(ref x, ref y) => {
-            // The ordering in which the indexes were constructed ensures that the index
-            // of x is less than or equal to the index of y
-            aig_entries(x.as_ref(), index_lookup, entries);
-            aig_entries(y.as_ref(), index_lookup, entries);
-            entries.insert(AigEntry::Gate(
-                index(&bit, &index_lookup) + negation_offset,
-                index(&x, &index_lookup),
-                index(&y, &index_lookup),
-            ));
+    /// The negation of a literal is encoded by toggling the least significant bit.
+    pub const fn negated(self) -> Self {
+        Self(self.0 ^ 0b1)
+    }
+
+    /// The index of this literal. Note that the 0 index is reserved for the literal false value.
+    pub const fn index(&self) -> usize {
+        self.0 >> 1
+    }
+
+    /// Determine whether this literal is negated
+    pub const fn is_negated(&self) -> bool {
+        (self.0 & 0b1) == 0b1
+    }
+}
+
+/// The encoding for an AIGER and gate. The gate is encoded in parts:
+///
+/// 1. The LHS is the literal identifying this gate
+/// 2. The RHS is a pair of literals representing the gate inputs
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct AigerGate {
+    lhs: AigerLiteral,
+    rhs: (AigerLiteral, AigerLiteral),
+}
+
+impl AigerGate {
+    pub fn new(lhs: AigerLiteral, rhs: (AigerLiteral, AigerLiteral)) -> Self {
+        // Normalize so first RHS is always greater than second. Therefore LHS > RHS.0 >= RHS.1
+        if rhs.0 > rhs.1 {
+            Self { lhs, rhs }
+        } else {
+            Self {
+                lhs,
+                rhs: (rhs.1, rhs.0),
+            }
         }
-        _ => (),
-    };
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let deltas = (self.lhs.0 - self.rhs.0 .0, self.rhs.0 .0 - self.rhs.1 .0);
+        let mut encodings = ([0u8; Self::max_leb_size()], [0u8; Self::max_leb_size()]);
+        let lens = (
+            Self::leb128_encode(deltas.0, &mut encodings.0),
+            Self::leb128_encode(deltas.1, &mut encodings.1),
+        );
+
+        encodings
+            .0
+            .into_iter()
+            .take(lens.0)
+            .chain(encodings.1.into_iter().take(lens.1))
+            .collect()
+    }
+
+    /// Encode the given value using LEB128 format. This encoding is a little-endian format that
+    /// uses 7 bits per byte. If this is not the final byte in the sequence, then the byte's
+    /// most significant bit is set.
+    fn leb128_encode(mut value: usize, output: &mut [u8; Self::max_leb_size()]) -> usize {
+        const MAX_WORD_VALUE: usize = 0x7F;
+
+        let mut i = 0;
+        loop {
+            if value <= MAX_WORD_VALUE {
+                // SAFETY: index is guaranteed to be within range
+                unsafe {
+                    // Last byte does not have MSB set
+                    *output.get_unchecked_mut(i) = value as u8;
+                }
+                break;
+            } else {
+                // SAFETY: index is guaranteed to be within range
+                unsafe {
+                    // Get lower 7 bits, set MSB
+                    *output.get_unchecked_mut(i) = (value & 0x7F) as u8 | 0x80;
+                }
+                value >>= 7;
+                i += 1;
+            }
+        }
+
+        i + 1
+    }
+
+    /// The maximum number of bytes required to represent a `usize` value when LEB128 encoded.
+    const fn max_leb_size() -> usize {
+        let num_bits = 8 * std::mem::size_of::<usize>();
+
+        // LEB encoding can hold 7 bits of data. Add 6 to round up instead of down via division
+        (num_bits + 6) / 7
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct AndId(usize, usize);
+
+impl AndId {
+    pub fn new(lhs: &Rc<SymbolicBit>, rhs: &Rc<SymbolicBit>) -> Self {
+        let lhs = Rc::as_ptr(lhs) as usize;
+        let rhs = Rc::as_ptr(rhs) as usize;
+        if lhs < rhs {
+            Self(lhs, rhs)
+        } else {
+            Self(rhs, lhs)
+        }
+    }
+}
+
+#[derive(Default)]
+struct Indexes {
+    /// Mapping variable id to index
+    variables: HashMap<usize, usize>,
+
+    /// Mapping `AndId` to index
+    ands: HashMap<AndId, usize>,
+}
+
+impl Indexes {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn insert_indexes(&mut self, bit: &SymbolicBit) {
+        match bit {
+            SymbolicBit::Variable(id) => {
+                let index = self.variables.len() + 1;
+                self.variables.entry(*id).or_insert(index);
+            }
+            SymbolicBit::And(x, y) => {
+                self.insert_indexes(x.as_ref());
+                self.insert_indexes(y.as_ref());
+                let id = AndId::new(x, y);
+                let index = self.ands.len() + 1;
+                self.ands.entry(id).or_insert(index);
+            }
+            SymbolicBit::Not(x) => {
+                self.insert_indexes(x.as_ref());
+            }
+            SymbolicBit::Literal(_) => (),
+        }
+    }
+
+    pub fn index(&self, bit: &SymbolicBit) -> usize {
+        match bit {
+            SymbolicBit::Variable(id) => *self.variables.get(id).unwrap(),
+            SymbolicBit::And(x, y) => {
+                let id = AndId::new(x, y);
+                *self.ands.get(&id).unwrap() + self.num_input_literals()
+            }
+            SymbolicBit::Literal(_) => panic!("literal bits are not indexed"),
+            SymbolicBit::Not(_) => panic!("negated bits are not indexed"),
+        }
+    }
+
+    pub fn num_input_literals(&self) -> usize {
+        self.variables.len()
+    }
+
+    pub fn literal(&self, bit: &SymbolicBit) -> AigerLiteral {
+        match bit {
+            SymbolicBit::Literal(false) => FALSE_LITERAL,
+            SymbolicBit::Literal(true) => TRUE_LITERAL,
+            SymbolicBit::Variable(_) | SymbolicBit::And(_, _) => AigerLiteral::new(self.index(bit)),
+            SymbolicBit::Not(x) => self.literal(x.as_ref()).negated(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn output_false() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Literal(false)));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert!(inputs.is_empty());
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert!(gates.is_empty());
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![FALSE_LITERAL]);
+
+        assert_eq!(
+            aiger.serialize_binary(),
+            Vec::from("aag 0 0 0 1 0\n0\n".as_bytes())
+        );
+    }
+
+    #[test]
+    fn output_true() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Literal(true)));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert!(inputs.is_empty());
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert!(gates.is_empty());
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![TRUE_LITERAL]);
+
+        assert_eq!(
+            aiger.serialize_binary(),
+            Vec::from("aag 0 0 0 1 0\n1\n".as_bytes())
+        );
+    }
+
+    #[test]
+    fn output_variable() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Variable(0)));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert_eq!(inputs, vec![AigerLiteral::new(1)]);
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert!(gates.is_empty());
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![AigerLiteral::new(1)]);
+
+        assert_eq!(
+            aiger.serialize_binary(),
+            Vec::from("aag 1 1 0 1 0\n2\n".as_bytes())
+        );
+    }
+
+    #[test]
+    fn output_negated_variable() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Not(Rc::new(
+            SymbolicBit::Variable(0),
+        ))));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert_eq!(inputs, vec![AigerLiteral::new(1)]);
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert!(gates.is_empty());
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![AigerLiteral::new(1).negated()]);
+
+        assert_eq!(
+            aiger.serialize_binary(),
+            Vec::from("aag 1 1 0 1 0\n3\n".as_bytes())
+        );
+    }
+
+    #[test]
+    fn output_and_variables() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::And(
+            Rc::new(SymbolicBit::Variable(0)),
+            Rc::new(SymbolicBit::Variable(1)),
+        )));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert_eq!(
+            gates,
+            vec![AigerGate::new(
+                AigerLiteral::new(3),
+                (AigerLiteral::new(1), AigerLiteral::new(2))
+            )]
+        );
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![AigerLiteral::new(3)]);
+
+        let mut expected = Vec::from("aag 3 2 0 1 1\n6\n".as_bytes());
+        expected.push(0x02);
+        expected.push(0x02);
+        assert_eq!(aiger.serialize_binary(), expected);
+    }
+
+    #[test]
+    fn output_or_variables() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Not(Rc::new(
+            SymbolicBit::And(
+                Rc::new(SymbolicBit::Not(Rc::new(SymbolicBit::Variable(0)))),
+                Rc::new(SymbolicBit::Not(Rc::new(SymbolicBit::Variable(1)))),
+            ),
+        ))));
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert_eq!(
+            gates,
+            vec![AigerGate::new(
+                AigerLiteral::new(3),
+                (
+                    AigerLiteral::new(1).negated(),
+                    AigerLiteral::new(2).negated()
+                )
+            )]
+        );
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![AigerLiteral::new(3).negated()]);
+
+        let mut expected = Vec::from("aag 3 2 0 1 1\n7\n".as_bytes());
+        expected.push(0x01);
+        expected.push(0x02);
+        assert_eq!(aiger.serialize_binary(), expected);
+    }
+
+    #[test]
+    fn half_adder() {
+        let both = SymbolicBit::Variable(0) & SymbolicBit::Variable(1);
+        let neither = !SymbolicBit::Variable(0) & !SymbolicBit::Variable(1);
+        let bits = vec![!both.clone() & !neither, both];
+        let aiger = Aiger::from_bits(bits);
+
+        let inputs = aiger.inputs().collect::<Vec<_>>();
+        assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
+
+        let gates = aiger.gates().collect::<Vec<_>>();
+        assert_eq!(
+            gates,
+            vec![
+                AigerGate::new(
+                    AigerLiteral::new(3),
+                    (AigerLiteral::new(1), AigerLiteral::new(2))
+                ),
+                AigerGate::new(
+                    AigerLiteral::new(4),
+                    (
+                        AigerLiteral::new(1).negated(),
+                        AigerLiteral::new(2).negated()
+                    )
+                ),
+                AigerGate::new(
+                    AigerLiteral::new(5),
+                    (
+                        AigerLiteral::new(3).negated(),
+                        AigerLiteral::new(4).negated()
+                    )
+                ),
+            ]
+        );
+
+        let outputs = aiger.outputs().collect::<Vec<_>>();
+        assert_eq!(outputs, vec![AigerLiteral::new(5), AigerLiteral::new(3)]);
+
+        let mut expected = Vec::from("aag 5 2 0 2 3\n10\n6\n".as_bytes());
+        expected.extend_from_slice(&[0x02, 0x02, 0x03, 0x02, 0x01, 0x02]);
+        assert_eq!(aiger.serialize_binary(), expected);
+    }
+
+    #[test]
+    fn gate_serialization() {
+        let serialized = AigerGate::new(
+            AigerLiteral::new(2),
+            (
+                AigerLiteral::new(1).negated(),
+                AigerLiteral::new(1).negated(),
+            ),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x1, 0x0]);
+
+        let serialized = AigerGate::new(
+            AigerLiteral::new(0x80 >> 1),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x80, 0x01, 0x0]);
+
+        let serialized = AigerGate::new(
+            AigerLiteral::new(0x7F >> 1).negated(),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x7F, 0x0]);
+
+        let serialized = AigerGate::new(
+            AigerLiteral::new(0x102 >> 1),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x82, 0x02, 0x0]);
+
+        // 2^14 - 1
+        let serialized = AigerGate::new(
+            AigerLiteral::new((0b1_0000000_0000000 - 1) >> 1).negated(),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0xFF, 0x7F, 0x0]);
+
+        // 2^14 + 3
+        let serialized = AigerGate::new(
+            AigerLiteral::new((0b1_0000000_0000000 + 3) >> 1).negated(),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x83, 0x80, 0x01, 0x0]);
+
+        // 2^28 - 1
+        let serialized = AigerGate::new(
+            AigerLiteral::new((0b1_0000000_0000000_0000000_0000000 - 1) >> 1).negated(),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0xFF, 0xFF, 0xFF, 0x7F, 0x00]);
+
+        // 2^28 + 7
+        let serialized = AigerGate::new(
+            AigerLiteral::new((0b1_0000000_0000000_0000000_0000000 + 7) >> 1).negated(),
+            (AigerLiteral::new(0), AigerLiteral::new(0)),
+        )
+        .serialize();
+        assert_eq!(serialized, vec![0x87, 0x80, 0x80, 0x80, 0x01, 0x00]);
+    }
 }
