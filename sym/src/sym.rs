@@ -9,7 +9,7 @@ pub const FALSE: SymbolicBit = SymbolicBit::Literal(false);
 pub const TRUE: SymbolicBit = SymbolicBit::Literal(true);
 
 /// A value that can be used to represent a variable bit, possibly with constraints on its value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicBit {
     /// A literal `true` or `false` value.
     Literal(bool),
