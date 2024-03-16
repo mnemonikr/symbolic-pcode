@@ -18,18 +18,13 @@ pub enum SymbolicBit {
     /// same identifier are equivalent.
     Variable(usize),
 
-    /// The conjunction of two symbolic bits. The `&` operator should be preferred to this, as it
-    /// has the opportunity to perform simpliciations where a direct construction does not.
-    ///
-    /// # Ordering
-    ///
-    /// For ordering purposes the left-hand side (LHS) should be less than or equal to right-hand
-    /// side (RHS). This property is ensured when using the `&` operator.
-    And(Rc<Self>, Rc<Self>),
-
     /// The negation of a symbolic bit. The `!` operator should be preferred to this, as it has the
     /// opportunity to perform simplications where a direct construction does not.
     Not(Rc<Self>),
+
+    /// The conjunction of two symbolic bits. The `&` operator should be preferred to this, as it
+    /// has the opportunity to perform simpliciations where a direct construction does not.
+    And(Rc<Self>, Rc<Self>),
 }
 
 #[derive(thiserror::Error, Debug)]
