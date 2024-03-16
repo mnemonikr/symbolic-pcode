@@ -44,14 +44,6 @@ impl SymbolicBit {
     pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
     }
-
-    pub fn filter_map(self, predicate: impl FnOnce(&Self) -> bool, map_value: Self) -> Self {
-        if predicate(&self) {
-            map_value
-        } else {
-            self
-        }
-    }
 }
 
 impl Default for SymbolicBit {
