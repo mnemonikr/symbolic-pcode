@@ -29,8 +29,8 @@ pub enum SymbolicBit {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ConcretizationError {
-    #[error("non-literal bit in byte {byte_index} at bit index {bit_index}")]
-    NonLiteralBit { byte_index: usize, bit_index: usize },
+    #[error("non-literal bit at index {bit_index}")]
+    NonLiteralBit { bit_index: usize },
 
     #[error("value exceeded maximum number of bytes ({max_bytes})")]
     Overflow { max_bytes: usize },

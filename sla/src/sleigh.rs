@@ -600,7 +600,7 @@ mod tests {
     }
 
     fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
-        for instruction in response.instructions().as_ref() {
+        for instruction in &response.instructions {
             print!(
                 "{}:{:016x} | {:?}",
                 instruction.address.address_space.name,
@@ -654,7 +654,7 @@ mod tests {
                 .disassemble_pcode(&load_image, address)
                 .expect("Failed to decode instruction");
             dump_pcode_response(&response);
-            offset += response.origin().size as u64;
+            offset += response.origin.size as u64;
         }
         assert_eq!(offset, 15, "Expected 15 bytes to be decoded");
     }
@@ -724,7 +724,7 @@ mod tests {
                 "{}:{:016x} | {} {}",
                 expected[i].0, expected[i].1, expected[i].2, expected[i].3
             );
-            offset += response.origin().size as u64;
+            offset += response.origin.size as u64;
         }
     }
 

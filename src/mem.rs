@@ -46,9 +46,6 @@ pub enum Error {
     #[error("no data defined at address {0}")]
     UndefinedData(Address),
 
-    #[error("address {0} has non-literal bit at index {1}")]
-    UnexpectedSymbolicData(Address, usize),
-
     #[error("arguments provided are not valid: {0}")]
     InvalidArguments(String),
 
@@ -334,26 +331,16 @@ impl SymbolicMemoryWriter for MemoryTree {
     }
 }
 
-pub struct ExecutableMemory<M: SymbolicMemory>(pub M);
+pub struct ExecutableMemory<'a, M: SymbolicMemory>(pub &'a M);
 
-impl<M: SymbolicMemory> SymbolicMemoryReader for ExecutableMemory<M> {
+impl<'a, M: SymbolicMemory> SymbolicMemoryReader for ExecutableMemory<'a, M> {
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         self.0.read(varnode)
     }
 }
 
-impl<M: SymbolicMemory> SymbolicMemoryWriter for ExecutableMemory<M> {
-    fn write(
-        &mut self,
-        output: &VarnodeData,
-        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        self.0.write(output, data)
-    }
-}
-
 /// Implementation of the LoadImage trait to enable loading instructions from memory
-impl<M: SymbolicMemory> sla::LoadImage for ExecutableMemory<M> {
+impl<'a, M: SymbolicMemory> sla::LoadImage for ExecutableMemory<'a, M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
         let bytes = self.read(&input);
 
