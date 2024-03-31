@@ -104,7 +104,7 @@ impl From<&sys::Address> for Address {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VarnodeData {
     pub address: Address,
     pub size: usize,
@@ -305,10 +305,10 @@ pub struct AssemblyInstruction {
 /// A disassembly of instructions originating from a [VarnodeData].
 pub struct Disassembly<T> {
     /// The disassembled instructions
-    instructions: Vec<T>,
+    pub instructions: Vec<T>,
 
     /// The origin of the instructions
-    origin: VarnodeData,
+    pub origin: VarnodeData,
 }
 
 impl<T> Disassembly<T> {
@@ -318,16 +318,6 @@ impl<T> Disassembly<T> {
             instructions,
             origin,
         }
-    }
-
-    /// Reference to the disassembled instructions
-    pub fn instructions(&self) -> impl AsRef<[T]> + '_ {
-        &self.instructions
-    }
-
-    /// Reference to the origin of the disassembled instructions
-    pub fn origin(&self) -> &VarnodeData {
-        &self.origin
     }
 }
 
