@@ -22,10 +22,7 @@ impl TryFrom<SymbolicBit> for bool {
         if let SymbolicBit::Literal(value) = value {
             Ok(value)
         } else {
-            Err(ConcretizationError::NonLiteralBit {
-                bit_index: 0,
-                byte_index: 0,
-            })
+            Err(ConcretizationError::NonLiteralBit { bit_index: 0 })
         }
     }
 }
@@ -296,8 +293,7 @@ where
             std::borrow::Cow::Borrowed(SymbolicBit::Literal(bit)) => *bit,
             _ => {
                 return Err(ConcretizationError::NonLiteralBit {
-                    bit_index,
-                    byte_index,
+                    bit_index: 8 * byte_index + bit_index,
                 })
             }
         };
@@ -444,10 +440,7 @@ mod tests {
         let err = bool::try_from(SymbolicBit::Variable(0)).unwrap_err();
         assert!(matches!(
             err,
-            ConcretizationError::NonLiteralBit {
-                byte_index: 0,
-                bit_index: 0,
-            }
+            ConcretizationError::NonLiteralBit { bit_index: 0 }
         ));
     }
 
@@ -522,19 +515,13 @@ mod tests {
         let err = concretize::<u8, 1>(array.iter()).unwrap_err();
         assert!(matches!(
             err,
-            ConcretizationError::NonLiteralBit {
-                byte_index: 0,
-                bit_index: 0
-            }
+            ConcretizationError::NonLiteralBit { bit_index: 0 }
         ));
 
         let err = concretize_into::<u8, 1>(array).unwrap_err();
         assert!(matches!(
             err,
-            ConcretizationError::NonLiteralBit {
-                byte_index: 0,
-                bit_index: 0
-            }
+            ConcretizationError::NonLiteralBit { bit_index: 0 }
         ));
     }
 

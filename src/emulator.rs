@@ -29,8 +29,7 @@ pub enum Error {
     SymbolicAddress {
         instruction: PcodeInstruction,
         varnode: VarnodeData,
-        address: Vec<SymbolicByte>,
-        byte_index: usize,
+        address: sym::SymbolicBitVec,
         bit_index: usize,
     },
 
@@ -77,7 +76,11 @@ pub enum ControlFlow {
 
     /// Execution should continue at the provided destination if the condition evaluates to true.
     /// Otherwise execution should continue with the next instruction.
-    ConditionalBranch(sym::SymbolicBit, Destination),
+    ConditionalBranch {
+        condition_origin: VarnodeData,
+        condition: sym::SymbolicBit,
+        destination: Destination,
+    },
 }
 
 pub trait PcodeEmulator {
@@ -376,12 +379,11 @@ impl StandardPcodeEmulator {
         require_has_output(&instruction, false)?;
         require_input_size_equals(&instruction, 1, 1)?;
 
-        let selector: sym::SymbolicBit = memory.read_bit(&instruction.inputs[1])?;
-
-        Ok(ControlFlow::ConditionalBranch(
-            selector,
-            Self::branch_destination(&instruction.inputs[0]),
-        ))
+        Ok(ControlFlow::ConditionalBranch {
+            condition: memory.read_bit(&instruction.inputs[1])?,
+            condition_origin: instruction.inputs[1].clone(),
+            destination: Self::branch_destination(&instruction.inputs[0]),
+        })
     }
 
     /// This operation performs a Logical-And on the bits of input0 and input1. Both inputs and
@@ -1243,14 +1245,10 @@ impl StandardPcodeEmulator {
                     size = instruction.inputs[input_index].size,
                 ),
             },
-            ConcretizationError::NonLiteralBit {
-                bit_index,
-                byte_index,
-            } => Error::SymbolicAddress {
+            ConcretizationError::NonLiteralBit { bit_index } => Error::SymbolicAddress {
                 instruction: instruction.clone(),
                 varnode: instruction.inputs[input_index].clone(),
-                address: offset_bytes,
-                byte_index,
+                address: offset_bytes.into_iter().collect(),
                 bit_index,
             },
         })
@@ -2765,8 +2763,8 @@ mod tests {
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b1111_0000_0011_1100;
         let rhs = 0b0000_1111_1010_0101;
-        let lhs_input = write_bytes(&mut memory, 0, sym::SymbolicBitVec::from(lhs).into_bytes())?;
-        let rhs_input = write_bytes(&mut memory, 2, sym::SymbolicBitVec::from(rhs).into_bytes())?;
+        let lhs_input = write_bytes(&mut memory, 0, SymbolicBitVec::from(lhs).into_bytes())?;
+        let rhs_input = write_bytes(&mut memory, 2, SymbolicBitVec::from(rhs).into_bytes())?;
 
         let output = VarnodeData {
             address: Address {
@@ -3206,7 +3204,12 @@ mod tests {
             offset: 0xDEADBEEF,
         });
         match control_flow {
-            ControlFlow::ConditionalBranch(condition, destination) => {
+            ControlFlow::ConditionalBranch {
+                condition_origin,
+                condition,
+                destination,
+            } => {
+                assert_eq!(condition_origin, condition_input);
                 assert_eq!(condition, sym::SymbolicBit::Literal(true));
                 assert_eq!(
                     destination, expected_destination,
@@ -3245,7 +3248,12 @@ mod tests {
         let control_flow = emulator.emulate(&mut memory, &instruction)?;
         let expected_destination = Destination::PcodeAddress(-1);
         match control_flow {
-            ControlFlow::ConditionalBranch(condition, destination) => {
+            ControlFlow::ConditionalBranch {
+                condition_origin,
+                condition,
+                destination,
+            } => {
+                assert_eq!(condition_input, condition_origin);
                 assert_eq!(condition, sym::SymbolicBit::Literal(true));
                 assert_eq!(
                     destination, expected_destination,

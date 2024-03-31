@@ -104,7 +104,7 @@ impl From<&sys::Address> for Address {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VarnodeData {
     pub address: Address,
     pub size: usize,
@@ -305,10 +305,10 @@ pub struct AssemblyInstruction {
 /// A disassembly of instructions originating from a [VarnodeData].
 pub struct Disassembly<T> {
     /// The disassembled instructions
-    instructions: Vec<T>,
+    pub instructions: Vec<T>,
 
     /// The origin of the instructions
-    origin: VarnodeData,
+    pub origin: VarnodeData,
 }
 
 impl<T> Disassembly<T> {
@@ -318,16 +318,6 @@ impl<T> Disassembly<T> {
             instructions,
             origin,
         }
-    }
-
-    /// Reference to the disassembled instructions
-    pub fn instructions(&self) -> impl AsRef<[T]> + '_ {
-        &self.instructions
-    }
-
-    /// Reference to the origin of the disassembled instructions
-    pub fn origin(&self) -> &VarnodeData {
-        &self.origin
     }
 }
 
@@ -610,7 +600,7 @@ mod tests {
     }
 
     fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
-        for instruction in response.instructions().as_ref() {
+        for instruction in &response.instructions {
             print!(
                 "{}:{:016x} | {:?}",
                 instruction.address.address_space.name,
@@ -664,7 +654,7 @@ mod tests {
                 .disassemble_pcode(&load_image, address)
                 .expect("Failed to decode instruction");
             dump_pcode_response(&response);
-            offset += response.origin().size as u64;
+            offset += response.origin.size as u64;
         }
         assert_eq!(offset, 15, "Expected 15 bytes to be decoded");
     }
@@ -734,7 +724,7 @@ mod tests {
                 "{}:{:016x} | {} {}",
                 expected[i].0, expected[i].1, expected[i].2, expected[i].3
             );
-            offset += response.origin().size as u64;
+            offset += response.origin.size as u64;
         }
     }
 

@@ -1,8 +1,8 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::{ExecutableMemory, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter};
-use sla::{Address, AddressSpace, Sleigh, VarnodeData};
+use crate::mem::{ExecutableMemory, SymbolicMemory};
+use sla::{Address, AddressSpace, Disassembly, PcodeInstruction, Sleigh, VarnodeData};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -41,13 +41,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Processor<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> {
     sleigh: S,
     emulator: E,
-    memory: ExecutableMemory<M>,
+    memory: M,
 }
 
 impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
     pub fn new(sleigh: S, emulator: E, memory: M) -> Self {
         Processor {
-            memory: ExecutableMemory(memory),
+            memory,
             emulator,
             sleigh,
         }
@@ -153,15 +153,16 @@ impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
     }
 
     pub fn emulate(&mut self, address: Address) -> Result<Address> {
+        let memory = ExecutableMemory(&self.memory);
         let pcode = self
             .sleigh
-            .disassemble_pcode(&self.memory, address)
+            .disassemble_pcode(&memory, address)
             .map_err(|err| Error::InstructionDecoding(err))?;
-        let next_addr = pcode.origin().address.offset + pcode.origin().size as u64;
+        let next_addr = pcode.origin.address.offset + pcode.origin.size as u64;
         let mut instruction_index = 0;
-        let pcode_instructions = pcode.instructions();
-        let pcode_instructions = pcode_instructions.as_ref();
+        let pcode_instructions = &pcode.instructions;
         let max_index = i64::try_from(pcode_instructions.len()).expect("too many instructions");
+
         while (0..max_index).contains(&instruction_index) {
             // SAFETY: Index is already bound by size of array
             let instruction = unsafe {
@@ -180,21 +181,27 @@ impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
                         instruction_index += offset;
                     }
                 },
-                ControlFlow::ConditionalBranch(sym::SymbolicBit::Literal(true), destination) => {
-                    match destination {
-                        Destination::MachineAddress(addr) => {
-                            assert_eq!(addr.address_space, self.sleigh.default_code_space());
-                            return Ok(addr);
-                        }
-                        Destination::PcodeAddress(offset) => {
-                            instruction_index += offset;
-                        }
+                ControlFlow::ConditionalBranch {
+                    condition: sym::SymbolicBit::Literal(true),
+                    destination,
+                    ..
+                } => match destination {
+                    Destination::MachineAddress(addr) => {
+                        assert_eq!(addr.address_space, self.sleigh.default_code_space());
+                        return Ok(addr);
                     }
-                }
-                ControlFlow::ConditionalBranch(sym::SymbolicBit::Literal(false), _) => {
+                    Destination::PcodeAddress(offset) => {
+                        instruction_index += offset;
+                    }
+                },
+                ControlFlow::ConditionalBranch {
+                    condition: sym::SymbolicBit::Literal(false),
+                    ..
+                } => {
                     instruction_index += 1;
                 }
-                ControlFlow::ConditionalBranch(condition, _) => {
+                ControlFlow::ConditionalBranch { condition, .. } => {
+                    // TODO: Is this condition OR its negation an assumed constraint?
                     return Err(Error::SymbolicCondition(condition));
                 }
             }
@@ -206,7 +213,7 @@ impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
         // correct behavior is.
         Ok(Address {
             offset: next_addr,
-            address_space: pcode.origin().address.address_space.clone(),
+            address_space: pcode.origin.address.address_space.clone(),
         })
     }
 }
