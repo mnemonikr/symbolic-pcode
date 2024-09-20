@@ -1,9 +1,11 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::{ExecutableMemory, SymbolicMemory};
-use sla::{Address, AddressSpace, Disassembly, PcodeInstruction, Sleigh, VarnodeData};
-use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemory};
+use sla::{
+    Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
+};
+use sym::SymbolicBit;
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
 // derivation that converts emulator errors into processor errors.
@@ -16,6 +18,10 @@ pub enum Error {
     /// Error occurred while accessing a memory location
     #[error(transparent)]
     MemoryAccess(#[from] crate::mem::Error),
+
+    /// Error occurred while accessing a memory location
+    #[error(transparent)]
+    SymbolicError(#[from] sym::ConcretizationError),
 
     #[error("failed to decode instruction: {0}")]
     InstructionDecoding(#[from] sla::Error),
@@ -38,182 +44,361 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Processor<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> {
-    sleigh: S,
-    emulator: E,
-    memory: M,
+enum NextExecution {
+    NextInstruction,
+    Jump(Address),
+    PcodeOffset(i64),
 }
 
-impl<S: Sleigh, E: PcodeEmulator, M: SymbolicMemory> Processor<S, E, M> {
-    pub fn new(sleigh: S, emulator: E, memory: M) -> Self {
-        Processor {
-            memory,
-            emulator,
+enum BranchingNextExecution {
+    Branch(SymbolicBit, NextExecution, NextExecution),
+    Flow(NextExecution),
+}
+
+pub struct ProcessorManager<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> {
+    processors: Vec<Processor<E, H>>,
+    sleigh: sla::GhidraSleigh,
+}
+
+impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> ProcessorManager<E, H> {
+    pub fn new(sleigh: sla::GhidraSleigh, processor: Processor<E, H>) -> Self {
+        Self {
             sleigh,
+            processors: vec![processor],
         }
     }
 
-    pub fn sleigh(&self) -> &S {
+    pub fn sleigh(&self) -> &sla::GhidraSleigh {
         &self.sleigh
+    }
+
+    pub fn step_all(&mut self) -> Result<()> {
+        for i in 0..self.processors.len() {
+            if let Some(new_processor) = self.processors[i].step(&self.sleigh)? {
+                self.processors.push(new_processor);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.processors.is_empty()
+    }
+
+    pub fn remove_all(
+        &mut self,
+        filter: impl Fn(&Processor<E, H>) -> bool,
+    ) -> Vec<Processor<E, H>> {
+        let mut removed = Vec::new();
+        for i in (0..self.processors.len()).rev() {
+            if filter(&self.processors[i]) {
+                removed.push(self.processors.swap_remove(i));
+            }
+        }
+
+        removed
+    }
+
+    pub fn processors(&self) -> impl Iterator<Item = &Processor<E, H>> {
+        self.processors.iter()
+    }
+
+    pub fn processors_mut(&mut self) -> impl Iterator<Item = &mut Processor<E, H>> {
+        self.processors.iter_mut()
+    }
+}
+
+pub trait ProcessorResponseHandler: Clone {
+    fn fetched(&mut self, memory: &mut MemoryBranch) -> Result<Address>;
+    fn decoded(&mut self, memory: &mut MemoryBranch, execution: &PcodeExecution) -> Result<()>;
+    fn jumped(&mut self, memory: &mut MemoryBranch, address: &Address) -> Result<()>;
+}
+
+pub struct Processor<E: PcodeEmulator + Clone, H: ProcessorResponseHandler + Clone> {
+    memory: MemoryBranch,
+
+    // This state is mutable and can be transformed. This SomeThing object should mutate itself but
+    // never be replaced directly
+    state: ProcessorState,
+    handler: H,
+    emulator: E,
+}
+
+impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> Processor<E, H> {
+    pub fn new(memory: Memory, emulator: E, handler: H) -> Self {
+        Self {
+            memory: MemoryBranch::new(memory),
+            emulator,
+            handler,
+            state: ProcessorState::Fetch,
+        }
+    }
+
+    pub fn memory(&self) -> &MemoryBranch {
+        &self.memory
+    }
+
+    pub fn memory_mut(&mut self) -> &mut MemoryBranch {
+        &mut self.memory
     }
 
     pub fn emulator(&self) -> &E {
         &self.emulator
     }
 
-    pub fn register(&self, name: impl AsRef<str>) -> Result<VarnodeData> {
-        let name = name.as_ref();
-        self.sleigh
-            .register_from_name(name)
-            .map_err(|err| Error::InvalidArgument(format!("invalid register {name}: {err}")))
+    pub fn state(&self) -> &ProcessorState {
+        &self.state
     }
 
-    pub fn address_space(&self, name: impl AsRef<str>) -> Result<AddressSpace> {
-        let name = name.as_ref();
-        self.sleigh
-            .address_spaces()
-            .into_iter()
-            .find(|addr_space| addr_space.name == name)
-            .ok_or_else(|| Error::InvalidArgument(format!("unknown address space: {name}")))
-    }
-
-    pub fn memory_mut(&mut self) -> &mut impl SymbolicMemory {
-        &mut self.memory
-    }
-
-    pub fn read_register(&self, name: impl AsRef<str>) -> Result<Vec<SymbolicByte>> {
-        let register = self.register(name)?;
-        let result = self.memory.read(&register)?;
-        Ok(result)
-    }
-
-    pub fn write_register(
-        &mut self,
-        name: impl AsRef<str>,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        let register = self.register(name)?;
-        let result = self.memory.write(&register, data)?;
-        Ok(result)
-    }
-
-    pub fn write_address(
-        &mut self,
-        address: Address,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        let varnode = VarnodeData {
-            address,
-            size: data.len(),
-        };
-        self.memory.write(&varnode, data)?;
-        Ok(())
-    }
-
-    pub fn default_code_space(&self) -> AddressSpace {
-        self.sleigh.default_code_space()
-    }
-
-    /// Emulates the current instruction in the instruction register. This assumes the instruction
-    /// in the register is an address offset into the [Sleigh::default_code_space].
-    ///
-    /// If the next instruction is an address into a different address space, the error variant
-    /// [Error::InvalidAddressSpace] is returned.
-    pub fn single_step(&mut self, instruction_register_name: impl AsRef<str>) -> Result<()> {
-        // TODO Better error here
-        let rip = self
-            .read_register(&instruction_register_name)?
-            .into_iter()
-            .collect::<SymbolicBitVec>()
-            .try_into()
-            .map_err(|_| Error::InternalError("symbolic instruction address".into()))?;
-
-        let next_instr = self.emulate(Address {
-            offset: rip,
-            address_space: self.sleigh.default_code_space(),
-        })?;
-
-        if self.sleigh.default_code_space() != next_instr.address_space {
-            return Err(Error::InvalidAddressSpace {
-                address: next_instr,
-                expected: self.sleigh.default_code_space(),
-            });
-        }
-
-        self.write_register(
-            instruction_register_name,
-            next_instr
-                .offset
-                .to_le_bytes()
-                .into_iter()
-                .map(SymbolicByte::from),
-        )?;
-
-        Ok(())
-    }
-
-    pub fn emulate(&mut self, address: Address) -> Result<Address> {
-        let memory = ExecutableMemory(&self.memory);
-        let pcode = self
-            .sleigh
-            .disassemble_pcode(&memory, address)
-            .map_err(|err| Error::InstructionDecoding(err))?;
-        let next_addr = pcode.origin.address.offset + pcode.origin.size as u64;
-        let mut instruction_index = 0;
-        let pcode_instructions = &pcode.instructions;
-        let max_index = i64::try_from(pcode_instructions.len()).expect("too many instructions");
-
-        while (0..max_index).contains(&instruction_index) {
-            // SAFETY: Index is already bound by size of array
-            let instruction = unsafe {
-                &pcode_instructions[usize::try_from(instruction_index).unwrap_unchecked()]
-            };
-
-            match self.emulator.emulate(&mut self.memory, &instruction)? {
-                ControlFlow::NextInstruction => {
-                    instruction_index += 1;
-                }
-                ControlFlow::Jump(destination) => match destination {
-                    Destination::MachineAddress(addr) => {
-                        return Ok(addr);
+    pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
+        match &mut self.state {
+            ProcessorState::Fetch => {
+                let fetched_instruction = self.handler.fetched(&mut self.memory)?;
+                self.state = ProcessorState::Decode(DecodeInstruction::new(fetched_instruction));
+            }
+            ProcessorState::Decode(d) => {
+                let execution = d.decode(sleigh, ExecutableMemory(&self.memory))?;
+                self.handler.decoded(&mut self.memory, &execution)?;
+                self.state = ProcessorState::Execute(execution);
+            }
+            ProcessorState::Execute(x) if x.is_empty() => {
+                // Some instructions are decoded as noops.
+                self.state = ProcessorState::Fetch;
+            }
+            ProcessorState::Execute(x) => {
+                let control_flow = self
+                    .emulator
+                    .emulate(&mut self.memory, x.current_instruction())?;
+                match x.next_execution(control_flow)? {
+                    BranchingNextExecution::Flow(e1) => self.update_execution(e1)?,
+                    BranchingNextExecution::Branch(condition, e1, e2) => {
+                        let mut branched_processor = self.branch(condition);
+                        self.update_execution(e1)?;
+                        branched_processor.update_execution(e2)?;
+                        return Ok(Some(branched_processor));
                     }
-                    Destination::PcodeAddress(offset) => {
-                        instruction_index += offset;
-                    }
-                },
-                ControlFlow::ConditionalBranch {
-                    condition: sym::SymbolicBit::Literal(true),
-                    destination,
-                    ..
-                } => match destination {
-                    Destination::MachineAddress(addr) => {
-                        assert_eq!(addr.address_space, self.sleigh.default_code_space());
-                        return Ok(addr);
-                    }
-                    Destination::PcodeAddress(offset) => {
-                        instruction_index += offset;
-                    }
-                },
-                ControlFlow::ConditionalBranch {
-                    condition: sym::SymbolicBit::Literal(false),
-                    ..
-                } => {
-                    instruction_index += 1;
-                }
-                ControlFlow::ConditionalBranch { condition, .. } => {
-                    // TODO: Is this condition OR its negation an assumed constraint?
-                    return Err(Error::SymbolicCondition(condition));
                 }
             }
         }
 
-        // TODO: This assumes that any instruction index outside the valid bounds means proceed to
-        // the next instruction. For branchless pcode instructions this is correct. However if
-        // there is a relative pcode branch that reaches out-of-bounds it is unclear what the
-        // correct behavior is.
-        Ok(Address {
-            offset: next_addr,
-            address_space: pcode.origin.address.address_space.clone(),
-        })
+        Ok(None)
+    }
+
+    fn update_execution(&mut self, next_execution: NextExecution) -> Result<()> {
+        if let ProcessorState::Execute(execution) = &mut self.state {
+            match next_execution {
+                NextExecution::Jump(address) => {
+                    self.handler.jumped(&mut self.memory, &address)?;
+                    self.state = ProcessorState::Fetch;
+                }
+                NextExecution::NextInstruction => self.state = ProcessorState::Fetch,
+                NextExecution::PcodeOffset(offset) => execution.update_index(offset)?,
+            }
+
+            Ok(())
+        } else {
+            Err(Error::InternalError(format!(
+                "cannot update execution, current state is {state:?}",
+                state = self.state
+            )))
+        }
+    }
+
+    fn branch(&mut self, condition: SymbolicBit) -> Self {
+        Processor {
+            memory: self.memory.new_branch(condition),
+            state: self.state.clone(),
+            handler: self.handler.clone(),
+            emulator: self.emulator.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ProcessorState {
+    Fetch,
+    Decode(DecodeInstruction),
+    Execute(PcodeExecution),
+}
+
+#[derive(Clone, Debug)]
+pub struct DecodeInstruction {
+    address: Address,
+}
+
+impl DecodeInstruction {
+    pub fn new(address: Address) -> Self {
+        Self { address }
+    }
+
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    pub fn decode(
+        &self,
+        sleigh: &impl Sleigh,
+        memory: ExecutableMemory<MemoryBranch>,
+    ) -> Result<PcodeExecution> {
+        let pcode = sleigh
+            .disassemble_pcode(&memory, self.address.clone())
+            .map_err(Error::InstructionDecoding)?;
+
+        Ok(PcodeExecution::new(pcode))
+    }
+
+    pub fn disassemble(
+        &self,
+        sleigh: &impl Sleigh,
+        memory: ExecutableMemory<MemoryBranch>,
+    ) -> Result<Disassembly<AssemblyInstruction>> {
+        let assembly = sleigh
+            .disassemble_native(&memory, self.address.clone())
+            .map_err(Error::InstructionDecoding)?;
+
+        Ok(assembly)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PcodeExecution {
+    pcode: Disassembly<PcodeInstruction>,
+    index: usize,
+}
+
+impl PcodeExecution {
+    pub fn new(pcode: Disassembly<PcodeInstruction>) -> Self {
+        Self { pcode, index: 0 }
+    }
+
+    pub fn origin(&self) -> &VarnodeData {
+        &self.pcode.origin
+    }
+
+    pub fn current_instruction(&self) -> &PcodeInstruction {
+        &self.pcode.instructions[self.index]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pcode.instructions.is_empty()
+    }
+
+    pub fn is_final_instruction(&self) -> bool {
+        self.index + 1 == self.pcode.instructions.len()
+    }
+
+    pub fn update_index(&mut self, offset: i64) -> Result<()> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index >= self.pcode.instructions.len() {
+            return Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )));
+        }
+
+        self.index = index;
+        Ok(())
+    }
+
+    pub fn index_from_offset(&self, offset: i64) -> Result<usize> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index < self.pcode.instructions.len() {
+            Ok(index)
+        } else {
+            Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )))
+        }
+    }
+
+    pub fn offset(self, offset: i64) -> Result<Self> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index < self.pcode.instructions.len() {
+            Ok(Self {
+                pcode: self.pcode,
+                index,
+            })
+        } else {
+            Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )))
+        }
+    }
+
+    fn next_instruction(&self) -> Result<NextExecution> {
+        if self.is_final_instruction() {
+            Ok(NextExecution::NextInstruction)
+        } else {
+            Ok(NextExecution::PcodeOffset(1))
+        }
+    }
+
+    fn jump(&self, destination: &Destination) -> Result<NextExecution> {
+        match destination {
+            Destination::MachineAddress(address) => Ok(NextExecution::Jump(address.clone())),
+            Destination::PcodeAddress(offset) => Ok(NextExecution::PcodeOffset(*offset)),
+        }
+    }
+
+    fn branch(
+        &self,
+        condition: SymbolicBit,
+        destination: &Destination,
+    ) -> Result<BranchingNextExecution> {
+        Ok(BranchingNextExecution::Branch(
+            condition,
+            self.jump(destination)?,
+            self.next_instruction()?,
+        ))
+    }
+
+    fn next_execution(&self, flow: ControlFlow) -> Result<BranchingNextExecution> {
+        let result = match flow {
+            ControlFlow::NextInstruction
+            | ControlFlow::ConditionalBranch {
+                condition: sym::SymbolicBit::Literal(false),
+                ..
+            } => BranchingNextExecution::Flow(self.next_instruction()?),
+            ControlFlow::Jump(destination)
+            | ControlFlow::ConditionalBranch {
+                condition: sym::SymbolicBit::Literal(true),
+                destination,
+                ..
+            } => BranchingNextExecution::Flow(self.jump(&destination)?),
+            ControlFlow::ConditionalBranch {
+                destination,
+                condition,
+                ..
+            } => self.branch(condition, &destination)?,
+        };
+
+        Ok(result)
     }
 }

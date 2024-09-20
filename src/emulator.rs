@@ -47,6 +47,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The pcode emulator structure that holds the necessary data for emulation.
+#[derive(Debug, Clone)]
 pub struct StandardPcodeEmulator {
     address_spaces_by_id: std::collections::BTreeMap<AddressSpaceId, AddressSpace>,
 }
@@ -176,6 +177,9 @@ impl PcodeEmulator for StandardPcodeEmulator {
 }
 
 impl StandardPcodeEmulator {
+    /// Create a new emulator over the given set of address spaces. These address spaces are
+    /// necessary to support indirect memory lookups, since such lookups are encoded into the
+    /// pcode operands as address space ids.
     pub fn new(address_spaces: impl IntoIterator<Item = AddressSpace>) -> Self {
         Self {
             address_spaces_by_id: address_spaces

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, rc::Rc};
 use thiserror;
 
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
-use sym::{self, ConcretizationError, SymbolicBit, SymbolicByte};
+use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -53,16 +53,87 @@ pub enum Error {
     InternalError(String),
 }
 
+/// Collection of all memory branches into a single tree. Tree is composed of both live and dead
+/// branches. A dead branch is a branch of memory that has no bearing on an outcome. It is
+/// important to include these branches so that they are appropriately excluded from the outcome.
+pub struct MemoryTree<'b, 'd> {
+    branches: Vec<&'b MemoryBranch>,
+    dead_branches: Vec<&'d MemoryBranch>,
+}
+
+impl<'b, 'd> MemoryTree<'b, 'd> {
+    pub fn new(
+        branches: impl Iterator<Item = &'b MemoryBranch>,
+        dead_branches: impl Iterator<Item = &'d MemoryBranch>,
+    ) -> Self {
+        Self {
+            branches: branches.collect(),
+            dead_branches: dead_branches.collect(),
+        }
+    }
+
+    pub fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        let result = self
+            .branches
+            .iter()
+            .map(|&branch| {
+                branch
+                    .predicated_read(varnode)
+                    .map(|bytes| bytes.into_iter().collect::<SymbolicBitVec>())
+            })
+            .reduce(|x, y| {
+                // Must check first argument first since it is the accumulator
+                // If an error is propagating it will propagate here.
+                if let Ok(x) = x {
+                    if let Ok(y) = y {
+                        Ok(x & y)
+                    } else {
+                        y
+                    }
+                } else {
+                    x
+                }
+            })
+            .ok_or_else(|| Error::InternalError("memory tree has no branches".to_string()))??;
+
+        Ok(result.into_bytes())
+    }
+
+    /// Assert that none of the dead branches in this tree are taken in the provided condition.
+    pub fn prune_dead_branches(&self, condition: SymbolicBit) -> SymbolicBit {
+        let dead_branch_taken = self
+            .dead_branches
+            .iter()
+            .map(|&branch| branch.branch_predicate())
+            .fold(sym::FALSE, |x, y| x.clone() | y.clone());
+
+        condition & !dead_branch_taken
+    }
+}
+
 /// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
 /// enforce the predicate. It simply tracks the assumptions made at various branches.
-pub struct MemoryTree {
-    predicate: SymbolicBit,
+#[derive(Debug)]
+pub struct MemoryBranch {
+    leaf_predicate: SymbolicBit,
+    branch_predicate: SymbolicBit,
     parent: Option<Rc<Self>>,
     memory: Memory,
 }
 
+impl Default for MemoryBranch {
+    fn default() -> Self {
+        Self {
+            leaf_predicate: sym::TRUE,
+            branch_predicate: sym::TRUE,
+            parent: Default::default(),
+            memory: Default::default(),
+        }
+    }
+}
+
 /// A memory model that stores bytes associated with an AddressSpace.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Memory {
     /// Structure for looking up data based on the id of an AddressSpace.
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, SymbolicByte>>,
@@ -245,42 +316,106 @@ impl Memory {
     }
 }
 
-impl MemoryTree {
+impl MemoryBranch {
     pub fn new(memory: Memory) -> Self {
         Self {
             memory,
-            predicate: SymbolicBit::Literal(true),
+            leaf_predicate: sym::TRUE,
+            branch_predicate: sym::TRUE,
             parent: None,
         }
     }
 
-    /// Get the predicate associated with this branch.
-    pub fn predicate(&self) -> &SymbolicBit {
-        &self.predicate
+    pub fn branch_predicate(&self) -> &SymbolicBit {
+        &self.branch_predicate
     }
 
-    /// Create a branch in the memory tree based on the given predicate. The left branch is the
-    /// MemoryTree with the predicate and the right memory model is the MemoryTree with its
-    /// negation.
-    pub fn branch(self, predicate: SymbolicBit) -> (Self, Self) {
-        let rc = Rc::new(self);
-        let positive = Self {
-            predicate: predicate.clone(),
-            parent: Some(Rc::clone(&rc)),
+    /// Get the predicate associated with this branch.
+    pub fn leaf_predicate(&self) -> &SymbolicBit {
+        &self.leaf_predicate
+    }
+
+    /// Branch this tree on the given predicate. The current tree branch predicate is updated to
+    /// the given predicate. A new branch of the tree is returned with a negation of the predicate.
+    pub fn new_branch(&mut self, predicate: SymbolicBit) -> Self {
+        // Build the new shared parent
+        let mut parent = Self {
+            leaf_predicate: predicate.clone(),
+            branch_predicate: self.branch_predicate.clone() & predicate.clone(),
+            parent: None,
             memory: Memory::new(),
         };
 
-        let negative = Self {
-            predicate: !predicate,
+        // Update the shared parent to hold contents of this branch
+        std::mem::swap(self, &mut parent);
+
+        // Point this branch to new shared parent
+        let rc = Rc::new(parent);
+        self.parent = Some(Rc::clone(&rc));
+
+        // Create new branch with negated predicate
+        Self {
+            leaf_predicate: !predicate.clone(),
+            branch_predicate: rc.branch_predicate.clone() & !predicate,
             parent: Some(rc),
             memory: Memory::new(),
-        };
+        }
+    }
 
-        (positive, negative)
+    /// Read a value from memory with the necessary predicates applied to the result. For example,
+    /// if a value `V` is predicated on `X`, then the response is the implication `X => V`, or
+    /// equivalently `!X | V`.
+    ///
+    /// If a portion of a value `V` has not been updated in this branch, then that portion is only
+    /// predicated on the parent predicate in which it is stored.
+    pub fn predicated_read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        let result = self.memory.read(varnode);
+        if let Some(parent) = &self.parent {
+            if let Err(Error::UndefinedData(address)) = result {
+                let num_valid_bytes = (address.offset - varnode.address.offset) as usize;
+
+                // Special case to defer to the parent if the data is entirely undefined
+                if num_valid_bytes == 0 {
+                    return parent.predicated_read(varnode);
+                }
+
+                // Read the known valid data
+                let valid_input = VarnodeData {
+                    address: Address {
+                        offset: varnode.address.offset,
+                        address_space: varnode.address.address_space.clone(),
+                    },
+                    size: num_valid_bytes,
+                };
+                let mut data = self.predicated_value(self.memory.read(&valid_input)?);
+
+                // Read the missing data from parent
+                let parent_varnode = VarnodeData {
+                    address,
+                    size: varnode.size - num_valid_bytes,
+                };
+                let mut parent_data = parent.predicated_read(&parent_varnode)?;
+
+                // Combine the two and return the result
+                data.append(&mut parent_data);
+                return Ok(data);
+            }
+        }
+
+        result.map(|value| self.predicated_value(value))
+    }
+
+    fn predicated_value(&self, value: Vec<SymbolicByte>) -> Vec<SymbolicByte> {
+        let bitvec: SymbolicBitVec = value.into_iter().collect();
+        let negated_predicate: SymbolicBitVec = std::iter::repeat(!self.branch_predicate.clone())
+            .take(bitvec.len())
+            .collect();
+        let conditional_value = bitvec | negated_predicate;
+        conditional_value.into_bytes()
     }
 }
 
-impl SymbolicMemoryReader for MemoryTree {
+impl SymbolicMemoryReader for MemoryBranch {
     /// Read the bytes for this varnode.
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self.memory.read(&varnode);
@@ -320,7 +455,7 @@ impl SymbolicMemoryReader for MemoryTree {
     }
 }
 
-impl SymbolicMemoryWriter for MemoryTree {
+impl SymbolicMemoryWriter for MemoryBranch {
     /// Write the data to the location specified by the varnode.
     fn write(
         &mut self,
@@ -431,57 +566,6 @@ mod tests {
         Ok(())
     }
 
-    /// This test should test memory tree branching, branch inheritance and branch independence.
-    #[test]
-    fn memory_tree_branch() -> Result<()> {
-        // Setup memory with an address space
-        let addr_space = address_space(0);
-        let mut memory = Memory::new();
-
-        // Write an initial value to this address space
-        let varnode = VarnodeData {
-            address: Address {
-                offset: 0,
-                address_space: addr_space.clone(),
-            },
-            size: 1,
-        };
-        memory.write(
-            &varnode,
-            SymbolicBitVec::constant(0xff, 8).into_bytes().into_iter(),
-        )?;
-
-        // Create a memory tree from this initialized memory and branch on a predicate
-        let tree = MemoryTree::new(memory);
-        let predicate = sym::SymbolicBit::Literal(true);
-        let (mut left, right) = tree.branch(predicate.clone());
-
-        // Confirm the correctness of the left and right branch predicates
-        assert_eq!(*left.predicate(), SymbolicBit::Literal(true));
-        assert_eq!(*right.predicate(), SymbolicBit::Literal(false));
-
-        // Overwrite the initialized value in the left branch only
-        left.write(
-            &varnode,
-            SymbolicBitVec::constant(0x00, 8).into_bytes().into_iter(),
-        )?;
-
-        // Show that the left memory branch has the updated value
-        assert_eq!(
-            u8::try_from(left.read(&varnode)?.pop().unwrap()).expect("failed to convert to byte"),
-            0x00
-        );
-
-        // Show that the right memory branch value was not impacted by changes to the left
-        // and that it inherited the original value.
-        assert_eq!(
-            u8::try_from(right.read(&varnode)?.pop().unwrap()).expect("failed to convert to byte"),
-            0xff
-        );
-
-        Ok(())
-    }
-
     #[test]
     fn memory_tree_read() -> Result<()> {
         // Setup memory with an address space
@@ -504,13 +588,13 @@ mod tests {
         )?;
 
         // Create a memory tree from this initialized memory
-        let tree = MemoryTree::new(memory);
+        let mut tree = MemoryBranch::new(memory);
         let predicate = sym::SymbolicBit::Literal(true);
-        let (mut left, _) = tree.branch(predicate.clone());
+        let _ = tree.new_branch(predicate.clone());
 
         // Overwite part of the initial value
         varnode.size = 1;
-        left.write(
+        tree.write(
             &varnode,
             SymbolicBitVec::constant(0xed, 8).into_bytes().into_iter(),
         )?;
@@ -520,11 +604,76 @@ mod tests {
         varnode.size = 2;
         assert_eq!(
             u16::try_from(
-                sym::SymbolicBitBuf::<16>::try_from(left.read(&varnode)?)
+                sym::SymbolicBitBuf::<16>::try_from(tree.read(&varnode)?)
                     .expect("buffer conversion failed")
             )
             .expect("failed to make value concrete"),
             0xbeed
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn new_branch() -> Result<()> {
+        // Setup memory with an address space
+        let addr_space = address_space(0);
+        let mut memory = Memory::new();
+        const TEST_VALUE: u16 = 0xbeef;
+
+        // Write an initial value to this address space
+        let mut varnode = VarnodeData {
+            address: Address {
+                offset: 0,
+                address_space: addr_space.clone(),
+            },
+            size: 2,
+        };
+        memory.write(
+            &varnode,
+            SymbolicBitVec::constant(TEST_VALUE.into(), 16)
+                .into_bytes()
+                .into_iter(),
+        )?;
+
+        // Create a new branch
+        let mut tree = MemoryBranch::new(memory);
+        let predicate = sym::SymbolicBit::Variable(0);
+        let false_branch = tree.new_branch(predicate.clone());
+
+        // Confirm predicates are correct
+        assert_eq!(*tree.leaf_predicate(), predicate);
+        assert_eq!(*tree.branch_predicate(), predicate);
+        assert_eq!(*false_branch.leaf_predicate(), !predicate.clone());
+        assert_eq!(*false_branch.branch_predicate(), !predicate);
+
+        // Overwite part of the initial value
+        varnode.size = 1;
+        tree.write(
+            &varnode,
+            SymbolicBitVec::constant(0xed, 8).into_bytes().into_iter(),
+        )?;
+
+        // Read the entire value and confirm the overwritten portion is read along with the portion
+        // that is not overwritten
+        varnode.size = 2;
+        assert_eq!(
+            u16::try_from(
+                sym::SymbolicBitBuf::<16>::try_from(tree.read(&varnode)?)
+                    .expect("buffer conversion failed")
+            )
+            .expect("failed to make value concrete"),
+            0xbeed
+        );
+
+        // Confirm false branch value is unchanged
+        assert_eq!(
+            u16::try_from(
+                sym::SymbolicBitBuf::<16>::try_from(false_branch.read(&varnode)?)
+                    .expect("buffer conversion failed")
+            )
+            .expect("failed to make value concrete"),
+            TEST_VALUE
         );
 
         Ok(())
