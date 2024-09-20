@@ -197,14 +197,6 @@ impl PcodeExecution {
     }
 }
 
-pub trait ProcessorTrait {
-    type State;
-
-    fn memory(&self) -> &impl SymbolicMemory;
-    fn memory_mut(&mut self) -> &mut impl SymbolicMemory;
-    fn state(&self) -> &Self::State;
-}
-
 pub struct ProcessorManager<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> {
     processors: Vec<Processor<E, H>>,
     sleigh: sla::GhidraSleigh,
