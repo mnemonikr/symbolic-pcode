@@ -42,12 +42,19 @@ pub trait Sleigh {
     #[must_use]
     fn address_spaces(&self) -> Vec<AddressSpace>;
 
-    /// Get the [VarnodeData] that represents the named register.
+    /// Get an address space by name (if it exists)
     #[must_use]
+    fn address_space_by_name(&self, name: impl AsRef<str>) -> Option<AddressSpace> {
+        let name = name.as_ref();
+        self.address_spaces()
+            .into_iter()
+            .find(|addr_space| addr_space.name == name)
+    }
+
+    /// Get the [VarnodeData] that represents the named register.
     fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData>;
 
     /// Disassemble the instructions at the given address into pcode.
-    #[must_use]
     fn disassemble_pcode(
         &self,
         loader: &dyn LoadImage,
@@ -55,7 +62,6 @@ pub trait Sleigh {
     ) -> Result<Disassembly<PcodeInstruction>>;
 
     /// Disassemble the instructions at the given address into native assembly instructions.
-    #[must_use]
     fn disassemble_native(
         &self,
         loader: &dyn LoadImage,
@@ -302,7 +308,21 @@ pub struct AssemblyInstruction {
     pub body: String,
 }
 
+impl std::fmt::Display for AssemblyInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{address}] {mnemonic} {body}",
+            address = self.address,
+            mnemonic = self.mnemonic,
+            body = self.body
+        )?;
+        Ok(())
+    }
+}
+
 /// A disassembly of instructions originating from a [VarnodeData].
+#[derive(Debug, Clone)]
 pub struct Disassembly<T> {
     /// The disassembled instructions
     pub instructions: Vec<T>,
@@ -318,6 +338,23 @@ impl<T> Disassembly<T> {
             instructions,
             origin,
         }
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for Disassembly<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{origin}]: {count} instructions",
+            origin = self.origin,
+            count = self.instructions.len()
+        )?;
+
+        for instr in &self.instructions {
+            writeln!(f, "{instr}")?;
+        }
+
+        Ok(())
     }
 }
 
