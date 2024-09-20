@@ -384,7 +384,7 @@ fn pcode_coverage() -> processor::Result<()> {
 }
 
 #[test]
-fn memory_tree() -> processor::Result<()> {
+fn conditional_branching() -> processor::Result<()> {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::new();

@@ -44,12 +44,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug)]
-pub struct PcodeExecution {
-    pcode: Disassembly<PcodeInstruction>,
-    index: usize,
-}
-
 enum NextExecution {
     NextInstruction,
     Jump(Address),
@@ -59,142 +53,6 @@ enum NextExecution {
 enum BranchingNextExecution {
     Branch(SymbolicBit, NextExecution, NextExecution),
     Flow(NextExecution),
-}
-
-impl PcodeExecution {
-    pub fn new(pcode: Disassembly<PcodeInstruction>) -> Self {
-        Self { pcode, index: 0 }
-    }
-
-    pub fn origin(&self) -> &VarnodeData {
-        &self.pcode.origin
-    }
-
-    pub fn current_instruction(&self) -> &PcodeInstruction {
-        &self.pcode.instructions[self.index]
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.pcode.instructions.is_empty()
-    }
-
-    pub fn is_final_instruction(&self) -> bool {
-        self.index + 1 == self.pcode.instructions.len()
-    }
-
-    pub fn update_index(&mut self, offset: i64) -> Result<()> {
-        // Index is always safe to convert to i64
-        let index = i64::try_from(self.index).unwrap() + offset;
-        let index = index.try_into().map_err(|err| {
-            Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} is invalid: {err}"
-            ))
-        })?;
-
-        if index >= self.pcode.instructions.len() {
-            return Err(Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
-                len = self.pcode.instructions.len(),
-                index = self.index
-            )));
-        }
-
-        self.index = index;
-        Ok(())
-    }
-
-    pub fn index_from_offset(&self, offset: i64) -> Result<usize> {
-        // Index is always safe to convert to i64
-        let index = i64::try_from(self.index).unwrap() + offset;
-        let index = index.try_into().map_err(|err| {
-            Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} is invalid: {err}"
-            ))
-        })?;
-
-        if index < self.pcode.instructions.len() {
-            Ok(index)
-        } else {
-            Err(Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
-                len = self.pcode.instructions.len(),
-                index = self.index
-            )))
-        }
-    }
-
-    pub fn offset(self, offset: i64) -> Result<Self> {
-        // Index is always safe to convert to i64
-        let index = i64::try_from(self.index).unwrap() + offset;
-        let index = index.try_into().map_err(|err| {
-            Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} is invalid: {err}"
-            ))
-        })?;
-
-        if index < self.pcode.instructions.len() {
-            Ok(Self {
-                pcode: self.pcode,
-                index,
-            })
-        } else {
-            Err(Error::InvalidArgument(format!(
-                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
-                len = self.pcode.instructions.len(),
-                index = self.index
-            )))
-        }
-    }
-
-    fn next_instruction(&self) -> Result<NextExecution> {
-        if self.is_final_instruction() {
-            Ok(NextExecution::NextInstruction)
-        } else {
-            Ok(NextExecution::PcodeOffset(1))
-        }
-    }
-
-    fn jump(&self, destination: &Destination) -> Result<NextExecution> {
-        match destination {
-            Destination::MachineAddress(address) => Ok(NextExecution::Jump(address.clone())),
-            Destination::PcodeAddress(offset) => Ok(NextExecution::PcodeOffset(*offset)),
-        }
-    }
-
-    fn branch(
-        &self,
-        condition: SymbolicBit,
-        destination: &Destination,
-    ) -> Result<BranchingNextExecution> {
-        Ok(BranchingNextExecution::Branch(
-            condition,
-            self.jump(destination)?,
-            self.next_instruction()?,
-        ))
-    }
-
-    fn next_execution(&self, flow: ControlFlow) -> Result<BranchingNextExecution> {
-        let result = match flow {
-            ControlFlow::NextInstruction
-            | ControlFlow::ConditionalBranch {
-                condition: sym::SymbolicBit::Literal(false),
-                ..
-            } => BranchingNextExecution::Flow(self.next_instruction()?),
-            ControlFlow::Jump(destination)
-            | ControlFlow::ConditionalBranch {
-                condition: sym::SymbolicBit::Literal(true),
-                destination,
-                ..
-            } => BranchingNextExecution::Flow(self.jump(&destination)?),
-            ControlFlow::ConditionalBranch {
-                destination,
-                condition,
-                ..
-            } => self.branch(condition, &destination)?,
-        };
-
-        Ok(result)
-    }
 }
 
 pub struct ProcessorManager<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> {
@@ -400,5 +258,147 @@ impl DecodeInstruction {
             .map_err(Error::InstructionDecoding)?;
 
         Ok(assembly)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PcodeExecution {
+    pcode: Disassembly<PcodeInstruction>,
+    index: usize,
+}
+
+impl PcodeExecution {
+    pub fn new(pcode: Disassembly<PcodeInstruction>) -> Self {
+        Self { pcode, index: 0 }
+    }
+
+    pub fn origin(&self) -> &VarnodeData {
+        &self.pcode.origin
+    }
+
+    pub fn current_instruction(&self) -> &PcodeInstruction {
+        &self.pcode.instructions[self.index]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pcode.instructions.is_empty()
+    }
+
+    pub fn is_final_instruction(&self) -> bool {
+        self.index + 1 == self.pcode.instructions.len()
+    }
+
+    pub fn update_index(&mut self, offset: i64) -> Result<()> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index >= self.pcode.instructions.len() {
+            return Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )));
+        }
+
+        self.index = index;
+        Ok(())
+    }
+
+    pub fn index_from_offset(&self, offset: i64) -> Result<usize> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index < self.pcode.instructions.len() {
+            Ok(index)
+        } else {
+            Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )))
+        }
+    }
+
+    pub fn offset(self, offset: i64) -> Result<Self> {
+        // Index is always safe to convert to i64
+        let index = i64::try_from(self.index).unwrap() + offset;
+        let index = index.try_into().map_err(|err| {
+            Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} is invalid: {err}"
+            ))
+        })?;
+
+        if index < self.pcode.instructions.len() {
+            Ok(Self {
+                pcode: self.pcode,
+                index,
+            })
+        } else {
+            Err(Error::InvalidArgument(format!(
+                "Offset {offset} from index {index} exceeds pcode instruction length {len}",
+                len = self.pcode.instructions.len(),
+                index = self.index
+            )))
+        }
+    }
+
+    fn next_instruction(&self) -> Result<NextExecution> {
+        if self.is_final_instruction() {
+            Ok(NextExecution::NextInstruction)
+        } else {
+            Ok(NextExecution::PcodeOffset(1))
+        }
+    }
+
+    fn jump(&self, destination: &Destination) -> Result<NextExecution> {
+        match destination {
+            Destination::MachineAddress(address) => Ok(NextExecution::Jump(address.clone())),
+            Destination::PcodeAddress(offset) => Ok(NextExecution::PcodeOffset(*offset)),
+        }
+    }
+
+    fn branch(
+        &self,
+        condition: SymbolicBit,
+        destination: &Destination,
+    ) -> Result<BranchingNextExecution> {
+        Ok(BranchingNextExecution::Branch(
+            condition,
+            self.jump(destination)?,
+            self.next_instruction()?,
+        ))
+    }
+
+    fn next_execution(&self, flow: ControlFlow) -> Result<BranchingNextExecution> {
+        let result = match flow {
+            ControlFlow::NextInstruction
+            | ControlFlow::ConditionalBranch {
+                condition: sym::SymbolicBit::Literal(false),
+                ..
+            } => BranchingNextExecution::Flow(self.next_instruction()?),
+            ControlFlow::Jump(destination)
+            | ControlFlow::ConditionalBranch {
+                condition: sym::SymbolicBit::Literal(true),
+                destination,
+                ..
+            } => BranchingNextExecution::Flow(self.jump(&destination)?),
+            ControlFlow::ConditionalBranch {
+                destination,
+                condition,
+                ..
+            } => self.branch(condition, &destination)?,
+        };
+
+        Ok(result)
     }
 }
