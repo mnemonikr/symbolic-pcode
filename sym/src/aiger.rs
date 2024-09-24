@@ -8,14 +8,14 @@ use std::{
 use crate::SymbolicBit;
 
 /// False AIGER literal
-pub const FALSE_LITERAL: AigerLiteral = AigerLiteral::new(0);
+pub const FALSE: AigerLiteral = AigerLiteral::new(0);
 
 /// True AIGER literal
-pub const TRUE_LITERAL: AigerLiteral = FALSE_LITERAL.negated();
+pub const TRUE: AigerLiteral = FALSE.negated();
 
 /// Object capable of coverting [SymbolicBit]s into AIGER format.
 pub struct Aiger {
-    num_inputs: usize,
+    inputs: HashMap<AigerLiteral, usize>,
     outputs: Vec<AigerLiteral>,
     gates: Vec<AigerGate>,
 }
@@ -31,13 +31,18 @@ impl Aiger {
 
         let mut gates = Default::default();
         let mut outputs = Vec::with_capacity(bits.len());
+
         for bit in bits {
             Self::insert_gates(&bit, &indexes, &mut gates);
             outputs.push(indexes.literal(&bit));
         }
         let gates = gates.into_values().collect::<Vec<_>>();
         Self {
-            num_inputs: indexes.num_input_literals(),
+            inputs: indexes
+                .variables
+                .iter()
+                .map(|(&variable_id, &index)| (AigerLiteral::new(index), variable_id))
+                .collect(),
             outputs,
             gates,
         }
@@ -76,7 +81,11 @@ impl Aiger {
 
     /// Iterator of input literals
     pub fn inputs(&self) -> impl Iterator<Item = AigerLiteral> {
-        (1..=self.num_inputs).into_iter().map(AigerLiteral::new)
+        (1..=self.inputs.len()).map(AigerLiteral::new)
+    }
+
+    pub fn input_variable_id(&self, input: AigerLiteral) -> Option<usize> {
+        self.inputs.get(&input).copied()
     }
 
     /// Iterator of output literals
@@ -97,8 +106,8 @@ impl Aiger {
     pub fn serialize_binary(&self) -> Vec<u8> {
         let header = format!(
             "aag {M} {I} {L} {O} {A}\n",
-            M = self.num_inputs + self.gates.len(),
-            I = self.num_inputs,
+            M = self.inputs.len() + self.gates.len(),
+            I = self.inputs.len(),
             L = 0,
             O = self.outputs.len(),
             A = self.gates.len()
@@ -132,6 +141,11 @@ impl AigerLiteral {
         Self(index << 1)
     }
 
+    /// Determine whether this literal is either TRUE or FALSE
+    pub const fn is_const(&self) -> bool {
+        self.0 >> 1 == 0
+    }
+
     /// The negation of a literal is encoded by toggling the least significant bit.
     pub const fn negated(self) -> Self {
         Self(self.0 ^ 0b1)
@@ -153,7 +167,7 @@ impl AigerLiteral {
 /// 1. The LHS is the literal identifying this gate
 /// 2. The RHS is a pair of literals representing the gate inputs
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct AigerGate {
+pub struct AigerGate {
     lhs: AigerLiteral,
     rhs: (AigerLiteral, AigerLiteral),
 }
@@ -171,6 +185,18 @@ impl AigerGate {
                 rhs: (rhs.1, rhs.0),
             }
         }
+    }
+
+    pub fn gate_literal(&self) -> AigerLiteral {
+        self.lhs
+    }
+
+    pub fn input_lhs(&self) -> AigerLiteral {
+        self.rhs.0
+    }
+
+    pub fn input_rhs(&self) -> AigerLiteral {
+        self.rhs.1
     }
 
     /// Serialize the aiger gate into binary format. In this the delta values `lhs - rhs.0` and
@@ -250,22 +276,26 @@ impl AndId {
     }
 }
 
-/// A mapping of identifiers to indexes.
+/// A mapping of identifiers to indexes. This is an internal structure used for computing the
+/// indexes of variables and gates.
 #[derive(Default)]
 struct Indexes {
     /// Mapping variable id to index
     variables: HashMap<usize, usize>,
 
     /// Mapping `AndId` to index. Note that this index is the internal and gate index. The global
-    /// index can only be calculated once all indexes have been stored
+    /// index can only be calculated once all variable indexes have also been stored.
     ands: HashMap<AndId, usize>,
 }
 
 impl Indexes {
+    /// Create a new index
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Insert all components of the [SymbolicBit] into the index. Components already inserted are
+    /// ignored.
     pub fn insert_indexes(&mut self, bit: &SymbolicBit) {
         match bit {
             SymbolicBit::Variable(id) => {
@@ -273,11 +303,15 @@ impl Indexes {
                 self.variables.entry(*id).or_insert(index);
             }
             SymbolicBit::And(x, y) => {
-                self.insert_indexes(x.as_ref());
-                self.insert_indexes(y.as_ref());
                 let id = AndId::new(x, y);
-                let index = self.ands.len() + 1;
-                self.ands.entry(id).or_insert(index);
+                if !self.ands.contains_key(&id) {
+                    self.insert_indexes(x.as_ref());
+                    self.insert_indexes(y.as_ref());
+
+                    // Index this gate at the end to ensure its index is greater than the index of
+                    // anything contained in either the lhs or rhs
+                    self.ands.insert(id, self.ands.len() + 1);
+                }
             }
             SymbolicBit::Not(x) => {
                 self.insert_indexes(x.as_ref());
@@ -315,8 +349,8 @@ impl Indexes {
     /// Will panic if this bit is an unindexed variable or and gate, or the negation of such a bit.
     pub fn literal(&self, bit: &SymbolicBit) -> AigerLiteral {
         match bit {
-            SymbolicBit::Literal(false) => FALSE_LITERAL,
-            SymbolicBit::Literal(true) => TRUE_LITERAL,
+            SymbolicBit::Literal(false) => FALSE,
+            SymbolicBit::Literal(true) => TRUE,
             SymbolicBit::Variable(_) | SymbolicBit::And(_, _) => AigerLiteral::new(self.index(bit)),
             SymbolicBit::Not(x) => self.literal(x.as_ref()).negated(),
         }
@@ -326,6 +360,28 @@ impl Indexes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn true_and_false_are_const() {
+        assert!(TRUE.is_const());
+        assert!(FALSE.is_const());
+    }
+
+    #[test]
+    fn input_and_gate_literals_not_negated() {
+        let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::And(
+            Rc::new(SymbolicBit::Variable(0)),
+            Rc::new(SymbolicBit::Variable(1)),
+        )));
+
+        aiger
+            .inputs()
+            .for_each(|input| assert!(!input.is_negated()));
+        aiger
+            .gates()
+            .for_each(|gate| assert!(!gate.gate_literal().is_negated()));
+    }
+
     #[test]
     fn output_false() {
         let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Literal(false)));
@@ -336,7 +392,7 @@ mod tests {
         assert!(gates.is_empty());
 
         let outputs = aiger.outputs().collect::<Vec<_>>();
-        assert_eq!(outputs, vec![FALSE_LITERAL]);
+        assert_eq!(outputs, vec![FALSE]);
 
         assert_eq!(
             aiger.serialize_binary(),
@@ -354,7 +410,7 @@ mod tests {
         assert!(gates.is_empty());
 
         let outputs = aiger.outputs().collect::<Vec<_>>();
-        assert_eq!(outputs, vec![TRUE_LITERAL]);
+        assert_eq!(outputs, vec![TRUE]);
 
         assert_eq!(
             aiger.serialize_binary(),

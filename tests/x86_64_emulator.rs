@@ -384,7 +384,7 @@ fn pcode_coverage() -> processor::Result<()> {
 }
 
 #[test]
-fn conditional_branching() -> processor::Result<()> {
+fn z3_integration() -> processor::Result<()> {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::new();
@@ -436,10 +436,9 @@ fn conditional_branching() -> processor::Result<()> {
         EXIT_RIP.to_le_bytes().into_iter(),
     )?;
 
-    // Set input to concrete value
-    // TODO: Have a way to set this symbolically and then evaluate it with different values
-    let input_value = -sym::SymbolicBitVec::constant(3, 32);
+    let input_value = sym::SymbolicBitVec::with_size(32);
 
+    // Input register is EDI
     let name = "EDI";
     let register = sleigh
         .register_from_name(name)
@@ -447,15 +446,17 @@ fn conditional_branching() -> processor::Result<()> {
     memory
         .write(&register, input_value.into_bytes())
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
-    let rip = sleigh
-        .register_from_name("RIP")
-        .expect("failed to find RIP");
 
     let handler = ProcessorHandlerX86::new(&sleigh);
     let processor = Processor::new(memory, emulator, handler);
     let mut manager = ProcessorManager::new(sleigh, processor);
 
     let mut finished = Vec::new();
+    let rip = manager
+        .sleigh()
+        .register_from_name("RIP")
+        .expect("failed to find RIP");
+
     loop {
         finished.append(&mut manager.remove_all(|p| {
             let rip_value: u64 =
@@ -481,8 +482,97 @@ fn conditional_branching() -> processor::Result<()> {
     let result = memory_tree.read(&eax)?;
     let result: SymbolicBitVec = result.into_iter().collect();
 
-    let assertion = result.equals(SymbolicBitVec::constant(9, 32));
-    assert_eq!(assertion, sym::TRUE);
+    let assertion = result.equals(SymbolicBitVec::constant(8, 32));
+    // assert_eq!(assertion, sym::TRUE);
+
+    let aiger = sym::aiger::Aiger::from_bits(std::iter::once(assertion));
+    let cfg = z3::Config::new();
+    let ctx = z3::Context::new(&cfg);
+
+    let mut z3_ast = std::collections::BTreeMap::new();
+    for input in aiger.inputs() {
+        if input.is_negated() {
+            panic!("input literal is negated: {input}");
+        }
+
+        let z3_name = format!("x{index}", index = input.index());
+        z3_ast.insert(input, z3::ast::Bool::new_const(&ctx, z3_name));
+    }
+
+    for gate in aiger.gates() {
+        let aiger_literal = gate.input_lhs();
+        if !z3_ast.contains_key(&aiger_literal) {
+            assert!(aiger_literal.is_negated());
+            let z3_value = z3_ast
+                .get(&aiger_literal.negated())
+                .unwrap_or_else(|| panic!("missing literal (negated): {aiger_literal}"));
+            z3_ast.insert(aiger_literal, z3::ast::Bool::not(z3_value));
+        };
+
+        let aiger_literal = gate.input_rhs();
+        if !z3_ast.contains_key(&aiger_literal) {
+            assert!(aiger_literal.is_negated());
+            let z3_value = z3_ast
+                .get(&aiger_literal.negated())
+                .unwrap_or_else(|| panic!("missing literal (negated): {aiger_literal}"));
+            z3_ast.insert(aiger_literal, z3::ast::Bool::not(z3_value));
+        };
+
+        let z3_lhs = z3_ast.get(&gate.input_lhs()).expect("missing lhs");
+        let z3_rhs = z3_ast.get(&gate.input_rhs()).expect("missing rhs");
+        let z3_gate = z3::ast::Bool::and(&ctx, &[z3_lhs, z3_rhs]);
+
+        if gate.gate_literal().is_negated() {
+            panic!("gate literal is negated: {gate:?}");
+        }
+
+        z3_ast.insert(gate.gate_literal(), z3_gate);
+    }
+
+    let solver = z3::Solver::new(&ctx);
+    for output in aiger.outputs() {
+        if output.is_const() {
+            println!("Output is constant: {output}");
+            break;
+        }
+
+        if output.is_negated() {
+            let z3_output = z3_ast
+                .get(&output.negated())
+                .expect("missing output (negated)");
+            solver.assert(&z3::ast::Bool::not(z3_output));
+        } else {
+            let z3_output = z3_ast.get(&output).expect("missing output");
+            solver.assert(z3_output);
+        }
+    }
+
+    let sat_result = solver.check();
+    assert_eq!(sat_result, z3::SatResult::Sat);
+
+    let model = solver.get_model().expect("model not returned by solver");
+    for input in aiger.inputs() {
+        let z3_input = z3_ast.get(&input).expect("missing input");
+        if let Some(z3_value) = model.get_const_interp(z3_input) {
+            let variable_id = aiger
+                .input_variable_id(input)
+                .unwrap_or_else(|| panic!("input {input} does not map to a variable"));
+            let solved_value = z3_value.as_bool().expect("non-bool assignment for {input}");
+
+            // The expected input answer is 4.
+            if variable_id == 2 {
+                assert!(
+                    solved_value,
+                    "expected input variable {variable_id} to be set"
+                );
+            } else {
+                assert!(
+                    !solved_value,
+                    "expected input variable {variable_id} to be unset"
+                );
+            }
+        }
+    }
 
     Ok(())
 }
