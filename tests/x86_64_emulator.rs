@@ -483,8 +483,6 @@ fn z3_integration() -> processor::Result<()> {
     let result: SymbolicBitVec = result.into_iter().collect();
 
     let assertion = result.equals(SymbolicBitVec::constant(8, 32));
-    // assert_eq!(assertion, sym::TRUE);
-
     let aiger = sym::aiger::Aiger::from_bits(std::iter::once(assertion));
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
