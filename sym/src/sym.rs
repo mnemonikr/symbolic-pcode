@@ -178,6 +178,10 @@ impl SymbolicBitVec {
         self.bits.iter()
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut SymbolicBit> {
+        self.bits.iter_mut()
+    }
+
     pub fn with_size(num_bits: usize) -> Self {
         let start_symbol = START_SYMBOL.fetch_add(num_bits, Ordering::SeqCst);
         let mut bits = VecDeque::with_capacity(num_bits);
@@ -426,18 +430,19 @@ impl SymbolicBitVec {
             let carry = if num_sum_bits > 0 {
                 // Select the bits to sum, truncating the most significant bits as necessary
 
-                // TODO All of the bits placed into x will be overwritten. It could improve
-                // performance if these bits were extracted instead of cloned.
-                let x: Self = product
-                    .iter()
+                // Extract num_sum_bits from product starting from rhs_size and store in x.
+                // The value that's replaced into the product is unimportant since these
+                // bits will be overwritten by the sum x + y.
+                let mut x = SymbolicBitVec::constant(0, num_sum_bits);
+                product
+                    .iter_mut()
                     .skip(rhs_size)
                     .take(num_sum_bits)
-                    .cloned()
-                    .collect();
-                let y = self
-                    .clone()
-                    .truncate_msb(self.len() - num_sum_bits)
-                    .mux(SymbolicBitVec::constant(0, num_sum_bits), selector);
+                    .zip(x.iter_mut())
+                    .for_each(|(p, x)| std::mem::swap(p, x));
+
+                let mut y = self.clone().truncate_msb(self.len() - num_sum_bits);
+                y.mux_mut(SymbolicBitVec::constant(0, num_sum_bits), selector);
 
                 let (sum, carry) = x.addition_with_carry(y);
                 for (i, bit) in sum.bits.into_iter().enumerate() {
@@ -493,7 +498,7 @@ impl SymbolicBitVec {
             // Check if RHS is less than working set
             let selector = remainder.clone().less_than(divisor.clone());
             let diff = remainder.clone() - divisor.clone();
-            remainder = remainder.mux(diff, selector.clone());
+            remainder.mux_mut(diff, selector.clone());
 
             quotient.bits.rotate_right(1);
             quotient.bits[0] = !selector;
@@ -506,16 +511,22 @@ impl SymbolicBitVec {
         let divisor_msb = self.msb().cloned().unwrap();
         let dividend_msb = dividend.msb().cloned().unwrap();
 
-        let unsigned_divisor = self.clone().mux(-self, !divisor_msb.clone());
-        let unsigned_dividend = dividend.clone().mux(-dividend, !dividend_msb.clone());
-        let (quotient, remainder) = unsigned_divisor.unsigned_divide(unsigned_dividend);
+        let mut unsigned_divisor = self.clone();
+        unsigned_divisor.mux_mut(-self, !divisor_msb.clone());
 
-        let quotient = Self::select(
-            divisor_msb.clone() ^ dividend_msb.clone(),
-            -quotient.clone(),
-            quotient,
+        let mut unsigned_dividend = dividend.clone();
+        unsigned_dividend.mux_mut(-dividend, !dividend_msb.clone());
+
+        let (mut quotient, mut remainder) = unsigned_divisor.unsigned_divide(unsigned_dividend);
+
+        let negated_quotient = -quotient.clone();
+        quotient.mux_mut(
+            negated_quotient,
+            divisor_msb.clone().equals(dividend_msb.clone()),
         );
-        let remainder = Self::select(dividend_msb, -remainder.clone(), remainder);
+
+        let negated_remainder = -remainder.clone();
+        remainder.mux_mut(negated_remainder, !dividend_msb);
 
         (quotient, remainder)
     }
@@ -637,7 +648,7 @@ impl SymbolicBitVec {
     }
 
     pub fn popcount(self) -> Self {
-        let len = if self.len() == 0 {
+        let len = if self.is_empty() {
             // This special case is needed to avoid taking log2 of 0
             1
         } else {
@@ -655,17 +666,14 @@ impl SymbolicBitVec {
         result
     }
 
-    pub fn signed_shift_right(self, rhs: Self) -> Self {
+    pub fn signed_shift_right(mut self, rhs: Self) -> Self {
         let sign_bit = self.msb().cloned().unwrap();
-        let mut bit_shift_value = 1;
-        let mut result = self;
-        for bit in rhs.bits {
-            let shifted_value = result.shift(bit_shift_value, sign_bit.clone(), false);
-            result = shifted_value.mux(result, bit);
-            bit_shift_value <<= 1;
+        for (i, shift_bit) in rhs.into_iter().enumerate() {
+            let mut shifted_value = self.clone();
+            shifted_value.shift_mut(1 << i, sign_bit.clone(), ShiftDirection::Right);
+            self.mux_mut(shifted_value, !shift_bit);
         }
-
-        result
+        self
     }
 
     fn shift_mut(&mut self, amount: usize, shift_in: SymbolicBit, direction: ShiftDirection) {
@@ -695,48 +703,11 @@ impl SymbolicBitVec {
         }
     }
 
-    fn shift(&self, amount: usize, shift_in: SymbolicBit, is_left_shift: bool) -> Self {
-        let size = self.len();
-        let shift_in = std::iter::repeat(shift_in).take(usize::min(size, amount));
-        let bits = if is_left_shift {
-            shift_in
-                .chain(self.bits.iter().take(size.saturating_sub(amount)).cloned())
-                .collect()
-        } else {
-            self.bits
-                .iter()
-                .skip(amount)
-                .cloned()
-                .chain(shift_in)
-                .collect()
-        };
-
-        Self { bits }
-    }
-
-    fn select(selector: SymbolicBit, lhs: Self, rhs: Self) -> Self {
-        assert_eq!(lhs.len(), rhs.len());
-        Self {
-            bits: lhs
-                .bits
-                .into_iter()
-                .zip(rhs.bits)
-                .map(|(lhs, rhs)| selector.clone().select(lhs, rhs))
-                .collect(),
-        }
-    }
-
     fn mux_mut(&mut self, rhs: Self, selector: SymbolicBit) {
         rhs.bits.into_iter().enumerate().for_each(|(i, rhs)| {
             let lhs = std::mem::take(&mut self.bits[i]);
             self.bits[i] = selector.clone().select(lhs, rhs);
         });
-    }
-
-    fn mux(self, rhs: Self, selector: SymbolicBit) -> Self {
-        let positive = vec![selector.clone(); self.len()].into_iter().collect();
-        let negative = vec![!selector; self.len()].into_iter().collect();
-        (self & positive) | (rhs & negative)
     }
 }
 
