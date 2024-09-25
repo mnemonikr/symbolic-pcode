@@ -1,14 +1,6 @@
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
-impl std::ops::Deref for SymbolicBitVec {
-    type Target = [SymbolicBit];
-
-    fn deref(&self) -> &Self::Target {
-        &self.bits.as_slice()
-    }
-}
-
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
         SymbolicBit::Literal(value)
@@ -29,19 +21,7 @@ impl TryFrom<SymbolicBit> for bool {
 
 impl From<SymbolicBit> for SymbolicBitVec {
     fn from(value: SymbolicBit) -> Self {
-        Self { bits: vec![value] }
-    }
-}
-
-impl TryFrom<SymbolicBitVec> for SymbolicBit {
-    type Error = String;
-
-    fn try_from(mut value: SymbolicBitVec) -> Result<Self, Self::Error> {
-        if value.len() == 1 {
-            Ok(value.bits.pop().unwrap())
-        } else {
-            Err(format!("value has {num_bits} bits", num_bits = value.len()))
-        }
+        std::iter::once(value).collect()
     }
 }
 
@@ -134,9 +114,7 @@ impl<const BYTES: usize, T: LittleEndian<BYTES>> TryFrom<&SymbolicBitVec>
 
 impl<const BYTES: usize, T: LittleEndian<BYTES>> From<ConcreteValue<BYTES, T>> for SymbolicBitVec {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
-        SymbolicBitVec {
-            bits: value.symbolize(),
-        }
+        value.symbolize().into_iter().collect()
     }
 }
 
@@ -204,31 +182,17 @@ concrete_type!(usize);
 
 impl FromIterator<SymbolicBitVec> for SymbolicBitVec {
     fn from_iter<T: IntoIterator<Item = SymbolicBitVec>>(iter: T) -> Self {
-        Self {
-            bits: iter
-                .into_iter()
-                .flat_map(|bitvec| bitvec.bits.into_iter())
-                .collect(),
-        }
-    }
-}
-
-impl FromIterator<SymbolicBit> for SymbolicBitVec {
-    fn from_iter<T: IntoIterator<Item = SymbolicBit>>(iter: T) -> Self {
-        Self {
-            bits: iter.into_iter().collect(),
-        }
+        iter.into_iter()
+            .flat_map(|bitvec| bitvec.into_iter())
+            .collect()
     }
 }
 
 impl FromIterator<SymbolicByte> for SymbolicBitVec {
     fn from_iter<T: IntoIterator<Item = SymbolicByte>>(iter: T) -> Self {
-        Self {
-            bits: iter
-                .into_iter()
-                .flat_map(|byte| byte.into_inner().into_iter())
-                .collect(),
-        }
+        iter.into_iter()
+            .flat_map(|byte| byte.into_inner().into_iter())
+            .collect()
     }
 }
 
@@ -236,15 +200,14 @@ pub fn symbolize(iter: impl IntoIterator<Item = u8>) -> impl Iterator<Item = Sym
     iter.into_iter().flat_map(|byte| {
         let mut bits = [sym::FALSE; 8];
 
-        for b in 0..8 {
-            bits[b] = SymbolicBit::Literal((byte & (1 << b)) > 0);
+        for (index, bit) in bits.iter_mut().enumerate() {
+            *bit = SymbolicBit::Literal((byte & (1 << index)) > 0);
         }
 
         bits
     })
 }
 
-#[must_use]
 pub fn concretize<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -254,7 +217,6 @@ where
     concretize_bits(iter.map(|byte| byte.as_ref()).flat_map(|bits| bits.iter()))
 }
 
-#[must_use]
 pub fn concretize_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicByte>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -268,7 +230,6 @@ where
     )
 }
 
-#[must_use]
 pub fn concretize_bits_cow<'a, T, const N: usize>(
     iter: impl Iterator<Item = std::borrow::Cow<'a, SymbolicBit>>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -312,7 +273,6 @@ where
     Ok(T::from_words(bytes))
 }
 
-#[must_use]
 pub fn concretize_bits<'a, T, const N: usize>(
     iter: impl Iterator<Item = &'a SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -322,7 +282,6 @@ where
     concretize_bits_cow(iter.map(std::borrow::Cow::Borrowed))
 }
 
-#[must_use]
 pub fn concretize_bits_into<T, const N: usize>(
     iter: impl IntoIterator<Item = SymbolicBit>,
 ) -> std::result::Result<T, ConcretizationError>
@@ -445,19 +404,6 @@ mod tests {
     }
 
     #[test]
-    fn bit_bitvec_happy() {
-        let bit = SymbolicBit::Variable(0);
-        let vec = SymbolicBitVec::from(bit.clone());
-        assert_eq!(bit, vec.try_into().unwrap());
-    }
-
-    #[test]
-    fn bitvec_bit_err() {
-        let err = SymbolicBit::try_from(SymbolicBitVec::constant(2, 2)).unwrap_err();
-        assert_eq!("value has 2 bits", err);
-    }
-
-    #[test]
     fn combine_bitvecs() {
         let zero = SymbolicBitVec::constant(0, 1);
         let one = SymbolicBitVec::constant(1, 1);
@@ -530,6 +476,7 @@ mod tests {
         let x = ConcreteValue::new(1u8);
 
         // Clone
+        #[expect(clippy::clone_on_copy)]
         let y = x.clone();
 
         // PartialEq
