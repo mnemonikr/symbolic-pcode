@@ -621,26 +621,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Copy, Clone, Default)]
-    struct EmptyIteratorWithBadSizeHint {}
-    impl Iterator for EmptyIteratorWithBadSizeHint {
-        type Item = SymbolicByte;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            None
-        }
-    }
-
-    #[derive(Debug, Copy, Clone, Default)]
-    struct InfiniteIteratorWithBadSizeHint {}
-    impl Iterator for InfiniteIteratorWithBadSizeHint {
-        type Item = SymbolicByte;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            SymbolicBitVec::constant(0, 8).into_bytes().pop()
-        }
-    }
-
     fn address_space(id: usize) -> AddressSpace {
         AddressSpace {
             id: AddressSpaceId::new(id),
