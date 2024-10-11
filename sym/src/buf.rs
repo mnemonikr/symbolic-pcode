@@ -5,7 +5,7 @@ use std::ops::Deref;
 use crate::SymbolicBit;
 
 /// An array of symbolic bits.
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SymbolicBitBuf<const N: usize> {
     bits: [SymbolicBit; N],
 }
@@ -83,7 +83,10 @@ impl<const N: usize> std::ops::IndexMut<usize> for SymbolicBitBuf<N> {
 
 impl<const N: usize> From<SymbolicBitBuf<N>> for Vec<SymbolicByte> {
     fn from(mut value: SymbolicBitBuf<N>) -> Self {
-        assert!(N % 8 == 0);
+        const {
+            assert!(N % 8 == 0);
+        }
+
         let num_bytes = N / 8;
         let mut result = Vec::with_capacity(num_bytes);
         for n in 0..num_bytes {
@@ -211,7 +214,10 @@ impl<const N: usize> SymbolicBitBuf<N> {
         self,
         rhs: SymbolicBitBuf<M>,
     ) -> SymbolicBitBuf<O> {
-        assert!(N + M == O);
+        const {
+            assert!(N + M == O, "output size must be sum of buffer sizes");
+        }
+
         let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
             self.bits
                 .into_iter()
