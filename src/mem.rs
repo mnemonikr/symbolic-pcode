@@ -114,7 +114,7 @@ impl SymbolicMemoryReader for Memory {
                     Ok(v.clone())
                 } else {
                     // Undefined offset
-                    Err(offset)
+                    Err(i + varnode.address.offset)
                 }
             })
             .collect::<std::result::Result<Vec<_>, _>>();
@@ -228,25 +228,6 @@ impl Memory {
     pub fn new() -> Self {
         Self::default()
     }
-
-    /// Dumps the contents of memory to stdout. This is a helper function for debugging.
-    pub fn dump(&self) {
-        for address_space_id in self.data.keys() {
-            println!("Begin memory dump for {}", address_space_id);
-
-            let addr_space_data = self.data.get(address_space_id).unwrap();
-            for key in addr_space_data.keys() {
-                let byte: u8 = addr_space_data
-                    .get(key)
-                    .unwrap()
-                    .try_into()
-                    .expect("failed to convert to byte");
-                println!("{key:016x}: {byte:02x}");
-            }
-
-            println!("End memory dump for {}", address_space_id);
-        }
-    }
 }
 
 /// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
@@ -324,40 +305,7 @@ impl MemoryBranch {
     /// If a portion of a value `V` has not been updated in this branch, then that portion is only
     /// predicated on the parent predicate in which it is stored.
     pub fn predicated_read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        let result = self.memory.read(varnode);
-        if let Some(parent) = &self.parent {
-            if let Err(Error::UndefinedData(address)) = result {
-                let num_valid_bytes = (address.offset - varnode.address.offset) as usize;
-
-                // Special case to defer to the parent if the data is entirely undefined
-                if num_valid_bytes == 0 {
-                    return parent.predicated_read(varnode);
-                }
-
-                // Read the known valid data
-                let valid_input = VarnodeData {
-                    address: Address {
-                        offset: varnode.address.offset,
-                        address_space: varnode.address.address_space.clone(),
-                    },
-                    size: num_valid_bytes,
-                };
-                let mut data = self.predicated_value(self.memory.read(&valid_input)?);
-
-                // Read the missing data from parent
-                let parent_varnode = VarnodeData {
-                    address,
-                    size: varnode.size - num_valid_bytes,
-                };
-                let mut parent_data = parent.predicated_read(&parent_varnode)?;
-
-                // Combine the two and return the result
-                data.append(&mut parent_data);
-                return Ok(data);
-            }
-        }
-
-        result.map(|value| self.predicated_value(value))
+        self.read(varnode).map(|value| self.predicated_value(value))
     }
 
     fn predicated_value(&self, value: Vec<SymbolicByte>) -> Vec<SymbolicByte> {
@@ -373,8 +321,10 @@ impl MemoryBranch {
 impl SymbolicMemoryReader for MemoryBranch {
     /// Read the bytes for this varnode.
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+        // Not using a question mark operator here in order to check for undefined data
         let result = self.memory.read(varnode);
-        if let Some(ref parent) = self.parent {
+
+        if let Some(parent) = &self.parent {
             if let Err(Error::UndefinedData(address)) = result {
                 let num_valid_bytes = (address.offset - varnode.address.offset) as usize;
 
@@ -480,8 +430,10 @@ impl<'b, 'd> SymbolicMemoryReader for MemoryTree<'b, 'd> {
     /// The read of this return value is `!(!x) & ((x & y) => 1) & ((x & !y) => 2)` where `!(!x)`
     /// is asserting that the `else` branch is _not_ taken.
     ///
-    /// ```
-    /// ```
+    /// # Branch errors
+    ///
+    /// If any of the live branches return an error, then this read will also be an error. That
+    /// means all branches must contain a fully defined value for the source being read.
     fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
         let result = self
             .branches
@@ -504,7 +456,9 @@ impl<'b, 'd> SymbolicMemoryReader for MemoryTree<'b, 'd> {
                     x
                 }
             })
-            .ok_or_else(|| Error::InternalError("memory tree has no branches".to_string()))??;
+            .ok_or_else(|| {
+                Error::InternalError("memory tree has no live branches".to_string())
+            })??;
 
         let result: SymbolicBitVec = result
             .into_iter()
@@ -561,15 +515,15 @@ impl<'a, M: SymbolicMemory> sla::LoadImage for ExecutableMemory<'a, M> {
 mod tests {
     use std::borrow::Cow;
 
-    use sla::AddressSpace;
+    use sla::{AddressSpace, LoadImage};
     use sym::SymbolicBitVec;
 
     use super::*;
 
-    #[derive(Debug, Copy, Clone, Default)]
+    #[derive(Debug, Clone, Default)]
     struct TestIterator {
         size_hint: (usize, Option<usize>),
-        value: u8,
+        value: SymbolicByte,
         size: usize,
     }
 
@@ -578,11 +532,22 @@ mod tests {
             Self::with_value(value, 1)
         }
 
-        pub fn with_value(value: u8, size: usize) -> Self {
+        pub fn with_symbolic_value(size: usize) -> Self {
             Self {
                 size_hint: (size, Some(size)),
                 size,
-                value,
+                value: SymbolicByte::default() | (SymbolicBit::Variable(0).into()),
+            }
+        }
+
+        pub fn with_value(value: u8, size: usize) -> Self {
+            Self {
+                size_hint: (size, Some(size)),
+                value: SymbolicBitVec::constant(value.into(), 8)
+                    .into_bytes()
+                    .pop()
+                    .unwrap(),
+                size,
             }
         }
 
@@ -602,6 +567,8 @@ mod tests {
         }
     }
 
+    impl ExactSizeIterator for TestIterator {}
+
     impl Iterator for TestIterator {
         type Item = SymbolicByte;
 
@@ -611,9 +578,7 @@ mod tests {
             }
 
             self.size -= 1;
-            SymbolicBitVec::constant(self.value.into(), 8)
-                .into_bytes()
-                .pop()
+            Some(self.value.clone())
         }
 
         fn size_hint(&self) -> (usize, Option<usize>) {
@@ -726,32 +691,33 @@ mod tests {
         memory.write(&varnode, TestIterator::with_value(0xbe, 2))?;
 
         // Create a new branch
-        let mut tree = MemoryBranch::new(memory);
+        let mut true_branch = MemoryBranch::new(memory);
         let predicate = sym::SymbolicBit::Variable(0);
-        let false_branch = tree.new_branch(predicate.clone());
+        let false_branch = true_branch.new_branch(predicate.clone());
 
         // Confirm predicates are correct
-        assert_eq!(*tree.leaf_predicate(), predicate);
-        assert_eq!(*tree.branch_predicate(), predicate);
+        assert_eq!(*true_branch.leaf_predicate(), predicate);
+        assert_eq!(*true_branch.branch_predicate(), predicate);
         assert_eq!(*false_branch.leaf_predicate(), !predicate.clone());
         assert_eq!(*false_branch.branch_predicate(), !predicate);
 
         // Overwite part of the initial value
         varnode.size = 1;
-        tree.write(&varnode, TestIterator::with_single_value(0xef))?;
+        true_branch.write(&varnode, TestIterator::with_single_value(0xef))?;
+        varnode.size = 2;
 
         // Read the entire value and confirm the overwritten portion is read along with the portion
         // that is not overwritten
-        varnode.size = 2;
+        let old_value: u16 = 0xbebe;
+        let new_value: u16 = 0xbeef;
         assert_eq!(
             u16::try_from(
-                sym::SymbolicBitBuf::<16>::try_from(tree.read(&varnode)?)
+                sym::SymbolicBitBuf::<16>::try_from(true_branch.read(&varnode)?)
                     .expect("buffer conversion failed")
             )
             .expect("failed to make value concrete"),
-            0xbeef
+            new_value
         );
-
         // Confirm false branch value is unchanged
         assert_eq!(
             u16::try_from(
@@ -759,7 +725,7 @@ mod tests {
                     .expect("buffer conversion failed")
             )
             .expect("failed to make value concrete"),
-            0xbebe
+            old_value
         );
 
         Ok(())
@@ -784,6 +750,36 @@ mod tests {
             .pop()
             .expect("did not read 1 byte");
         assert_eq!(return_value.equals(sym::TRUE.into()), sym::TRUE);
+
+        Ok(())
+    }
+
+    #[test]
+    fn memory_tree_false_branch_unwritten() -> Result<()> {
+        let mut memory = Memory::new();
+        let value = 0xbe;
+        let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
+        memory.write(&varnode, TestIterator::with_value(value, 2))?;
+
+        let mut true_branch = MemoryBranch::new(memory);
+        let false_branch = true_branch.new_branch(sym::TRUE);
+
+        varnode.size = 1;
+        true_branch.write(&varnode, TestIterator::with_single_value(0xef))?;
+        varnode.size = 2;
+
+        let live_branches = [true_branch, false_branch];
+        let tree = MemoryTree::new(live_branches.iter(), std::iter::empty());
+        let tree_value = tree.read(&varnode)?;
+        let tree_value: u16 = sym::concretize_into(tree_value).expect("symbolic tree value");
+
+        // The tree should result in evaluating the following
+        // (!true | 0xbeef) & (!false | 0xbebe) & true
+        let expected_value = 0xbeef;
+        assert_eq!(
+            tree_value, expected_value,
+            "got {tree_value:0x}, expected {expected_value:0x}"
+        );
 
         Ok(())
     }
@@ -838,7 +834,7 @@ mod tests {
     fn write_too_few_bytes_rollback() -> Result<()> {
         let mut memory = Memory::new();
         let destination = VarnodeData::new(Address::new(address_space(0), 0), 1);
-        memory.write(&destination, SymbolicBitVec::constant(0, 8).into_bytes())?;
+        memory.write(&destination, TestIterator::with_single_value(42))?;
 
         let result = memory.write(&destination, TestIterator::without_hint(0));
         assert!(
@@ -847,7 +843,7 @@ mod tests {
 
         // Verify rollback
         let value: u8 = sym::concretize_into(memory.read(&destination)?).unwrap();
-        assert_eq!(value, 0);
+        assert_eq!(value, 42);
 
         Ok(())
     }
@@ -886,10 +882,237 @@ mod tests {
     fn write_overflows_address() -> Result<()> {
         let mut memory = Memory::new();
         let destination = VarnodeData::new(Address::new(address_space(0), u64::MAX), 1);
-        let result = memory.write(&destination, SymbolicBitVec::constant(0, 8).into_bytes());
+        let result = memory.write(&destination, TestIterator::with_single_value(0));
         assert!(
             matches!(result, Err(Error::InvalidArguments(msg)) if msg == format!("varnode size 1 overflows address offset {offset}", offset = u64::MAX))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn memory_branch_read_from_parent() -> Result<()> {
+        let mut branch = MemoryBranch::default();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let value = 1;
+        branch.write(&varnode, TestIterator::with_single_value(value))?;
+
+        let _child = branch.new_branch(sym::TRUE);
+        let read_value: u8 = sym::concretize_into(branch.read(&varnode)?)
+            .expect("unexpected symbolic value from memory");
+        assert_eq!(read_value, value);
+        Ok(())
+    }
+
+    #[test]
+    fn memory_branch_partial_read_failure() -> Result<()> {
+        let mut branch = MemoryBranch::default();
+        let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let value = 1;
+        let _child = branch.new_branch(sym::TRUE);
+        branch.write(&varnode, TestIterator::with_single_value(value))?;
+
+        // Increase varnode size such that will now read undefined data
+        varnode.size = 2;
+        let result = branch.read(&varnode);
+        let mut expected_failure_address = varnode.address.clone();
+        expected_failure_address.offset += 1;
+        assert!(
+            matches!(result, Err(Error::UndefinedData(addr)) if addr == expected_failure_address)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn memory_branch_predicated_read() -> Result<()> {
+        let mut branch = MemoryBranch::default();
+        let _child = branch.new_branch(sym::TRUE);
+        let varnode = VarnodeData::new(Address::new(address_space(0), u64::MAX), 1);
+        let result = branch.read(&varnode);
+        assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+        Ok(())
+    }
+
+    #[test]
+    fn memory_tree_branches_with_undefined_data() -> Result<()> {
+        let value = 0xbe;
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let mut true_branch = MemoryBranch::default();
+        let false_branch = true_branch.new_branch(sym::TRUE);
+        true_branch.write(&varnode, TestIterator::with_single_value(value))?;
+
+        let live_branches = [true_branch, false_branch];
+        let tree = MemoryTree::new(live_branches.iter(), std::iter::empty());
+        let result = tree.read(&varnode);
+        assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+
+        let tree = MemoryTree::new(live_branches.iter().rev(), std::iter::empty());
+        let result = tree.read(&varnode);
+        assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+        Ok(())
+    }
+
+    #[test]
+    fn memory_tree_without_branches() -> Result<()> {
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let tree = MemoryTree::new(std::iter::empty(), std::iter::empty());
+        let result = tree.read(&varnode);
+        assert!(
+            matches!(result, Err(Error::InternalError(msg)) if msg == "memory tree has no live branches")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn executable_memory_instruction_bytes() -> Result<()> {
+        // Setup memory with an address space
+        let value = 0xbe;
+        let mut memory = Memory::new();
+
+        // Write an initial value to this address space
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        memory.write(&varnode, TestIterator::with_value(value, 1))?;
+        let exec_mem = ExecutableMemory(&memory);
+        let data = exec_mem
+            .instruction_bytes(&varnode)
+            .expect("failed to get instruction bytes");
+
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0], value);
+
+        Ok(())
+    }
+
+    #[test]
+    fn executable_memory_undefined_data() -> Result<()> {
+        let memory = Memory::new();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let exec_mem = ExecutableMemory(&memory);
+
+        let result = exec_mem.instruction_bytes(&varnode);
+        assert!(
+            matches!(result, Err(msg) if msg == format!("no data defined at address {address}", address = varnode.address))
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn executable_memory_symbolic_data() -> Result<()> {
+        let mut memory = Memory::new();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        memory.write(&varnode, TestIterator::with_symbolic_value(1))?;
+        let exec_mem = ExecutableMemory(&memory);
+
+        let result = exec_mem.instruction_bytes(&varnode);
+        assert!(matches!(result, Err(msg) if msg == "symbolic byte"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn executable_memory_partial_undefined_data() -> Result<()> {
+        // Setup memory with an address space
+        let value = 0xbe;
+        let mut memory = Memory::new();
+
+        // Write an initial value to this address space
+        let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        memory.write(&varnode, TestIterator::with_value(value, 1))?;
+        let exec_mem = ExecutableMemory(&memory);
+
+        // Increase varnode size by 1 to trigger undefined data during read
+        varnode.size += 1;
+
+        let data = exec_mem
+            .instruction_bytes(&varnode)
+            .expect("failed to get instruction bytes");
+
+        assert_eq!(data.len(), 1);
+        assert_eq!(data[0], value);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_const_addr_space() -> Result<()> {
+        let expected_value = 0xdeadbeef;
+        let varnode = VarnodeData::new(Address::new(const_space(), expected_value.into()), 4);
+        let memory = Memory::new();
+        let value: u32 = sym::concretize_into(memory.read(&varnode)?).expect("symbolic byte");
+        assert_eq!(value, expected_value);
+        Ok(())
+    }
+
+    #[test]
+    fn read_const_addr_space_invalid() -> Result<()> {
+        let varnode = VarnodeData::new(Address::new(const_space(), 0), 9);
+        let memory = Memory::new();
+        let result = memory.read(&varnode);
+        assert!(
+            matches!(result, Err(Error::InvalidArguments(msg)) if msg == format!("varnode size {size} exceeds maximum allowed for constant address space", size = varnode.size))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn read_data_gap() -> Result<()> {
+        let mut memory = Memory::new();
+
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        memory.write(&varnode, TestIterator::with_single_value(0x5a))?;
+
+        let varnode = VarnodeData::new(Address::new(address_space(0), 2), 1);
+        memory.write(&varnode, TestIterator::with_single_value(0xa5))?;
+
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 4);
+        let result = memory.read(&varnode);
+
+        let undefined_addr = Address::new(address_space(0), 1);
+        assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == undefined_addr));
+        Ok(())
+    }
+
+    #[test]
+    fn write_address() -> Result<()> {
+        let mut memory = Memory::new();
+        let address = Address::new(address_space(0), 0);
+        let value = 0xbe;
+        memory.write_address(address.clone(), TestIterator::with_single_value(value))?;
+        let read_value: u8 = sym::concretize_into(memory.read(&VarnodeData::new(address, 1))?)
+            .expect("symbolic value");
+        assert_eq!(read_value, value);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_bit() -> Result<()> {
+        let mut memory = Memory::new();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let value = 0x01;
+        memory.write(&varnode, TestIterator::with_single_value(value))?;
+        let read_value: bool = memory.read_bit(&varnode)?.try_into().expect("symbolic bit");
+        assert!(read_value, "expected to read true bit from memory");
+        Ok(())
+    }
+
+    #[test]
+    fn read_bit_invalid_varnode_size() -> Result<()> {
+        let memory = Memory::new();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
+        let result = memory.read_bit(&varnode);
+        assert!(
+            matches!(result, Err(Error::InvalidArguments(msg)) if msg == format!("expected varnode size to be 1, actual {size}", size = varnode.size))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn read_bit_undefined() -> Result<()> {
+        let memory = Memory::new();
+        let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
+        let result = memory.read_bit(&varnode);
+        assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
         Ok(())
     }
 }
