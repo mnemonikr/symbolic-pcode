@@ -1,0 +1,22 @@
+[package]
+name = "benchmarks"
+description = "Integration benchmarks"
+version = "0.0.0"
+publish = false
+
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sla = { path = "../crates/sla" }
+sym = { path = "../crates/sym" }
+symbolic-pcode = { path = "../crates/pcode" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "emulator"
+path = "emulator.rs"
+harness = false

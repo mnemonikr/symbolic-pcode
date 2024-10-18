@@ -1,0 +1,13 @@
+[package]
+name = "symbolic-pcode"
+description = "Library for symbolic execution of pcode"
+version = "0.1.0"
+
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+sla = { path = "../sla" }
+sym = { path = "../sym" }
+thiserror.workspace = true

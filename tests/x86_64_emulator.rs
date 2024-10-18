@@ -323,7 +323,7 @@ fn doubler_32b() -> processor::Result<()> {
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
     // Use address of the main function for the entry point
-    let mut manager = processor_with_image("tests/data/coverage/coverage", 0x1675);
+    let mut manager = processor_with_image("data/coverage/coverage", 0x1675);
 
     let rip = manager
         .sleigh()
