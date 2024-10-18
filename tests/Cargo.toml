@@ -1,0 +1,22 @@
+[package]
+name = "tests-integration"
+description = "Integration tests"
+version = "0.0.0"
+publish = false
+
+authors.workspace = true
+license.workspace = true
+edition.workspace = true 
+
+[dependencies]
+symbolic-pcode = { path = "../crates/pcode" }
+sla = { path = "../crates/sla" }
+sym = { path = "../crates/sym" }
+
+[dev-dependencies]
+z3 = "0.12"
+
+[[test]]
+name = "x86_64_emulator"
+path = "x86_64_emulator.rs"
+

@@ -115,10 +115,11 @@ impl TracingEmulator {
 pub fn x86_64_sleigh() -> GhidraSleigh {
     let mut sleigh = GhidraSleigh::new();
     let sleigh_spec =
-        fs::read_to_string("tests/data/x86-64.sla").expect("failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("sla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("failed to read processor spec file");
+        fs::read_to_string("data/x86-64.sla").expect("failed to read processor spec file");
+    let processor_spec = fs::read_to_string(
+        "../crates/sla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
+    )
+    .expect("failed to read processor spec file");
     sleigh
         .initialize(&sleigh_spec, &processor_spec)
         .expect("failed to initialize sleigh");
