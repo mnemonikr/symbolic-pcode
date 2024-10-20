@@ -79,7 +79,7 @@ pub enum ControlFlow {
     /// Otherwise execution should continue with the next instruction.
     ConditionalBranch {
         condition_origin: VarnodeData,
-        condition: sym::SymbolicBit,
+        condition: Option<bool>,
         destination: Destination,
     },
 }
@@ -384,7 +384,7 @@ impl StandardPcodeEmulator {
         require_input_size_equals(&instruction, 1, 1)?;
 
         Ok(ControlFlow::ConditionalBranch {
-            condition: memory.read_bit(&instruction.inputs[1])?,
+            condition: memory.read_bit(&instruction.inputs[1])?.try_into().ok(),
             condition_origin: instruction.inputs[1].clone(),
             destination: Self::branch_destination(&instruction.inputs[0]),
         })
@@ -3214,7 +3214,7 @@ mod tests {
                 destination,
             } => {
                 assert_eq!(condition_origin, condition_input);
-                assert_eq!(condition, sym::SymbolicBit::Literal(true));
+                assert_eq!(condition, Some(true));
                 assert_eq!(
                     destination, expected_destination,
                     "invalid branch destination"
@@ -3258,7 +3258,7 @@ mod tests {
                 destination,
             } => {
                 assert_eq!(condition_input, condition_origin);
-                assert_eq!(condition, sym::SymbolicBit::Literal(true));
+                assert_eq!(condition, Some(true));
                 assert_eq!(
                     destination, expected_destination,
                     "invalid branch destination"

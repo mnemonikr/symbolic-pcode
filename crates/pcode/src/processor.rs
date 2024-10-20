@@ -1,7 +1,7 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemory};
+use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemoryReader};
 use sla::{
     Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
 };
@@ -51,7 +51,7 @@ enum NextExecution {
 }
 
 enum BranchingNextExecution {
-    Branch(SymbolicBit, NextExecution, NextExecution),
+    Branch(VarnodeData, NextExecution, NextExecution),
     Flow(NextExecution),
 }
 
@@ -205,9 +205,11 @@ impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> Processor<E, H> {
         }
     }
 
-    fn branch(&mut self, condition: SymbolicBit) -> Self {
+    fn branch(&mut self, condition_origin: VarnodeData) -> Self {
         Processor {
-            memory: self.memory.new_branch(condition),
+            memory: self
+                .memory
+                .new_branch(self.memory.read_bit(&condition_origin).unwrap()),
             state: self.state.clone(),
             handler: self.handler.clone(),
             emulator: self.emulator.clone(),
@@ -369,11 +371,11 @@ impl PcodeExecution {
 
     fn branch(
         &self,
-        condition: SymbolicBit,
+        condition_origin: VarnodeData,
         destination: &Destination,
     ) -> Result<BranchingNextExecution> {
         Ok(BranchingNextExecution::Branch(
-            condition,
+            condition_origin,
             self.jump(destination)?,
             self.next_instruction()?,
         ))
@@ -383,20 +385,20 @@ impl PcodeExecution {
         let result = match flow {
             ControlFlow::NextInstruction
             | ControlFlow::ConditionalBranch {
-                condition: sym::SymbolicBit::Literal(false),
+                condition: Some(false),
                 ..
             } => BranchingNextExecution::Flow(self.next_instruction()?),
             ControlFlow::Jump(destination)
             | ControlFlow::ConditionalBranch {
-                condition: sym::SymbolicBit::Literal(true),
+                condition: Some(true),
                 destination,
                 ..
             } => BranchingNextExecution::Flow(self.jump(&destination)?),
             ControlFlow::ConditionalBranch {
+                condition_origin,
                 destination,
-                condition,
                 ..
-            } => self.branch(condition, &destination)?,
+            } => self.branch(condition_origin, &destination)?,
         };
 
         Ok(result)
