@@ -24,6 +24,146 @@ pub enum Error {
     InternalError(String),
 }
 
+pub trait LittleEndian: sym::pcode::PcodeOps {
+    type Byte: From<u8> + Clone;
+
+    fn bit_to_byte(bit: Self::Bit) -> Self::Byte;
+    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
+    fn from_le_bytes(bytes: impl IntoIterator<Item = Self::Byte>) -> Self;
+}
+
+pub trait VarnodeDataStore {
+    type Value: sym::pcode::PcodeOps;
+
+    /// Read [SymbolicByte] values from the requested source.
+    fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as sym::pcode::PcodeOps>::Bit>;
+    fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
+    fn write_bit(
+        &mut self,
+        destination: &VarnodeData,
+        data: <Self::Value as sym::pcode::PcodeOps>::Bit,
+    ) -> Result<()>;
+}
+
+struct GenericMemory<T: LittleEndian> {
+    data: BTreeMap<AddressSpaceId, BTreeMap<u64, T::Byte>>,
+}
+
+impl<T: LittleEndian> GenericMemory<T> {
+    pub fn write_bytes(
+        &mut self,
+        destination: &VarnodeData,
+        data: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = <T as LittleEndian>::Byte>>,
+    ) -> Result<()> {
+        // Make sure data provided matches expected amount for destination
+        let data = data.into_iter();
+        if data.len() != destination.size {
+            return Err(Error::InvalidArguments(format!(
+                "expected to write {expected} bytes, got {actual} bytes",
+                expected = destination.size,
+                actual = data.len()
+            )));
+        }
+
+        // Make sure the varnode does not overflow the offset
+        let overflows = u64::try_from(destination.size)
+            .ok()
+            .and_then(|size| destination.address.offset.checked_add(size))
+            .is_none();
+
+        if overflows {
+            return Err(Error::InvalidArguments(format!(
+                "varnode size {size} overflows address offset {offset}",
+                size = destination.size,
+                offset = destination.address.offset
+            )));
+        }
+
+        let space_id = destination.address.address_space.id;
+        let memory = self.data.entry(space_id).or_default();
+
+        let mut offset = destination.address.offset;
+        for byte in data {
+            memory.insert(offset, byte);
+            offset += 1;
+        }
+
+        Ok(())
+    }
+}
+
+impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
+    type Value = T;
+
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as sym::pcode::PcodeOps>::Bit> {
+        self.read(source).map(sym::pcode::PcodeOps::lsb)
+    }
+
+    fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
+        if source.address.address_space.space_type == AddressSpaceType::Constant {
+            return Ok(LittleEndian::from_le_bytes(
+                source
+                    .address
+                    .offset
+                    .to_le_bytes()
+                    .into_iter()
+                    .take(source.size)
+                    .map(T::Byte::from),
+            ));
+        }
+
+        let space_id = source.address.address_space.id;
+        let memory = self
+            .data
+            .get(&space_id)
+            .ok_or(Error::UndefinedData(source.address.clone()))?;
+
+        // Collect into a Vec or return the first undefined offset
+        let result = memory
+            .range(source.range())
+            .enumerate()
+            .map(|(i, (&offset, v))| {
+                let i = u64::try_from(i).map_err(|_| offset)?;
+                if offset == i + source.address.offset {
+                    Ok(v.clone())
+                } else {
+                    // Undefined offset
+                    Err(i + source.address.offset)
+                }
+            })
+            .collect::<std::result::Result<Vec<_>, _>>();
+
+        let bytes = result.map_err(|offset| {
+            Error::UndefinedData(Address {
+                offset,
+                address_space: source.address.address_space.clone(),
+            })
+        })?;
+
+        if bytes.len() == source.size {
+            Ok(Self::Value::from_le_bytes(bytes))
+        } else {
+            Err(Error::UndefinedData(Address {
+                offset: source.address.offset + bytes.len() as u64,
+                address_space: source.address.address_space.clone(),
+            }))
+        }
+    }
+
+    fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
+        self.write_bytes(destination, data.into_le_bytes())
+    }
+
+    fn write_bit(
+        &mut self,
+        destination: &VarnodeData,
+        bit: <Self::Value as sym::pcode::PcodeOps>::Bit,
+    ) -> Result<()> {
+        self.write_bytes(destination, [Self::Value::bit_to_byte(bit)])
+    }
+}
+
 /// Trait for memory with symbolic bytes that can be read from.
 pub trait SymbolicMemoryReader {
     /// Read [SymbolicByte] values from the requested source.
@@ -73,6 +213,22 @@ impl<T: SymbolicMemoryReader + SymbolicMemoryWriter> SymbolicMemory for T {}
 pub struct Memory {
     /// Structure for looking up data based on the id of an AddressSpace.
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, SymbolicByte>>,
+}
+
+impl LittleEndian for SymbolicBitVec {
+    type Byte = SymbolicByte;
+
+    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {
+        self.into_bytes().into_iter()
+    }
+
+    fn from_le_bytes(bytes: impl IntoIterator<Item = Self::Byte>) -> Self {
+        bytes.into_iter().collect()
+    }
+
+    fn bit_to_byte(bit: Self::Bit) -> Self::Byte {
+        Self::Byte::from(bit)
+    }
 }
 
 impl SymbolicMemoryReader for Memory {
