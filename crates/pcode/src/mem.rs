@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, rc::Rc};
 use thiserror;
 
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
+use sym::pcode::{BitwisePcodeOps, PcodeOps};
 use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 /// Memory result type
@@ -24,8 +25,8 @@ pub enum Error {
     InternalError(String),
 }
 
-pub trait LittleEndian: sym::pcode::PcodeOps {
-    type Byte: From<u8> + Clone;
+pub trait LittleEndian: PcodeOps + std::fmt::Debug + FromIterator<Self::Byte> {
+    type Byte: From<u8> + TryInto<u8> + Clone;
 
     fn bit_to_byte(bit: Self::Bit) -> Self::Byte;
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
@@ -33,16 +34,23 @@ pub trait LittleEndian: sym::pcode::PcodeOps {
 }
 
 pub trait VarnodeDataStore {
-    type Value: sym::pcode::PcodeOps;
+    type Value: PcodeOps + std::fmt::Debug + FromIterator<Self::Byte>;
+    type Byte: From<u8> + TryInto<u8>;
 
     /// Read [SymbolicByte] values from the requested source.
-    fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as sym::pcode::PcodeOps>::Bit>;
+    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<Self::Byte>>;
+    fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
+        Ok(self.read_bytes(source)?.into_iter().collect())
+    }
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
+        self.read(source).map(PcodeOps::lsb)
+    }
+
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
     fn write_bit(
         &mut self,
         destination: &VarnodeData,
-        data: <Self::Value as sym::pcode::PcodeOps>::Bit,
+        data: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()>;
 }
 
@@ -95,22 +103,18 @@ impl<T: LittleEndian> GenericMemory<T> {
 
 impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
     type Value = T;
+    type Byte = T::Byte;
 
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as sym::pcode::PcodeOps>::Bit> {
-        self.read(source).map(sym::pcode::PcodeOps::lsb)
-    }
-
-    fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
+    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<Self::Byte>> {
         if source.address.address_space.space_type == AddressSpaceType::Constant {
-            return Ok(LittleEndian::from_le_bytes(
-                source
-                    .address
-                    .offset
-                    .to_le_bytes()
-                    .into_iter()
-                    .take(source.size)
-                    .map(T::Byte::from),
-            ));
+            return Ok(source
+                .address
+                .offset
+                .to_le_bytes()
+                .into_iter()
+                .take(source.size)
+                .map(Self::Byte::from)
+                .collect());
         }
 
         let space_id = source.address.address_space.id;
@@ -142,13 +146,17 @@ impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
         })?;
 
         if bytes.len() == source.size {
-            Ok(Self::Value::from_le_bytes(bytes))
+            Ok(bytes)
         } else {
             Err(Error::UndefinedData(Address {
                 offset: source.address.offset + bytes.len() as u64,
                 address_space: source.address.address_space.clone(),
             }))
         }
+    }
+
+    fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
+        self.read_bytes(source).map(LittleEndian::from_le_bytes)
     }
 
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
@@ -158,7 +166,7 @@ impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
     fn write_bit(
         &mut self,
         destination: &VarnodeData,
-        bit: <Self::Value as sym::pcode::PcodeOps>::Bit,
+        bit: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()> {
         self.write_bytes(destination, [Self::Value::bit_to_byte(bit)])
     }
@@ -390,52 +398,50 @@ impl Memory {
 /// enforce the predicate. It simply tracks the assumptions made. Note that `[Self::read()]` is
 /// *not* conditioned on the branch predicate. See `[Self::predicated_read()]`.
 #[derive(Debug)]
-pub struct MemoryBranch {
-    leaf_predicate: SymbolicBit,
-    branch_predicate: SymbolicBit,
+pub struct MemoryBranch<M: VarnodeDataStore + Default> {
+    leaf_predicate: <M::Value as PcodeOps>::Bit,
+    branch_predicate: <M::Value as PcodeOps>::Bit,
     parent: Option<Rc<Self>>,
-    memory: Memory,
+    memory: M,
 }
 
-impl Default for MemoryBranch {
+impl<M: VarnodeDataStore + Default> Default for MemoryBranch<M> {
     fn default() -> Self {
         Self {
-            leaf_predicate: sym::TRUE,
-            branch_predicate: sym::TRUE,
+            leaf_predicate: true.into(),
+            branch_predicate: true.into(),
             parent: Default::default(),
             memory: Default::default(),
         }
     }
 }
 
-impl MemoryBranch {
-    pub fn new(memory: Memory) -> Self {
+impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
+    pub fn new(memory: M) -> Self {
         Self {
             memory,
-            leaf_predicate: sym::TRUE,
-            branch_predicate: sym::TRUE,
-            parent: None,
+            ..Default::default()
         }
     }
 
-    pub fn branch_predicate(&self) -> &SymbolicBit {
+    pub fn branch_predicate(&self) -> &<M::Value as PcodeOps>::Bit {
         &self.branch_predicate
     }
 
     /// Get the predicate associated with this branch.
-    pub fn leaf_predicate(&self) -> &SymbolicBit {
+    pub fn leaf_predicate(&self) -> &<M::Value as PcodeOps>::Bit {
         &self.leaf_predicate
     }
 
     /// Branch this tree on the given predicate. The current tree branch predicate is updated to
     /// the given predicate. A new branch of the tree is returned with a negation of the predicate.
-    pub fn new_branch(&mut self, predicate: SymbolicBit) -> Self {
+    pub fn new_branch(&mut self, predicate: <M::Value as PcodeOps>::Bit) -> Self {
         // Build the new shared parent
         let mut parent = Self {
             leaf_predicate: predicate.clone(),
-            branch_predicate: self.branch_predicate.clone() & predicate.clone(),
+            branch_predicate: self.branch_predicate.clone().and(predicate.clone()),
             parent: None,
-            memory: Memory::new(),
+            memory: M::default(),
         };
 
         // Update the shared parent to hold contents of this branch
@@ -447,10 +453,10 @@ impl MemoryBranch {
 
         // Create new branch with negated predicate
         Self {
-            leaf_predicate: !predicate.clone(),
-            branch_predicate: rc.branch_predicate.clone() & !predicate,
+            leaf_predicate: predicate.clone().not(),
+            branch_predicate: rc.branch_predicate.clone().and(predicate.not()),
             parent: Some(rc),
-            memory: Memory::new(),
+            memory: M::default(),
         }
     }
 
@@ -460,23 +466,57 @@ impl MemoryBranch {
     ///
     /// If a portion of a value `V` has not been updated in this branch, then that portion is only
     /// predicated on the parent predicate in which it is stored.
-    pub fn predicated_read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        self.read(varnode).map(|value| self.predicated_value(value))
-    }
-
-    fn predicated_value(&self, value: Vec<SymbolicByte>) -> Vec<SymbolicByte> {
-        let bitvec: SymbolicBitVec = value.into_iter().collect();
-        let negated_predicate: SymbolicBitVec = std::iter::repeat(!self.branch_predicate.clone())
-            .take(bitvec.len())
-            .collect();
-        let conditional_value = bitvec | negated_predicate;
-        conditional_value.into_bytes()
+    pub fn predicated_read(&self, varnode: &VarnodeData) -> Result<M::Value> {
+        let value: M::Value = self.read(varnode)?;
+        Ok(value.predicated_on(self.branch_predicate.clone()))
     }
 }
 
-impl SymbolicMemoryReader for MemoryBranch {
+impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
+    type Value = M::Value;
+    type Byte = M::Byte;
+
+    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<M::Byte>> {
+        // Not using a question mark operator here in order to check for undefined data
+        let result = self.memory.read_bytes(source);
+
+        if let Some(parent) = &self.parent {
+            if let Err(Error::UndefinedData(address)) = result {
+                let num_valid_bytes = (address.offset - source.address.offset) as usize;
+
+                // Special case to defer to the parent if the data is entirely undefined
+                if num_valid_bytes == 0 {
+                    return parent.read_bytes(source);
+                }
+
+                // Read the known valid data
+                let valid_input = VarnodeData {
+                    address: Address {
+                        offset: source.address.offset,
+                        address_space: source.address.address_space.clone(),
+                    },
+                    size: num_valid_bytes,
+                };
+                let mut data = self.memory.read_bytes(&valid_input)?;
+
+                // Read the missing data from parent
+                let parent_source = VarnodeData {
+                    address,
+                    size: source.size - num_valid_bytes,
+                };
+                let mut parent_data = parent.read_bytes(&parent_source)?;
+
+                // Combine the two and return the result
+                data.append(&mut parent_data);
+                return Ok(data);
+            }
+        }
+
+        result
+    }
+
     /// Read the bytes for this varnode.
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+    fn read(&self, varnode: &VarnodeData) -> Result<M::Value> {
         // Not using a question mark operator here in order to check for undefined data
         let result = self.memory.read(varnode);
 
@@ -497,48 +537,49 @@ impl SymbolicMemoryReader for MemoryBranch {
                     },
                     size: num_valid_bytes,
                 };
-                let mut data = self.memory.read(&valid_input)?;
+                let data = self.memory.read(&valid_input)?;
 
                 // Read the missing data from parent
                 let parent_varnode = VarnodeData {
                     address,
                     size: varnode.size - num_valid_bytes,
                 };
-                let mut parent_data = parent.read(&parent_varnode)?;
+                let parent_data = parent.read(&parent_varnode)?;
 
                 // Combine the two and return the result
-                data.append(&mut parent_data);
-                return Ok(data);
+                return Ok(parent_data.piece(data));
             }
         }
 
         result
     }
-}
 
-impl SymbolicMemoryWriter for MemoryBranch {
     /// Write the data to the location specified by the varnode.
-    fn write(
+    fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
+        self.memory.write(destination, data)
+    }
+
+    fn write_bit(
         &mut self,
-        varnode: &VarnodeData,
-        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
+        destination: &VarnodeData,
+        data: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()> {
-        self.memory.write(varnode, data)
+        todo!()
     }
 }
 
 /// Collection of all memory branches into a single tree. Tree is composed of both live and dead
 /// branches. A dead branch is a branch of memory that has no bearing on an outcome. These branches
 /// are necessary to include so that their predicates are appropriately excluded from the outcome.
-pub struct MemoryTree<'b, 'd> {
-    branches: Vec<&'b MemoryBranch>,
-    dead_branches: Vec<&'d MemoryBranch>,
+pub struct MemoryTree<'b, 'd, M: VarnodeDataStore + Default> {
+    branches: Vec<&'b MemoryBranch<M>>,
+    dead_branches: Vec<&'d MemoryBranch<M>>,
 }
 
-impl<'b, 'd> MemoryTree<'b, 'd> {
+impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
     pub fn new(
-        branches: impl IntoIterator<Item = &'b MemoryBranch>,
-        dead_branches: impl IntoIterator<Item = &'d MemoryBranch>,
+        branches: impl IntoIterator<Item = &'b MemoryBranch<M>>,
+        dead_branches: impl IntoIterator<Item = &'d MemoryBranch<M>>,
     ) -> Self {
         Self {
             branches: branches.into_iter().collect(),
@@ -546,18 +587,18 @@ impl<'b, 'd> MemoryTree<'b, 'd> {
         }
     }
 
-    fn dead_branches_not_taken_predicate(&self) -> SymbolicBit {
+    fn dead_branches_not_taken_predicate(&self) -> <M::Value as PcodeOps>::Bit {
         let dead_branch_taken = self
             .dead_branches
             .iter()
             .map(|&branch| branch.branch_predicate())
-            .fold(sym::FALSE, |x, y| x.clone() | y.clone());
+            .fold(<M::Value as PcodeOps>::Bit::from(false), |x, y| {
+                x.clone().or(y.clone())
+            });
 
-        !dead_branch_taken
+        dead_branch_taken.not()
     }
-}
 
-impl<'b, 'd> SymbolicMemoryReader for MemoryTree<'b, 'd> {
     /// Read data from the requested source. This will read data from each live branch using a
     /// [predicated read](MemoryBranch::predicated_read()) and return the conjunction these
     /// conditional values. These values are subsequently conditioned on none of the dead branches
@@ -590,21 +631,17 @@ impl<'b, 'd> SymbolicMemoryReader for MemoryTree<'b, 'd> {
     ///
     /// If any of the live branches return an error, then this read will also be an error. That
     /// means all branches must contain a fully defined value for the source being read.
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
+    fn read(&self, varnode: &VarnodeData) -> Result<M::Value> {
         let result = self
             .branches
             .iter()
-            .map(|&branch| {
-                branch
-                    .predicated_read(varnode)
-                    .map(|bytes| bytes.into_iter().collect::<SymbolicBitVec>())
-            })
+            .map(|&branch| branch.predicated_read(varnode))
             .reduce(|x, y| {
                 // Must check first argument first since it is the accumulator
                 // If an error is propagating it will propagate here.
                 if let Ok(x) = x {
                     if let Ok(y) = y {
-                        Ok(x & y)
+                        Ok(x.and(y))
                     } else {
                         y
                     }
@@ -616,29 +653,17 @@ impl<'b, 'd> SymbolicMemoryReader for MemoryTree<'b, 'd> {
                 Error::InternalError("memory tree has no live branches".to_string())
             })??;
 
-        let result: SymbolicBitVec = result
-            .into_iter()
-            .zip(std::iter::repeat(self.dead_branches_not_taken_predicate()))
-            .map(|(bit, dead_branches_not_taken)| bit & dead_branches_not_taken)
-            .collect();
-
-        Ok(result.into_bytes())
+        Ok(result.assert(self.dead_branches_not_taken_predicate()))
     }
 }
 
 /// Memory that holds binary-encoded executable instructions.
-pub struct ExecutableMemory<'a, M: SymbolicMemoryReader>(pub &'a M);
-
-impl<'a, M: SymbolicMemory> SymbolicMemoryReader for ExecutableMemory<'a, M> {
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        self.0.read(varnode)
-    }
-}
+pub struct ExecutableMemory<'a, M: VarnodeDataStore>(pub &'a M);
 
 /// Implementation of the LoadImage trait to enable loading instructions from memory
-impl<'a, M: SymbolicMemory> sla::LoadImage for ExecutableMemory<'a, M> {
+impl<'a, M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'a, M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
-        let bytes = self.read(input);
+        let bytes = self.0.read_bytes(input);
 
         // The number of bytes requested may exceed valid data in memory.
         // In that case only read and return the defined bytes.
@@ -653,7 +678,7 @@ impl<'a, M: SymbolicMemory> sla::LoadImage for ExecutableMemory<'a, M> {
                     },
                     address: input.address.clone(),
                 };
-                self.read(&input)
+                self.0.read_bytes(&input)
             }
             _ => bytes,
         };

@@ -1,7 +1,7 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemoryReader};
+use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemoryReader, VarnodeDataStore};
 use sla::{
     Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
 };
@@ -55,13 +55,19 @@ enum BranchingNextExecution {
     Flow(NextExecution),
 }
 
-pub struct ProcessorManager<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> {
-    processors: Vec<Processor<E, H>>,
+pub struct ProcessorManager<
+    E: PcodeEmulator + Clone,
+    M: VarnodeDataStore + Default,
+    H: ProcessorResponseHandler<M>,
+> {
+    processors: Vec<Processor<E, M, H>>,
     sleigh: sla::GhidraSleigh,
 }
 
-impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> ProcessorManager<E, H> {
-    pub fn new(sleigh: sla::GhidraSleigh, processor: Processor<E, H>) -> Self {
+impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler<M>>
+    ProcessorManager<E, M, H>
+{
+    pub fn new(sleigh: sla::GhidraSleigh, processor: Processor<E, M, H>) -> Self {
         Self {
             sleigh,
             processors: vec![processor],
@@ -88,8 +94,8 @@ impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> ProcessorManager<E, 
 
     pub fn remove_all(
         &mut self,
-        filter: impl Fn(&Processor<E, H>) -> bool,
-    ) -> Vec<Processor<E, H>> {
+        filter: impl Fn(&Processor<E, M, H>) -> bool,
+    ) -> Vec<Processor<E, M, H>> {
         let mut removed = Vec::new();
         for i in (0..self.processors.len()).rev() {
             if filter(&self.processors[i]) {
@@ -100,23 +106,27 @@ impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> ProcessorManager<E, 
         removed
     }
 
-    pub fn processors(&self) -> impl Iterator<Item = &Processor<E, H>> {
+    pub fn processors(&self) -> impl Iterator<Item = &Processor<E, M, H>> {
         self.processors.iter()
     }
 
-    pub fn processors_mut(&mut self) -> impl Iterator<Item = &mut Processor<E, H>> {
+    pub fn processors_mut(&mut self) -> impl Iterator<Item = &mut Processor<E, M, H>> {
         self.processors.iter_mut()
     }
 }
 
-pub trait ProcessorResponseHandler: Clone {
-    fn fetched(&mut self, memory: &mut MemoryBranch) -> Result<Address>;
-    fn decoded(&mut self, memory: &mut MemoryBranch, execution: &PcodeExecution) -> Result<()>;
-    fn jumped(&mut self, memory: &mut MemoryBranch, address: &Address) -> Result<()>;
+pub trait ProcessorResponseHandler<M: VarnodeDataStore + Default>: Clone {
+    fn fetched(&mut self, memory: &mut MemoryBranch<M>) -> Result<Address>;
+    fn decoded(&mut self, memory: &mut MemoryBranch<M>, execution: &PcodeExecution) -> Result<()>;
+    fn jumped(&mut self, memory: &mut MemoryBranch<M>, address: &Address) -> Result<()>;
 }
 
-pub struct Processor<E: PcodeEmulator + Clone, H: ProcessorResponseHandler + Clone> {
-    memory: MemoryBranch,
+pub struct Processor<
+    E: PcodeEmulator + Clone,
+    M: VarnodeDataStore + Default,
+    H: ProcessorResponseHandler<M> + Clone,
+> {
+    memory: MemoryBranch<M>,
 
     // This state is mutable and can be transformed. This SomeThing object should mutate itself but
     // never be replaced directly
@@ -125,8 +135,13 @@ pub struct Processor<E: PcodeEmulator + Clone, H: ProcessorResponseHandler + Clo
     emulator: E,
 }
 
-impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> Processor<E, H> {
-    pub fn new(memory: Memory, emulator: E, handler: H) -> Self {
+impl<
+        E: PcodeEmulator + Clone,
+        M: VarnodeDataStore + Default,
+        H: ProcessorResponseHandler<M> + Clone,
+    > Processor<E, M, H>
+{
+    pub fn new(memory: M, emulator: E, handler: H) -> Self {
         Self {
             memory: MemoryBranch::new(memory),
             emulator,
@@ -135,11 +150,11 @@ impl<E: PcodeEmulator + Clone, H: ProcessorResponseHandler> Processor<E, H> {
         }
     }
 
-    pub fn memory(&self) -> &MemoryBranch {
+    pub fn memory(&self) -> &MemoryBranch<M> {
         &self.memory
     }
 
-    pub fn memory_mut(&mut self) -> &mut MemoryBranch {
+    pub fn memory_mut(&mut self) -> &mut MemoryBranch<M> {
         &mut self.memory
     }
 
@@ -238,10 +253,10 @@ impl DecodeInstruction {
         &self.address
     }
 
-    pub fn decode(
+    pub fn decode<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
-        memory: ExecutableMemory<MemoryBranch>,
+        memory: ExecutableMemory<M>,
     ) -> Result<PcodeExecution> {
         let pcode = sleigh
             .disassemble_pcode(&memory, self.address.clone())
@@ -250,10 +265,10 @@ impl DecodeInstruction {
         Ok(PcodeExecution::new(pcode))
     }
 
-    pub fn disassemble(
+    pub fn disassemble<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
-        memory: ExecutableMemory<MemoryBranch>,
+        memory: ExecutableMemory<M>,
     ) -> Result<Disassembly<AssemblyInstruction>> {
         let assembly = sleigh
             .disassemble_native(&memory, self.address.clone())

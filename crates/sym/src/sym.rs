@@ -170,6 +170,10 @@ impl SymbolicBitVec {
         self.bits.is_empty()
     }
 
+    pub fn num_bytes(&self) -> usize {
+        self.bits.len().next_multiple_of(8) / 8
+    }
+
     pub fn len(&self) -> usize {
         self.bits.len()
     }
