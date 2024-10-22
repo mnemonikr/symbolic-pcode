@@ -104,11 +104,22 @@ macro_rules! binary_op {
     ($mem:ident, $instr:ident, $op:ident) => {{
         require_num_inputs($instr, 2)?;
         require_has_output($instr, true)?;
-        require_output_size_equals($instr, 1)?;
+        require_input_sizes_match_output($instr)?;
 
         let lhs = $mem.read(&$instr.inputs[0])?;
         let rhs = $mem.read(&$instr.inputs[1])?;
         $mem.write($instr.output.as_ref().unwrap(), lhs.$op(rhs))?;
+    }};
+}
+
+macro_rules! unary_op {
+    ($mem:ident, $instr:ident, $op:ident) => {{
+        require_num_inputs($instr, 1)?;
+        require_has_output($instr, true)?;
+        require_input_sizes_match_output($instr)?;
+
+        let lhs = $mem.read(&$instr.inputs[0])?;
+        $mem.write($instr.output.as_ref().unwrap(), lhs.$op())?;
     }};
 }
 
@@ -121,17 +132,6 @@ macro_rules! binary_op_bit {
         let lhs = $mem.read(&$instr.inputs[0])?;
         let rhs = $mem.read(&$instr.inputs[1])?;
         $mem.write_bit($instr.output.as_ref().unwrap(), lhs.$op(rhs))?;
-    }};
-}
-
-macro_rules! unary_op {
-    ($mem:ident, $instr:ident, $op:ident) => {{
-        require_num_inputs($instr, 1)?;
-        require_has_output($instr, true)?;
-        require_output_size_equals($instr, 1)?;
-
-        let lhs = $mem.read(&$instr.inputs[0])?;
-        $mem.write($instr.output.as_ref().unwrap(), lhs.$op())?;
     }};
 }
 
