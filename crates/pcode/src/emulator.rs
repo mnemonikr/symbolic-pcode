@@ -1,4 +1,4 @@
-use pcode_interface::{BitwisePcodeOps, PcodeOps};
+use crate::pcode::{BitwisePcodeOps, PcodeOps};
 use sla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,

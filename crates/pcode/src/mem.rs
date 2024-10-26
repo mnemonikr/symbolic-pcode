@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
-use crate::{BitwisePcodeOps, PcodeOps};
+use crate::pcode::{BitwisePcodeOps, PcodeOps};
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
 use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
