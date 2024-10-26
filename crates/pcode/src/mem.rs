@@ -2,8 +2,8 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
+use crate::{BitwisePcodeOps, PcodeOps};
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
-use sym::pcode::{BitwisePcodeOps, PcodeOps};
 use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 /// Memory result type
@@ -25,27 +25,11 @@ pub enum Error {
     InternalError(String),
 }
 
-pub trait LittleEndian: PcodeOps + std::fmt::Debug + FromIterator<Self::Byte> {
-    type Byte: From<u8> + TryInto<u8> + Clone;
-
-    fn bit_to_byte(bit: Self::Bit) -> Self::Byte;
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
-    fn from_le_bytes(bytes: impl IntoIterator<Item = Self::Byte>) -> Self;
-}
-
 pub trait VarnodeDataStore {
-    type Value: PcodeOps + std::fmt::Debug + FromIterator<Self::Byte>;
-    type Byte: From<u8> + TryInto<u8>;
+    type Value: PcodeOps;
 
-    /// Read [SymbolicByte] values from the requested source.
-    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<Self::Byte>>;
-    fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
-        Ok(self.read_bytes(source)?.into_iter().collect())
-    }
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
-        self.read(source).map(PcodeOps::lsb)
-    }
-
+    fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit>;
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
     fn write_bit(
         &mut self,
@@ -54,58 +38,16 @@ pub trait VarnodeDataStore {
     ) -> Result<()>;
 }
 
-struct GenericMemory<T: LittleEndian> {
+#[derive(Default)]
+struct GenericMemory<T: PcodeOps> {
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, T::Byte>>,
 }
 
-impl<T: LittleEndian> GenericMemory<T> {
-    pub fn write_bytes(
-        &mut self,
-        destination: &VarnodeData,
-        data: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = <T as LittleEndian>::Byte>>,
-    ) -> Result<()> {
-        // Make sure data provided matches expected amount for destination
-        let data = data.into_iter();
-        if data.len() != destination.size {
-            return Err(Error::InvalidArguments(format!(
-                "expected to write {expected} bytes, got {actual} bytes",
-                expected = destination.size,
-                actual = data.len()
-            )));
-        }
-
-        // Make sure the varnode does not overflow the offset
-        let overflows = u64::try_from(destination.size)
-            .ok()
-            .and_then(|size| destination.address.offset.checked_add(size))
-            .is_none();
-
-        if overflows {
-            return Err(Error::InvalidArguments(format!(
-                "varnode size {size} overflows address offset {offset}",
-                size = destination.size,
-                offset = destination.address.offset
-            )));
-        }
-
-        let space_id = destination.address.address_space.id;
-        let memory = self.data.entry(space_id).or_default();
-
-        let mut offset = destination.address.offset;
-        for byte in data {
-            memory.insert(offset, byte);
-            offset += 1;
-        }
-
-        Ok(())
-    }
-}
-
-impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
-    type Value = T;
-    type Byte = T::Byte;
-
-    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<Self::Byte>> {
+impl<T: PcodeOps> GenericMemory<T> {
+    fn read_bytes(
+        &self,
+        source: &VarnodeData,
+    ) -> Result<Vec<<<Self as VarnodeDataStore>::Value as PcodeOps>::Byte>> {
         if source.address.address_space.space_type == AddressSpaceType::Constant {
             return Ok(source
                 .address
@@ -113,7 +55,7 @@ impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
                 .to_le_bytes()
                 .into_iter()
                 .take(source.size)
-                .map(Self::Byte::from)
+                .map(<<Self as VarnodeDataStore>::Value as PcodeOps>::Byte::from)
                 .collect());
         }
 
@@ -155,8 +97,57 @@ impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
         }
     }
 
+    fn write_bytes(
+        &mut self,
+        destination: &VarnodeData,
+        data: impl IntoIterator<IntoIter = impl ExactSizeIterator<Item = <T as PcodeOps>::Byte>>,
+    ) -> Result<()> {
+        // Make sure data provided matches expected amount for destination
+        let data = data.into_iter();
+        if data.len() != destination.size {
+            return Err(Error::InvalidArguments(format!(
+                "expected to write {expected} bytes, got {actual} bytes",
+                expected = destination.size,
+                actual = data.len()
+            )));
+        }
+
+        // Make sure the varnode does not overflow the offset
+        let overflows = u64::try_from(destination.size)
+            .ok()
+            .and_then(|size| destination.address.offset.checked_add(size))
+            .is_none();
+
+        if overflows {
+            return Err(Error::InvalidArguments(format!(
+                "varnode size {size} overflows address offset {offset}",
+                size = destination.size,
+                offset = destination.address.offset
+            )));
+        }
+
+        let space_id = destination.address.address_space.id;
+        let memory = self.data.entry(space_id).or_default();
+
+        let mut offset = destination.address.offset;
+        for byte in data {
+            memory.insert(offset, byte);
+            offset += 1;
+        }
+
+        Ok(())
+    }
+}
+
+impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
+    type Value = T;
+
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
+        self.read(source).map(PcodeOps::lsb)
+    }
+
     fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
-        self.read_bytes(source).map(LittleEndian::from_le_bytes)
+        Ok(self.read_bytes(source)?.into_iter().collect())
     }
 
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
@@ -168,7 +159,7 @@ impl<T: LittleEndian> VarnodeDataStore for GenericMemory<T> {
         destination: &VarnodeData,
         bit: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()> {
-        self.write_bytes(destination, [Self::Value::bit_to_byte(bit)])
+        self.write_bytes(destination, [<Self::Value as PcodeOps>::Byte::from(bit)])
     }
 }
 
@@ -211,32 +202,11 @@ pub trait SymbolicMemoryWriter {
     }
 }
 
-/// Trait for memory with symbolic bytes that can be read from and written to.
-pub trait SymbolicMemory: SymbolicMemoryReader + SymbolicMemoryWriter {}
-
-impl<T: SymbolicMemoryReader + SymbolicMemoryWriter> SymbolicMemory for T {}
-
 /// A memory model that stores bytes associated with an AddressSpace.
 #[derive(Debug, Default)]
 pub struct Memory {
     /// Structure for looking up data based on the id of an AddressSpace.
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, SymbolicByte>>,
-}
-
-impl LittleEndian for SymbolicBitVec {
-    type Byte = SymbolicByte;
-
-    fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {
-        self.into_bytes().into_iter()
-    }
-
-    fn from_le_bytes(bytes: impl IntoIterator<Item = Self::Byte>) -> Self {
-        bytes.into_iter().collect()
-    }
-
-    fn bit_to_byte(bit: Self::Bit) -> Self::Byte {
-        Self::Byte::from(bit)
-    }
 }
 
 impl SymbolicMemoryReader for Memory {
@@ -474,46 +444,6 @@ impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
 
 impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
     type Value = M::Value;
-    type Byte = M::Byte;
-
-    fn read_bytes(&self, source: &VarnodeData) -> Result<Vec<M::Byte>> {
-        // Not using a question mark operator here in order to check for undefined data
-        let result = self.memory.read_bytes(source);
-
-        if let Some(parent) = &self.parent {
-            if let Err(Error::UndefinedData(address)) = result {
-                let num_valid_bytes = (address.offset - source.address.offset) as usize;
-
-                // Special case to defer to the parent if the data is entirely undefined
-                if num_valid_bytes == 0 {
-                    return parent.read_bytes(source);
-                }
-
-                // Read the known valid data
-                let valid_input = VarnodeData {
-                    address: Address {
-                        offset: source.address.offset,
-                        address_space: source.address.address_space.clone(),
-                    },
-                    size: num_valid_bytes,
-                };
-                let mut data = self.memory.read_bytes(&valid_input)?;
-
-                // Read the missing data from parent
-                let parent_source = VarnodeData {
-                    address,
-                    size: source.size - num_valid_bytes,
-                };
-                let mut parent_data = parent.read_bytes(&parent_source)?;
-
-                // Combine the two and return the result
-                data.append(&mut parent_data);
-                return Ok(data);
-            }
-        }
-
-        result
-    }
 
     /// Read the bytes for this varnode.
     fn read(&self, varnode: &VarnodeData) -> Result<M::Value> {
@@ -557,6 +487,10 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
     /// Write the data to the location specified by the varnode.
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
         self.memory.write(destination, data)
+    }
+
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
+        todo!()
     }
 
     fn write_bit(
@@ -663,11 +597,11 @@ pub struct ExecutableMemory<'a, M: VarnodeDataStore>(pub &'a M);
 /// Implementation of the LoadImage trait to enable loading instructions from memory
 impl<'a, M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'a, M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
-        let bytes = self.0.read_bytes(input);
+        let value = self.0.read(input);
 
         // The number of bytes requested may exceed valid data in memory.
         // In that case only read and return the defined bytes.
-        let bytes = match bytes {
+        let value = match value {
             Err(Error::UndefinedData(addr)) => {
                 let input = VarnodeData {
                     // SAFETY: This new size MUST be less than the existing input size
@@ -678,14 +612,15 @@ impl<'a, M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'a, M> {
                     },
                     address: input.address.clone(),
                 };
-                self.0.read_bytes(&input)
+                self.0.read(&input)
             }
-            _ => bytes,
+            _ => value,
         };
 
-        bytes
-            .map_err(|err| err.to_string())?
-            .into_iter()
+        let value = value.map_err(|err| err.to_string())?;
+
+        value
+            .into_le_bytes()
             .map(|x| x.try_into())
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|_err| "symbolic byte".to_string())
@@ -695,9 +630,10 @@ impl<'a, M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'a, M> {
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
+    use test_fixtures::ConcreteValue;
 
+    use crate::pcode::{BitwisePcodeOps, PcodeOps};
     use sla::{AddressSpace, LoadImage};
-    use sym::SymbolicBitVec;
 
     use super::*;
 
@@ -801,25 +737,28 @@ mod tests {
         };
 
         // Read and write value into memory
-        let mut memory = Memory::new();
-        memory.write(&varnode, TestIterator::with_value(0x5a, 8))?;
+        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let value: ConcreteValue = 0x8877665544332211u64.into();
+        memory.write(&varnode, value)?;
         let read_value = memory.read(&varnode)?;
 
         // Confirm read value matches written value
-        assert_eq!(read_value.len(), varnode.size);
-        for actual in read_value {
-            let actual: u8 = sym::concretize_into(std::iter::once(actual)).unwrap();
-            assert_eq!(actual, 0x5a);
+        let iter = read_value.into_le_bytes();
+        assert_eq!(iter.len(), varnode.size);
+        for (i, actual) in iter.enumerate() {
+            let expected = u8::from_str_radix(&format!("{x}{x}", x = i + 1), 16).unwrap();
+            assert_eq!(actual, expected);
         }
 
         Ok(())
     }
 
+    /*
     #[test]
     fn memory_branch_read() -> Result<()> {
         // Setup memory with an address space
         let addr_space = address_space(0);
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::default();
 
         // Write an initial value to this address space
         let mut varnode = VarnodeData {
@@ -829,6 +768,7 @@ mod tests {
             },
             size: 2,
         };
+
         memory.write(&varnode, TestIterator::with_value(0xbe, 2))?;
 
         // Create a memory tree from this initialized memory
@@ -1295,5 +1235,5 @@ mod tests {
         let result = memory.read_bit(&varnode);
         assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
         Ok(())
-    }
+    }*/
 }

@@ -10,4 +10,9 @@ edition.workspace = true
 [dependencies]
 sla = { path = "../sla" }
 sym = { path = "../sym" }
+pcode-interface = { path = "../pcode-interface/" }
+
 thiserror.workspace = true
+
+[dev-dependencies]
+test-fixtures = { path = "../test-fixtures" }

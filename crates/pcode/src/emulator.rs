@@ -1,8 +1,8 @@
+use pcode_interface::{BitwisePcodeOps, PcodeOps};
 use sla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use sym::pcode::{BitwisePcodeOps, PcodeOps};
 use sym::{self, SymbolicByte};
 use thiserror;
 
@@ -503,10 +503,7 @@ impl StandardPcodeEmulator {
         require_has_output(&instruction, true)?;
 
         let output = instruction.output.as_ref().unwrap();
-        let popcount = memory
-            .read(&instruction.inputs[0])?
-            .popcount()
-            .zero_extend(output.size);
+        let popcount = memory.read(&instruction.inputs[0])?.popcount(output.size);
         memory.write(output, popcount)?;
 
         Ok(())
