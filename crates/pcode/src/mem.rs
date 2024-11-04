@@ -4,7 +4,6 @@ use thiserror;
 
 use crate::pcode::{BitwisePcodeOps, PcodeOps};
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
-use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 /// Memory result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -180,206 +179,6 @@ impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
 }
 
 /// Trait for memory with symbolic bytes that can be read from.
-pub trait SymbolicMemoryReader {
-    /// Read [SymbolicByte] values from the requested source.
-    fn read(&self, source: &VarnodeData) -> Result<Vec<SymbolicByte>>;
-
-    /// Read [SymbolicBit] from the requested source. Since [VarnodeData] can only represent
-    /// byte-sized requests, the source's `size` must be `1`.
-    fn read_bit(&self, source: &VarnodeData) -> Result<SymbolicBit> {
-        if source.size != 1 {
-            return Err(Error::InvalidArguments(format!(
-                "expected varnode size to be 1, actual {size}",
-                size = source.size
-            )));
-        }
-
-        let byte = &self.read(source)?[0];
-        Ok(byte[0].clone())
-    }
-}
-
-/// Trait for memory with symbolic bytes that can be written to.
-pub trait SymbolicMemoryWriter {
-    /// Write [SymbolicByte] values to the destination in memory.
-    fn write(
-        &mut self,
-        destination: &VarnodeData,
-        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()>;
-
-    /// Write [SymbolicByte] values to the address in memory.
-    fn write_address(
-        &mut self,
-        address: Address,
-        data: impl ExactSizeIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        self.write(&VarnodeData::new(address, data.len()), data)
-    }
-}
-
-/// A memory model that stores bytes associated with an AddressSpace.
-#[derive(Debug, Default)]
-pub struct Memory {
-    /// Structure for looking up data based on the id of an AddressSpace.
-    data: BTreeMap<AddressSpaceId, BTreeMap<u64, SymbolicByte>>,
-}
-
-impl SymbolicMemoryReader for Memory {
-    /// Read the bytes from the addresses specified by the varnode. This function returns `Ok` if
-    /// and only if data is successfully read from the requested addresses.
-    fn read(&self, varnode: &VarnodeData) -> Result<Vec<SymbolicByte>> {
-        if varnode.address.address_space.space_type == AddressSpaceType::Constant {
-            // This is just a constant value defined by the offset
-            let bytes: sym::SymbolicBitBuf<64> = varnode.address.offset.into();
-            let mut result: Vec<SymbolicByte> = bytes.into();
-
-            // The varnode size defines the number of bytes in the result. Since offset
-            // is always 64 bits then the number of bytes is at most 8
-            if varnode.size <= 8 {
-                // Remove extra bytes
-                result.drain(varnode.size..);
-                return Ok(result);
-            } else {
-                return Err(Error::InvalidArguments(format!(
-                    "varnode size {size} exceeds maximum allowed for constant address space",
-                    size = varnode.size
-                )));
-            }
-        }
-
-        let space_id = varnode.address.address_space.id;
-        let memory = self
-            .data
-            .get(&space_id)
-            .ok_or(Error::UndefinedData(varnode.address.clone()))?;
-
-        // Collect into a Vec or return the first undefined offset
-        let result = memory
-            .range(varnode.range())
-            .enumerate()
-            .map(|(i, (&offset, v))| {
-                let i = u64::try_from(i).map_err(|_| offset)?;
-                if offset == i + varnode.address.offset {
-                    Ok(v.clone())
-                } else {
-                    // Undefined offset
-                    Err(i + varnode.address.offset)
-                }
-            })
-            .collect::<std::result::Result<Vec<_>, _>>();
-
-        let bytes = result.map_err(|offset| {
-            Error::UndefinedData(Address {
-                offset,
-                address_space: varnode.address.address_space.clone(),
-            })
-        })?;
-
-        if bytes.len() == varnode.size {
-            Ok(bytes)
-        } else {
-            Err(Error::UndefinedData(Address {
-                offset: varnode.address.offset + bytes.len() as u64,
-                address_space: varnode.address.address_space.clone(),
-            }))
-        }
-    }
-}
-
-impl SymbolicMemoryWriter for Memory {
-    /// Writes the given data to the location specified by the provided varnode. The number of
-    /// bytes provided must match the size of the varnode or else an error will be returned.
-    fn write(
-        &mut self,
-        varnode: &VarnodeData,
-        data: impl IntoIterator<Item = impl Into<SymbolicByte>>,
-    ) -> Result<()> {
-        let data = data.into_iter();
-        let (lower_size, upper_size) = data.size_hint();
-
-        if upper_size
-            .filter(|&size| size == lower_size && size == varnode.size)
-            .is_none()
-        {
-            // Bounds do not exactly match varnode size. Check if size falls out of bounds
-            if varnode.size < lower_size {
-                return Err(Error::InvalidArguments(format!(
-                    "requested {} bytes to be written, provided lower bound {lower_size} bytes",
-                    varnode.size
-                )));
-            }
-
-            if let Some(upper_size) = upper_size {
-                if upper_size < varnode.size {
-                    return Err(Error::InvalidArguments(format!(
-                        "requested {} bytes to be written, provided upper bound {upper_size} bytes",
-                        varnode.size
-                    )));
-                }
-            }
-        }
-
-        // Make sure the varnode does not overflow the offset
-        let overflows = u64::try_from(varnode.size)
-            .ok()
-            .and_then(|size| varnode.address.offset.checked_add(size))
-            .is_none();
-
-        if overflows {
-            return Err(Error::InvalidArguments(format!(
-                "varnode size {size} overflows address offset {offset}",
-                size = varnode.size,
-                offset = varnode.address.offset
-            )));
-        }
-
-        let space_id = varnode.address.address_space.id;
-        let memory = self.data.entry(space_id).or_default();
-        let rollback_fn = |memory: &mut BTreeMap<u64, SymbolicByte>, rollback| {
-            let mut offset = varnode.address.offset;
-            for rollback_value in rollback {
-                if let Some(value) = rollback_value {
-                    memory.insert(offset, value);
-                }
-                offset += 1;
-            }
-        };
-
-        let mut offset = varnode.address.offset;
-        let mut rollback = Vec::with_capacity(varnode.size);
-        for byte in data {
-            if rollback.len() == varnode.size {
-                rollback_fn(memory, rollback);
-                return Err(Error::InvalidArguments(format!(
-                    "too many bytes provided, expected {}",
-                    varnode.size
-                )));
-            }
-            rollback.push(memory.insert(offset, byte.into()));
-            offset += 1;
-        }
-
-        let bytes_written = rollback.len();
-        if bytes_written < varnode.size {
-            rollback_fn(memory, rollback);
-            return Err(Error::InvalidArguments(format!(
-                "not enough bytes provided, {bytes_written} < expected {size}",
-                size = varnode.size
-            )));
-        }
-
-        Ok(())
-    }
-}
-
-impl Memory {
-    /// Create a new instance of memory for the provided AddressSpaces.
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
 /// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
 /// enforce the predicate. It simply tracks the assumptions made. Note that `[Self::read()]` is
 /// *not* conditioned on the branch predicate. See `[Self::predicated_read()]`.
@@ -648,76 +447,10 @@ mod tests {
     use crate::test_fixture::{ConcreteValue, SymbolicValue};
     use std::borrow::Cow;
 
-    use crate::pcode::{BitwisePcodeOps, PcodeOps};
+    use crate::pcode::PcodeOps;
     use sla::{AddressSpace, LoadImage};
 
     use super::*;
-
-    #[derive(Debug, Clone, Default)]
-    struct TestIterator {
-        size_hint: (usize, Option<usize>),
-        value: SymbolicByte,
-        size: usize,
-    }
-
-    impl TestIterator {
-        pub fn with_single_value(value: u8) -> Self {
-            Self::with_value(value, 1)
-        }
-
-        pub fn with_symbolic_value(size: usize) -> Self {
-            Self {
-                size_hint: (size, Some(size)),
-                size,
-                value: SymbolicByte::default() | (SymbolicBit::Variable(0).into()),
-            }
-        }
-
-        pub fn with_value(value: u8, size: usize) -> Self {
-            Self {
-                size_hint: (size, Some(size)),
-                value: SymbolicBitVec::constant(value.into(), 8)
-                    .into_bytes()
-                    .pop()
-                    .unwrap(),
-                size,
-            }
-        }
-
-        pub fn with_size(size: usize) -> Self {
-            Self {
-                size_hint: (size, Some(size)),
-                size,
-                ..Default::default()
-            }
-        }
-
-        pub fn without_hint(size: usize) -> Self {
-            Self {
-                size,
-                ..Default::default()
-            }
-        }
-    }
-
-    impl ExactSizeIterator for TestIterator {}
-
-    impl Iterator for TestIterator {
-        type Item = SymbolicByte;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.size == 0 {
-                return None;
-            }
-
-            self.size -= 1;
-            Some(self.value.clone())
-        }
-
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            self.size_hint
-        }
-    }
 
     fn address_space(id: usize) -> AddressSpace {
         AddressSpace {
@@ -1196,7 +929,7 @@ mod tests {
 
     #[test]
     fn read_bit_undefined() -> Result<()> {
-        let memory = Memory::new();
+        let memory = GenericMemory::<ConcreteValue>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let result = memory.read_bit(&varnode);
         assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));

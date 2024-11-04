@@ -1,7 +1,7 @@
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
-use crate::mem::{ExecutableMemory, Memory, MemoryBranch, SymbolicMemoryReader, VarnodeDataStore};
+use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
 use sla::{
     Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
 };
