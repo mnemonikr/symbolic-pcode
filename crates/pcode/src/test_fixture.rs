@@ -21,11 +21,16 @@ impl ConcreteValue {
     pub fn new(value: u128, valid_bits: u32) -> Self {
         assert!(valid_bits <= u128::BITS);
         let mask = u128::MAX >> (u128::BITS - valid_bits);
+        println!("Value: {value}");
 
         Self {
             value: value & mask,
             valid_bits,
         }
+    }
+
+    pub fn num_bytes(&self) -> u32 {
+        (self.valid_bits + u8::BITS - 1) / u8::BITS
     }
 
     fn bitmask(&self) -> u128 {
@@ -37,14 +42,14 @@ impl ConcreteValue {
     }
 
     fn signed_map(&self, f: impl Fn(i128) -> i128) -> Self {
-        Self::new(f(self.value as i128) as u128, self.valid_bits)
+        Self::new(f(self.signed_value()) as u128, self.valid_bits)
     }
 
-    fn value(&self) -> u128 {
+    pub fn value(&self) -> u128 {
         self.value
     }
 
-    fn signed_value(&self) -> i128 {
+    pub fn signed_value(&self) -> i128 {
         if self.valid_bits == u128::BITS {
             return self.value as i128;
         }
@@ -139,9 +144,9 @@ impl PcodeOps for ConcreteValue {
 
     fn borrow(self, rhs: Self) -> Self::Bit {
         assert_eq!(self.valid_bits, rhs.valid_bits);
-        let value = self.value().checked_sub(rhs.value());
+        let value = self.signed_value().checked_sub(rhs.signed_value());
         if let Some(value) = value {
-            value != ConcreteValue::new(value, self.valid_bits).value()
+            value != ConcreteValue::new(value as u128, self.valid_bits).signed_value()
         } else {
             true
         }
@@ -276,11 +281,10 @@ impl PcodeOps for ConcreteValue {
     }
 
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {
-        let num_bytes = (self.valid_bits + u8::BITS - 1) / u8::BITS;
         self.value()
             .to_le_bytes()
             .into_iter()
-            .take(num_bytes as usize)
+            .take(self.num_bytes() as usize)
     }
 }
 

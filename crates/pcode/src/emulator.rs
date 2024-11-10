@@ -836,8 +836,33 @@ mod tests {
     use std::borrow::Cow;
 
     use super::*;
-    use mem::{Memory, VarnodeDataStore};
-    use sym::{SymbolicBitVec, SymbolicByte};
+    use crate::test_fixture::ConcreteValue;
+    use mem::{GenericMemory, VarnodeDataStore};
+
+    fn unique_address(offset: u64) -> Address {
+        Address {
+            offset,
+            address_space: unique_address_space(),
+        }
+    }
+
+    fn processor_address(offset: u64) -> Address {
+        Address {
+            offset,
+            address_space: processor_address_space(),
+        }
+    }
+
+    fn constant_address(offset: u64) -> Address {
+        Address {
+            offset,
+            address_space: constant_address_space(),
+        }
+    }
+
+    fn instruction_address() -> Address {
+        processor_address(0xFF00000000)
+    }
 
     fn processor_address_space() -> AddressSpace {
         AddressSpace {
@@ -872,171 +897,127 @@ mod tests {
         }
     }
 
-    fn write_bytes(
-        memory: &mut Memory,
+    fn write_value(
+        memory: &mut GenericMemory<ConcreteValue>,
         offset: u64,
-        bytes: Vec<SymbolicByte>,
+        value: ConcreteValue,
     ) -> Result<VarnodeData> {
         let varnode = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset,
-            },
-            size: bytes.len(),
+            address: processor_address(offset),
+            size: value.num_bytes() as usize,
         };
 
-        memory.write(&varnode, bytes.into_iter())?;
+        memory.write(&varnode, value)?;
         Ok(varnode)
     }
 
     #[test]
     fn copy() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let data = 0xDEADBEEFu32;
         let input = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 4,
         };
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 4,
-            },
+            address: processor_address(4),
             size: 4,
         };
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Copy,
             inputs: vec![input.clone()],
             output: Some(output.clone()),
         };
 
-        memory.write(&input, data.into_iter())?;
+        memory.write(&input, data.into())?;
         emulator.emulate(&mut memory, &instruction)?;
         memory.read(&output)?;
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
-        assert_eq!(result, 0xDEADBEEF);
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
+        assert_eq!(result, data);
 
         Ok(())
     }
 
     #[test]
     fn load() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
         // Write 0xDEADBEEF to 0x04030201
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
-        let data_input = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0x04030201,
-            },
-            size: 4,
-        };
-        memory.write(&data_input, data.into_iter())?;
+        let data = 0xDEADBEEFu32;
+        let offset = 0x04030201u64;
+        write_value(&mut memory, offset, data.into())?;
 
         // Write 0x04030201 to 0x0. This is the load indirection
-        let offset_data = vec![0x01u8, 0x02u8, 0x03u8, 0x04u8];
+        let offset_data = offset as u32;
         let offset_input = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 4,
         };
-        memory.write(&offset_input, offset_data.into_iter())?;
+        memory.write(&offset_input, offset_data.into())?;
 
         // Set the address space input offset to the space id of the processor addr space
         // It is important that the address space of this varnode is the constant space.
         let addr_space_input = VarnodeData {
-            address: Address {
-                address_space: constant_address_space(),
-                offset: processor_address_space().id.raw_id() as u64,
-            },
+            address: constant_address(processor_address_space().id.raw_id() as u64),
             size: 8, // This value doesn't really matter
         };
 
         // The output varnode will the location the data is stored at.
         let output = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Load,
             inputs: vec![addr_space_input.clone(), offset_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
     #[test]
     fn store() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
         // Write 0xDEADBEEF somewhere. This value will be retrieved and stored to the specified
         // address determined through the space id and offset indirection.
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let data = 0xDEADBEEFu32;
         let data_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0xD0D0DADA,
-            },
+            address: unique_address(0xD0D0DADA),
             size: 4,
         };
-        memory.write(&data_input, data.into_iter())?;
+        memory.write(&data_input, data.into())?;
 
         // Write 0x04030201 to 0x0. This is the store indirection
-        let offset_data = vec![0x01u8, 0x02u8, 0x03u8, 0x04u8];
+        let offset_data = 0x04030201u32;
         let offset_input = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 4,
         };
-        memory.write(&offset_input, offset_data.into_iter())?;
+        memory.write(&offset_input, offset_data.into())?;
 
         // Set the address space input offset to the space id of the processor addr space
         // It is important that the address space of this varnode is the constant space.
         let addr_space_input = VarnodeData {
-            address: Address {
-                address_space: constant_address_space(),
-                offset: processor_address_space().id.raw_id() as u64,
-            },
+            address: constant_address(processor_address_space().id.raw_id() as u64),
             size: 8, // This value doesn't really matter
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Store,
             inputs: vec![
                 addr_space_input.clone(),
@@ -1055,59 +1036,45 @@ mod tests {
             },
             size: 4,
         };
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
 
     #[test]
     fn int_sub() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let lhs_data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let lhs_data = 0xDEADBEEFu32;
         let lhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
-        memory.write(&lhs_input, lhs_data.into_iter())?;
+        memory.write(&lhs_input, lhs_data.into())?;
 
-        let rhs_data = vec![0xEFu8, 0xBEu8, 0x00u8, 0x00u8];
+        let rhs_data = 0xBEEFu32;
         let rhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 4,
-            },
+            address: unique_address(4),
             size: 4,
         };
-        memory.write(&rhs_input, rhs_data.into_iter())?;
+        memory.write(&rhs_input, rhs_data.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 4,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::Subtract),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xDEAD0000);
         Ok(())
     }
@@ -1126,24 +1093,18 @@ mod tests {
 
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
             let output = VarnodeData {
-                address: Address {
-                    address_space: processor_address_space(),
-                    offset: 2,
-                },
+                address: processor_address(2),
                 size: 1,
             };
 
             let instruction = PcodeInstruction {
-                address: Address {
-                    address_space: processor_address_space(),
-                    offset: 0xFF00000000,
-                },
+                address: instruction_address(),
                 op_code: OpCode::Int(IntOp::Borrow),
                 inputs: vec![lhs_input.clone(), rhs_input.clone()],
                 output: Some(output.clone()),
@@ -1151,9 +1112,11 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
-            assert_eq!(result, expected_result, "failed borrow of {lhs} - {rhs}");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
+            assert_eq!(
+                expected_result, result,
+                "failed borrow of {lhs} - {rhs}, expected {expected_result} but got {result}"
+            );
         }
 
         Ok(())
@@ -1161,51 +1124,38 @@ mod tests {
 
     #[test]
     fn int_add() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let lhs_data = vec![0x00u8, 0x00u8, 0xADu8, 0xDEu8];
+        let lhs_data = 0xDEAD0000u32;
         let lhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
-        memory.write(&lhs_input, lhs_data.into_iter())?;
+        memory.write(&lhs_input, lhs_data.into())?;
 
-        let rhs_data = vec![0xEFu8, 0xBEu8, 0x00u8, 0x00u8];
+        let rhs_data = 0xBEEFu32;
         let rhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 4,
-            },
+            address: unique_address(4),
             size: 4,
         };
-        memory.write(&rhs_input, rhs_data.into_iter())?;
+        memory.write(&rhs_input, rhs_data.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 4,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::Add),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xDEADBEEF);
         Ok(())
     }
@@ -1214,29 +1164,18 @@ mod tests {
     fn int_multiply() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 0..16u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4);
-                let lhs_value = lhs_value.zero_extend(4).into_bytes().pop().unwrap();
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
-
-                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4);
-                let rhs_value = rhs_value.zero_extend(4).into_bytes().pop().unwrap();
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs_value])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 2,
-                    },
+                    address: processor_address(2),
                     size: 1,
                 };
 
                 let instruction = PcodeInstruction {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 0xFF00000000,
-                    },
+                    address: instruction_address(),
                     op_code: OpCode::Int(IntOp::Multiply),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
                     output: Some(output.clone()),
@@ -1244,8 +1183,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
                 assert_eq!(result, lhs * rhs, "failed {lhs} * {rhs}");
             }
         }
@@ -1255,41 +1193,30 @@ mod tests {
 
     #[test]
     fn int_multiply_multibyte() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs: u8 = 0xFF;
-        let lhs_value: SymbolicBitVec = lhs.into();
-        let lhs_value = lhs_value.zero_extend(8);
-        let lhs_input = write_bytes(&mut memory, 0, lhs_value.into_bytes())?;
+        let lhs: u16 = 0xFF;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
 
-        let rhs: u8 = 0x80;
-        let rhs_value: SymbolicBitVec = rhs.into();
-        let rhs_value = rhs_value.zero_extend(8);
-        let rhs_input = write_bytes(&mut memory, 1, rhs_value.into_bytes())?;
+        let rhs: u16 = 0x80;
+        let rhs_input = write_value(&mut memory, 2, rhs.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 2,
-            },
+            address: processor_address(2),
             size: 2,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::Multiply),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
 
-        assert_eq!(result, lhs as u16 * rhs as u16, "failed {lhs} * {rhs}");
+        assert_eq!(result, lhs * rhs, "failed {lhs} * {rhs}");
 
         Ok(())
     }
@@ -1298,13 +1225,10 @@ mod tests {
     fn int_divide() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value: SymbolicByte = lhs.into();
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
-
-                let rhs_value: SymbolicByte = rhs.into();
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs_value])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
                     address: Address {
@@ -1315,10 +1239,7 @@ mod tests {
                 };
 
                 let instruction = PcodeInstruction {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 0xFF00000000,
-                    },
+                    address: instruction_address(),
                     // This will compute LHS / RHS
                     op_code: OpCode::Int(IntOp::Divide(IntSign::Unsigned)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
@@ -1327,8 +1248,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
                 assert_eq!(result, lhs / rhs, "failed {lhs} / {rhs}");
             }
         }
@@ -1340,27 +1260,18 @@ mod tests {
     fn int_remainder() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value: SymbolicByte = lhs.into();
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
-
-                let rhs_value: SymbolicByte = rhs.into();
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs_value])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 2,
-                    },
+                    address: processor_address(2),
                     size: 1,
                 };
 
                 let instruction = PcodeInstruction {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 0xFF00000000,
-                    },
+                    address: instruction_address(),
                     // This will compute LHS / RHS
                     op_code: OpCode::Int(IntOp::Remainder(IntSign::Unsigned)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
@@ -1369,8 +1280,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
                 assert_eq!(result, lhs % rhs, "failed {lhs} % {rhs}");
             }
         }
@@ -1382,39 +1292,23 @@ mod tests {
     fn int_signed_divide() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
-                    .sign_extend(4)
-                    .into_bytes()
-                    .pop()
-                    .unwrap();
-                let lhs: u8 = lhs_value.clone().try_into().unwrap();
-                let lhs = lhs as i8;
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
+                let lhs_value = ConcreteValue::new(lhs.into(), 4).sign_extend(1);
+                let lhs: i8 = lhs_value.signed_value() as i8;
+                let lhs_input = write_value(&mut memory, 0, lhs_value)?;
 
-                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4)
-                    .sign_extend(4)
-                    .into_bytes()
-                    .pop()
-                    .unwrap();
-                let rhs: u8 = rhs_value.clone().try_into().unwrap();
-                let rhs = rhs as i8;
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs_value])?;
+                let rhs_value = ConcreteValue::new(rhs.into(), 4).sign_extend(1);
+                let rhs: i8 = rhs_value.signed_value() as i8;
+                let rhs_input = write_value(&mut memory, 1, rhs_value)?;
 
                 let output = VarnodeData {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 2,
-                    },
+                    address: processor_address(2),
                     size: 1,
                 };
 
                 let instruction = PcodeInstruction {
-                    address: Address {
-                        address_space: processor_address_space(),
-                        offset: 0xFF00000000,
-                    },
+                    address: instruction_address(),
                     // This will compute LHS / RHS
                     op_code: OpCode::Int(IntOp::Divide(IntSign::Signed)),
                     inputs: vec![lhs_input.clone(), rhs_input.clone()],
@@ -1423,9 +1317,13 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
-                assert_eq!(result as i8, lhs / rhs, "failed signed {lhs} / {rhs}");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
+                let expected = lhs / rhs;
+                assert_eq!(
+                    result as i8,
+                    lhs / rhs,
+                    "failed signed {lhs} / {rhs}, got {result} but expected {expected}"
+                );
             }
         }
 
@@ -1436,25 +1334,15 @@ mod tests {
     fn int_signed_remainder() -> Result<()> {
         for lhs in 0..16u8 {
             for rhs in 1..16u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_value = SymbolicBitVec::constant(lhs.into(), 4)
-                    .sign_extend(4)
-                    .into_bytes()
-                    .pop()
-                    .unwrap();
-                let lhs: u8 = lhs_value.clone().try_into().unwrap();
-                let lhs = lhs as i8;
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs_value])?;
+                let lhs_value = ConcreteValue::new(lhs.into(), 4).sign_extend(1);
+                let lhs: i8 = lhs_value.signed_value() as i8;
+                let lhs_input = write_value(&mut memory, 0, lhs_value)?;
 
-                let rhs_value = SymbolicBitVec::constant(rhs.into(), 4)
-                    .sign_extend(4)
-                    .into_bytes()
-                    .pop()
-                    .unwrap();
-                let rhs: u8 = rhs_value.clone().try_into().unwrap();
-                let rhs = rhs as i8;
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs_value])?;
+                let rhs_value = ConcreteValue::new(rhs.into(), 4).sign_extend(1);
+                let rhs: i8 = rhs_value.signed_value() as i8;
+                let rhs_input = write_value(&mut memory, 1, rhs_value)?;
 
                 let output = VarnodeData {
                     address: Address {
@@ -1477,8 +1365,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
                 assert_eq!(result as i8, lhs % rhs, "failed signed {lhs} % {rhs}");
             }
         }
@@ -1488,74 +1375,55 @@ mod tests {
 
     #[test]
     fn int_zext() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xFFu8];
+        let data = 0xFFu8;
         let input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 1,
         };
-        memory.write(&input, data.into_iter())?;
+        memory.write(&input, data.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 2,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::Extension(IntSign::Unsigned)),
             inputs: vec![input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x00FF);
         Ok(())
     }
 
     #[test]
     fn int_sext() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0x7Fu8, 0x80u8];
+        let data = 0x807Fu16;
         let data_varnode = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 2,
         };
-        memory.write(&data_varnode, data.into_iter())?;
+        memory.write(&data_varnode, data.into())?;
 
         let input_positive = VarnodeData {
-            address: Address {
-                address_space: data_varnode.address.address_space.clone(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 1,
         };
 
         let input_negative = VarnodeData {
-            address: Address {
-                address_space: data_varnode.address.address_space.clone(),
-                offset: 1,
-            },
+            address: unique_address(1),
             size: 1,
         };
 
@@ -1568,18 +1436,14 @@ mod tests {
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::Extension(IntSign::Signed)),
             inputs: vec![input_positive.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x007F);
 
         let instruction = PcodeInstruction {
@@ -1593,27 +1457,23 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xFF80);
         Ok(())
     }
 
     #[test]
     fn int_equal() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let data = 0xDEADBEEFu32;
         let lhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
-        memory.write(&lhs_input, data.iter().cloned())?;
+        memory.write(&lhs_input, data.into())?;
 
         let rhs_input = VarnodeData {
             address: Address {
@@ -1622,7 +1482,7 @@ mod tests {
             },
             size: 4,
         };
-        memory.write(&rhs_input, data.iter().cloned())?;
+        memory.write(&rhs_input, data.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -1643,103 +1503,80 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x1, "Expected 0xDEADBEEF == 0xDEADBEEF to be 1");
 
-        memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
+        memory.write(&rhs_input, 0u32.into())?;
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x0, "Expected 0xDEADBEEF == 0x0 to be 0");
         Ok(())
     }
 
     #[test]
     fn int_not_equal() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let data = 0xDEADBEEFu32;
         let lhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
-        memory.write(&lhs_input, data.iter().cloned())?;
+        memory.write(&lhs_input, data.into())?;
 
         let rhs_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 4,
-            },
+            address: unique_address(4),
             size: 4,
         };
-        memory.write(&rhs_input, data.iter().cloned())?;
+        memory.write(&rhs_input, data.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 1,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Int(IntOp::NotEqual),
             inputs: vec![lhs_input.clone(), rhs_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x0, "Expected 0xDEADBEEF != 0xDEADBEEF to be 0");
 
-        memory.write(&rhs_input, vec![0x0u8, 0x0u8, 0x0u8, 0x0u8].into_iter())?;
+        memory.write(&rhs_input, 0u32.into())?;
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0x1, "Expected 0xDEADBEEF != 0x0 to be 1");
         Ok(())
     }
 
     #[test]
     fn piece() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let msb_input = write_bytes(&mut memory, 0, vec![0xADu8.into(), 0xDEu8.into()])?;
-        let lsb_input = write_bytes(&mut memory, 2, vec![0xEFu8.into(), 0xBEu8.into()])?;
+        let msb_input = write_value(&mut memory, 0, 0xDEADu16.into())?;
+        let lsb_input = write_value(&mut memory, 2, 0xBEEFu16.into())?;
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 4,
-            },
+            address: processor_address(4),
             size: 4,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Piece,
             inputs: vec![msb_input.clone(), lsb_input.clone()],
             output: Some(output.clone()),
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u32 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u32 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, 0xDEADBEEF);
         Ok(())
@@ -1747,41 +1584,29 @@ mod tests {
 
     #[test]
     fn subpiece() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator =
             StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
-        let data = vec![0xEFu8, 0xBEu8, 0xADu8, 0xDEu8];
+        let data = 0xDEADBEEFu32;
         let data_input = VarnodeData {
-            address: Address {
-                address_space: unique_address_space(),
-                offset: 0,
-            },
+            address: unique_address(0),
             size: 4,
         };
-        memory.write(&data_input, data.into_iter())?;
+        memory.write(&data_input, data.into())?;
 
         let truncation_input = VarnodeData {
-            address: Address {
-                address_space: constant_address_space(),
-                offset: 2,
-            },
+            address: constant_address(2),
             size: 1,
         };
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0,
-            },
+            address: processor_address(0),
             size: 2,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Subpiece,
             inputs: vec![data_input.clone(), truncation_input.clone()],
             output: Some(output.clone()),
@@ -1789,23 +1614,16 @@ mod tests {
 
         // Expect to truncate 2 least-significant bytes
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xDEAD);
 
         let output = VarnodeData {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 4,
-            },
+            address: processor_address(4),
             size: 1,
         };
 
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::Subpiece,
             inputs: vec![data_input.clone(), truncation_input.clone()],
             output: Some(output.clone()),
@@ -1814,23 +1632,19 @@ mod tests {
         // Expect to truncate 2 least-significant bytes and 1 most significant byte
         // since the output size is less than the input size
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, 0xAD);
         Ok(())
     }
 
     #[test]
     fn branch_ind() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
-        let data_input = write_bytes(&mut memory, 0, data)?;
+        let data = 0xDEADBEEFu32;
+        let data_input = write_value(&mut memory, 0, data.into())?;
         let instruction = PcodeInstruction {
-            address: Address {
-                address_space: processor_address_space(),
-                offset: 0xFF00000000,
-            },
+            address: instruction_address(),
             op_code: OpCode::BranchIndirect,
             inputs: vec![data_input.clone()],
             output: None,
@@ -1846,10 +1660,10 @@ mod tests {
 
     #[test]
     fn call_ind() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let data = vec![0xEFu8.into(), 0xBEu8.into(), 0xADu8.into(), 0xDEu8.into()];
-        let data_input = write_bytes(&mut memory, 0, data)?;
+        let data = 0xDEADBEEFu32;
+        let data_input = write_value(&mut memory, 0, data.into())?;
 
         let instruction = PcodeInstruction {
             address: Address {
@@ -1872,9 +1686,9 @@ mod tests {
     #[test]
     fn bool_negate() -> Result<()> {
         for value in 0..=1u8 {
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let input = write_bytes(&mut memory, 0, vec![value.into()])?;
+            let input = write_value(&mut memory, 0, value.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -1896,8 +1710,7 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result, (!value) & 0x1, "failed !{value}");
         }
 
@@ -1908,10 +1721,10 @@ mod tests {
     fn bool_and() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
                     address: Address {
@@ -1933,8 +1746,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
 
                 assert_eq!(result, lhs & rhs, "failed {lhs} & {rhs}");
             }
@@ -1947,10 +1759,10 @@ mod tests {
     fn bool_or() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
                     address: Address {
@@ -1972,8 +1784,7 @@ mod tests {
 
                 emulator.emulate(&mut memory, &instruction)?;
 
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
 
                 assert_eq!(result, lhs | rhs, "failed {lhs} | {rhs}");
             }
@@ -1986,10 +1797,10 @@ mod tests {
     fn bool_xor() -> Result<()> {
         for lhs in 0..=1u8 {
             for rhs in 0..=1u8 {
-                let mut memory = Memory::new();
+                let mut memory = GenericMemory::<ConcreteValue>::default();
                 let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-                let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-                let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+                let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+                let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
                 let output = VarnodeData {
                     address: Address {
@@ -2010,8 +1821,7 @@ mod tests {
                 };
 
                 emulator.emulate(&mut memory, &instruction)?;
-                let result: u8 = sym::concretize_into(memory.read(&output)?)
-                    .expect("failed to concretize output");
+                let result: u8 = memory.read(&output)?.try_into().unwrap();
 
                 assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
             }
@@ -2022,10 +1832,10 @@ mod tests {
 
     #[test]
     fn int_negate() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b1010_0101;
-        let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2047,8 +1857,7 @@ mod tests {
 
         emulator.emulate(&mut memory, &instruction)?;
 
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, !lhs, "failed !{lhs}");
 
         Ok(())
@@ -2056,10 +1865,10 @@ mod tests {
 
     #[test]
     fn int_2comp() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 1u8;
-        let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2080,8 +1889,7 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, -1i8 as u8, "failed -{lhs}");
 
@@ -2090,12 +1898,12 @@ mod tests {
 
     #[test]
     fn int_and() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b0011_1100;
         let rhs = 0b1010_0101;
-        let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-        let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2116,8 +1924,7 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, lhs & rhs, "failed {lhs} & {rhs}");
 
@@ -2126,12 +1933,12 @@ mod tests {
 
     #[test]
     fn int_or() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b0011_1100;
         let rhs = 0b1010_0101;
-        let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-        let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2152,8 +1959,7 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u8 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, lhs | rhs, "failed {lhs} | {rhs}");
 
@@ -2162,12 +1968,12 @@ mod tests {
 
     #[test]
     fn int_xor() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let lhs = 0b1111_0000_0011_1100;
         let rhs = 0b0000_1111_1010_0101;
-        let lhs_input = write_bytes(&mut memory, 0, SymbolicBitVec::from(lhs).into_bytes())?;
-        let rhs_input = write_bytes(&mut memory, 2, SymbolicBitVec::from(rhs).into_bytes())?;
+        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+        let rhs_input = write_value(&mut memory, 2, rhs.into())?;
 
         let output = VarnodeData {
             address: Address {
@@ -2188,8 +1994,7 @@ mod tests {
         };
 
         emulator.emulate(&mut memory, &instruction)?;
-        let result: u16 =
-            sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+        let result: u16 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
 
@@ -2206,10 +2011,10 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2231,8 +2036,7 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
 
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result, expected_result, "failed {lhs} < {rhs}");
         }
 
@@ -2249,10 +2053,10 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2273,8 +2077,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
 
             assert_eq!(result, expected_result, "failed {lhs} <= {rhs}");
         }
@@ -2292,10 +2095,10 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2316,8 +2119,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
 
             assert_eq!(
                 result, expected_result,
@@ -2338,10 +2140,10 @@ mod tests {
         ];
         for (lhs, rhs, expected_result) in test_data {
             let expected_result = if expected_result { 1 } else { 0 };
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![lhs.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![rhs.into()])?;
+            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2362,8 +2164,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
 
             assert_eq!(
                 result, expected_result,
@@ -2377,10 +2178,10 @@ mod tests {
     #[test]
     fn shift_left() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![0x01u8.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
+            let lhs_input = write_value(&mut memory, 0, 0x01u8.into())?;
+            let rhs_input = write_value(&mut memory, 1, n.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2401,8 +2202,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
             let expected_result = if n < 8 { 1 << n } else { 0 };
 
             assert_eq!(result, expected_result, "failed 1 << {n}");
@@ -2414,10 +2214,10 @@ mod tests {
     #[test]
     fn shift_right() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![0x80u8.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
+            let lhs_input = write_value(&mut memory, 0, 0x80u8.into())?;
+            let rhs_input = write_value(&mut memory, 1, n.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2438,8 +2238,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
             let expected_result = if n < 8 { 0x80 >> n } else { 0 };
 
             assert_eq!(result, expected_result, "failed 0x80 >> {n}");
@@ -2451,10 +2250,10 @@ mod tests {
     #[test]
     fn signed_shift_right() -> Result<()> {
         for n in 0..=8u8 {
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![0x80u8.into()])?;
-            let rhs_input = write_bytes(&mut memory, 1, vec![n.into()])?;
+            let lhs_input = write_value(&mut memory, 0, 0x80u8.into())?;
+            let rhs_input = write_value(&mut memory, 1, n.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2475,8 +2274,7 @@ mod tests {
             };
 
             emulator.emulate(&mut memory, &instruction)?;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
             let expected_result = if n < 8 { (-128i8 >> n) as u8 } else { 0xFF };
 
             assert_eq!(result, expected_result, "failed signed shift 0x80 >> {n}");
@@ -2487,7 +2285,7 @@ mod tests {
 
     #[test]
     fn call() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -2519,7 +2317,7 @@ mod tests {
 
     #[test]
     fn branch_absolute() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -2551,7 +2349,7 @@ mod tests {
 
     #[test]
     fn branch_pcode_relative() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let data_input = VarnodeData {
             address: Address {
@@ -2580,7 +2378,7 @@ mod tests {
 
     #[test]
     fn conditional_branch_absolute() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let destination_input = VarnodeData {
             address: Address {
@@ -2590,7 +2388,7 @@ mod tests {
             size: 0, // This value is irrelevant
         };
 
-        let condition_input = write_bytes(&mut memory, 1, vec![0x1u8.into()])?;
+        let condition_input = write_value(&mut memory, 1, 0x1u8.into())?;
         let instruction = PcodeInstruction {
             address: Address {
                 address_space: processor_address_space(),
@@ -2627,7 +2425,7 @@ mod tests {
 
     #[test]
     fn conditional_branch_pcode_relative() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let destination_input = VarnodeData {
             address: Address {
@@ -2637,7 +2435,7 @@ mod tests {
             size: 0, // This value is irrelevant
         };
 
-        let condition_input = write_bytes(&mut memory, 1, vec![0x1u8.into()])?;
+        let condition_input = write_value(&mut memory, 1, 0x1u8.into())?;
         let instruction = PcodeInstruction {
             address: Address {
                 address_space: processor_address_space(),
@@ -2673,9 +2471,9 @@ mod tests {
     fn popcount() -> Result<()> {
         for n in 0..=8u8 {
             let value: u8 = ((1u16 << n) - 1) as u8;
-            let mut memory = Memory::new();
+            let mut memory = GenericMemory::<ConcreteValue>::default();
             let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_bytes(&mut memory, 0, vec![value.into()])?;
+            let lhs_input = write_value(&mut memory, 0, value.into())?;
 
             let output = VarnodeData {
                 address: Address {
@@ -2697,8 +2495,7 @@ mod tests {
 
             emulator.emulate(&mut memory, &instruction)?;
             let expected_result = n;
-            let result: u8 =
-                sym::concretize_into(memory.read(&output)?).expect("failed to concretize output");
+            let result: u8 = memory.read(&output)?.try_into().unwrap();
 
             assert_eq!(result, expected_result, "failed popcount of {value:#02x}");
         }
@@ -2708,7 +2505,7 @@ mod tests {
 
     #[test]
     fn unsupported_opcode() -> Result<()> {
-        let mut memory = Memory::new();
+        let mut memory = GenericMemory::<ConcreteValue>::default();
         let emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
         let instruction = PcodeInstruction {
             address: Address {

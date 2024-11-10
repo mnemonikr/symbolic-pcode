@@ -38,7 +38,7 @@ pub trait VarnodeDataStore {
 }
 
 #[derive(Default)]
-struct GenericMemory<T: PcodeOps> {
+pub struct GenericMemory<T: PcodeOps> {
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, T::Byte>>,
 }
 
