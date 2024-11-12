@@ -5,7 +5,6 @@ use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
 use sla::{
     Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
 };
-use sym::SymbolicBit;
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
 // derivation that converts emulator errors into processor errors.
@@ -19,15 +18,8 @@ pub enum Error {
     #[error(transparent)]
     MemoryAccess(#[from] crate::mem::Error),
 
-    /// Error occurred while accessing a memory location
-    #[error(transparent)]
-    SymbolicError(#[from] sym::ConcretizationError),
-
     #[error("failed to decode instruction: {0}")]
     InstructionDecoding(#[from] sla::Error),
-
-    #[error("symbolic condition")]
-    SymbolicCondition(SymbolicBit),
 
     #[error("address {address} not in expected space {expected}")]
     InvalidAddressSpace {

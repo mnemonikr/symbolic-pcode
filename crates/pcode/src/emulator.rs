@@ -3,7 +3,6 @@ use sla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use sym::{self, SymbolicByte};
 use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};
@@ -32,14 +31,6 @@ pub enum Error {
     /// Emulation of this instruction is not implemented
     #[error("unsupported instruction {instruction:?}")]
     UnsupportedInstruction { instruction: PcodeInstruction },
-
-    #[error("symbolic address loaded from {varnode} in instruction {instruction:?}")]
-    SymbolicAddress {
-        instruction: PcodeInstruction,
-        varnode: VarnodeData,
-        address: sym::SymbolicBitVec,
-        bit_index: usize,
-    },
 
     #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
     UnknownAddressSpace {

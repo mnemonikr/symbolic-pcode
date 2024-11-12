@@ -9,6 +9,4 @@ edition.workspace = true
 
 [dependencies]
 sla = { path = "../sla" }
-sym = { path = "../sym" }
-
 thiserror.workspace = true
