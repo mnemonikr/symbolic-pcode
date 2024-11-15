@@ -1,7 +1,7 @@
 pub mod aiger;
 mod buf;
 mod convert;
-pub mod pcode;
+mod pcode;
 mod sym;
 
 pub use crate::buf::*;

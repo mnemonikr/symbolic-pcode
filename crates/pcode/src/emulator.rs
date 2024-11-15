@@ -1,4 +1,4 @@
-use crate::pcode::{BitwisePcodeOps, PcodeOps};
+use pcode_ops::{BitwisePcodeOps, PcodeOps};
 use sla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
@@ -494,8 +494,8 @@ impl StandardPcodeEmulator {
         require_has_output(&instruction, true)?;
 
         let output = instruction.output.as_ref().unwrap();
-        let popcount = memory.read(&instruction.inputs[0])?.popcount(output.size);
-        memory.write(output, popcount)?;
+        let popcount = memory.read(&instruction.inputs[0])?.popcount();
+        memory.write(output, popcount.zero_extend(output.size))?;
 
         Ok(())
     }

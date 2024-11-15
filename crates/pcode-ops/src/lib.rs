@@ -2,6 +2,8 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + From<u64> + FromIterator<Se
     type Byte: From<u8> + TryInto<u8> + Clone + From<Self::Bit>;
     type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;
 
+    fn num_bytes(&self) -> usize;
+
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
 
     /// This is standard integer addition. It works for either unsigned or signed interpretations
@@ -80,6 +82,12 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + From<u64> + FromIterator<Se
     fn truncate_trailing_bytes(self, amount: u64) -> Self;
 
     fn lsb(self) -> Self::Bit;
+
+    /// This is a bit count (population count) operator. Within the binary representation of the
+    /// value contained in the input varnode, the number of 1 bits are counted and then returned
+    /// in the output varnode. A value of 0 returns 0, a 4-byte varnode containing the value
+    /// 2<sup>32</sup>-1 (all bits set) returns 32, for instance. The input and output varnodes can
+    /// have any size. The resulting count is zero extended into the output varnode.
     fn popcount(self) -> Self;
 
     /// This operation performs a left shift on input0. The value given by input1, interpreted as an

@@ -11,3 +11,4 @@ edition.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+pcode-ops = { path = "../pcode-ops/" }

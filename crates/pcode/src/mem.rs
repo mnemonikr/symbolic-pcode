@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
-use crate::pcode::{BitwisePcodeOps, PcodeOps};
+use pcode_ops::{BitwisePcodeOps, PcodeOps};
 use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
 
 /// Memory result type
@@ -37,9 +37,16 @@ pub trait VarnodeDataStore {
     ) -> Result<()>;
 }
 
-#[derive(Default)]
 pub struct GenericMemory<T: PcodeOps> {
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, T::Byte>>,
+}
+
+impl<T: PcodeOps> Default for GenericMemory<T> {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+        }
+    }
 }
 
 impl<T: PcodeOps> GenericMemory<T> {
@@ -380,7 +387,7 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
     ///
     /// If any of the live branches return an error, then this read will also be an error. That
     /// means all branches must contain a fully defined value for the source being read.
-    fn read(&self, varnode: &VarnodeData) -> Result<M::Value> {
+    pub fn read(&self, varnode: &VarnodeData) -> Result<M::Value> {
         let result = self
             .branches
             .iter()
@@ -447,7 +454,7 @@ mod tests {
     use crate::test_fixture::{ConcreteValue, SymbolicValue};
     use std::borrow::Cow;
 
-    use crate::pcode::PcodeOps;
+    use pcode_ops::PcodeOps;
     use sla::{AddressSpace, LoadImage};
 
     use super::*;

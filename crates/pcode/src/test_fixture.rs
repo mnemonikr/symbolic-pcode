@@ -1,4 +1,4 @@
-use crate::pcode::{BitwisePcodeOps, PcodeOps};
+use pcode_ops::{BitwisePcodeOps, PcodeOps};
 
 #[derive(Copy, Clone, Debug)]
 pub struct ConcreteValue {
@@ -27,10 +27,6 @@ impl ConcreteValue {
             value: value & mask,
             valid_bits,
         }
-    }
-
-    pub fn num_bytes(&self) -> u32 {
-        (self.valid_bits + u8::BITS - 1) / u8::BITS
     }
 
     fn bitmask(&self) -> u128 {
@@ -108,6 +104,10 @@ impl BitwisePcodeOps for ConcreteValue {
 impl PcodeOps for ConcreteValue {
     type Bit = bool;
     type Byte = u8;
+
+    fn num_bytes(&self) -> usize {
+        ((self.valid_bits + u8::BITS - 1) / u8::BITS) as usize
+    }
 
     fn add(self, rhs: Self) -> Self {
         assert_eq!(self.valid_bits, rhs.valid_bits);
@@ -205,10 +205,10 @@ impl PcodeOps for ConcreteValue {
         self.value() & 0x1 > 0
     }
 
-    fn popcount(self, new_size: usize) -> Self {
+    fn popcount(self) -> Self {
         ConcreteValue::new(
             self.value().count_ones() as u128,
-            u8::BITS * new_size as u32,
+            const { u128::BITS.ilog2() },
         )
     }
 
@@ -284,7 +284,7 @@ impl PcodeOps for ConcreteValue {
         self.value()
             .to_le_bytes()
             .into_iter()
-            .take(self.num_bytes() as usize)
+            .take(self.num_bytes())
     }
 }
 
@@ -356,6 +356,10 @@ impl PcodeOps for SymbolicValue {
         std::iter::once(self)
     }
 
+    fn num_bytes(&self) -> usize {
+        1
+    }
+
     fn add(self, _rhs: Self) -> Self {
         self
     }
@@ -424,7 +428,7 @@ impl PcodeOps for SymbolicValue {
         self
     }
 
-    fn popcount(self, _new_size: usize) -> Self {
+    fn popcount(self) -> Self {
         self
     }
 
