@@ -21,7 +21,6 @@ impl ConcreteValue {
     pub fn new(value: u128, valid_bits: u32) -> Self {
         assert!(valid_bits <= u128::BITS);
         let mask = u128::MAX >> (u128::BITS - valid_bits);
-        println!("Value: {value}");
 
         Self {
             value: value & mask,

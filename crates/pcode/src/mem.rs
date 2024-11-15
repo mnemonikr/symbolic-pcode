@@ -28,7 +28,17 @@ pub trait VarnodeDataStore {
     type Value: PcodeOps;
 
     fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit>;
+    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
+        if source.size > 1 {
+            Err(Error::InvalidArguments(format!(
+                "expected varnode size to be 1, actual {size}",
+                size = source.size
+            )))
+        } else {
+            self.read(source).map(PcodeOps::lsb)
+        }
+    }
+
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
     fn write_bit(
         &mut self,
@@ -156,17 +166,6 @@ impl<T: PcodeOps> GenericMemory<T> {
 
 impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
     type Value = T;
-
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
-        if source.size > 1 {
-            Err(Error::InvalidArguments(format!(
-                "expected varnode size to be 1, actual {size}",
-                size = source.size
-            )))
-        } else {
-            self.read(source).map(PcodeOps::lsb)
-        }
-    }
 
     fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
         Ok(self.read_bytes(source)?.into_iter().collect())
@@ -311,16 +310,12 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
         self.memory.write(destination, data)
     }
 
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
-        todo!()
-    }
-
     fn write_bit(
         &mut self,
         destination: &VarnodeData,
         data: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()> {
-        todo!()
+        self.memory.write_bit(destination, data)
     }
 }
 

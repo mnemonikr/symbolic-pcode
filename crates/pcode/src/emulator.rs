@@ -15,7 +15,7 @@ pub enum Error {
 
     /// The provided instruction violates some invariant. An example of this could be missing an
     /// output varnode for an instruction that requires an output.
-    #[error("illegal instruction {instruction:?}: {reason}")]
+    #[error("illegal instruction {instruction}: {reason}")]
     IllegalInstruction {
         instruction: PcodeInstruction,
         reason: String,
@@ -89,6 +89,18 @@ pub trait PcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow>;
+}
+
+macro_rules! binary_shift_op {
+    ($mem:ident, $instr:ident, $op:ident) => {{
+        require_num_inputs($instr, 2)?;
+        require_has_output($instr, true)?;
+        require_output_size_equals(&$instr, $instr.inputs[0].size)?;
+
+        let lhs = $mem.read(&$instr.inputs[0])?;
+        let rhs = $mem.read(&$instr.inputs[1])?;
+        $mem.write($instr.output.as_ref().unwrap(), lhs.$op(rhs))?;
+    }};
 }
 
 macro_rules! binary_op {
@@ -211,12 +223,12 @@ impl PcodeEmulator for StandardPcodeEmulator {
             OpCode::Int(IntOp::LessThanOrEqual(IntSign::Unsigned)) => {
                 binary_op_bit!(memory, instruction, unsigned_less_than_or_equals)
             }
-            OpCode::Int(IntOp::ShiftLeft) => binary_op!(memory, instruction, shift_left),
+            OpCode::Int(IntOp::ShiftLeft) => binary_shift_op!(memory, instruction, shift_left),
             OpCode::Int(IntOp::ShiftRight(IntSign::Unsigned)) => {
-                binary_op!(memory, instruction, unsigned_shift_right)
+                binary_shift_op!(memory, instruction, unsigned_shift_right)
             }
             OpCode::Int(IntOp::ShiftRight(IntSign::Signed)) => {
-                binary_op!(memory, instruction, signed_shift_right)
+                binary_shift_op!(memory, instruction, signed_shift_right)
             }
             OpCode::Bool(BoolOp::Negate) => bool_unary_op!(memory, instruction, not),
             OpCode::Bool(BoolOp::And) => bool_binary_op!(memory, instruction, and),

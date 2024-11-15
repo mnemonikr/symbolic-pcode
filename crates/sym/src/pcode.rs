@@ -59,18 +59,18 @@ impl PcodeOps for SymbolicBitVec {
     }
 
     fn zero_extend(self, new_size: usize) -> Self {
-        let num_bytes = new_size.saturating_sub(self.num_bytes());
-        if num_bytes > 0 {
-            self.zero_extend(8 * num_bytes)
+        let num_bits_extension = (u8::BITS as usize * new_size).saturating_sub(self.len());
+        if num_bits_extension > 0 {
+            self.zero_extend(num_bits_extension)
         } else {
             self
         }
     }
 
     fn sign_extend(self, new_size: usize) -> Self {
-        let num_bytes = new_size.saturating_sub(self.num_bytes());
-        if num_bytes > 0 {
-            self.sign_extend(8 * num_bytes)
+        let num_bits_extension = (u8::BITS as usize * new_size).saturating_sub(self.len());
+        if num_bits_extension > 0 {
+            self.zero_extend(num_bits_extension)
         } else {
             self
         }
