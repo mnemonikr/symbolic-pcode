@@ -158,6 +158,17 @@ impl<
         &self.state
     }
 
+    pub fn disassemble(&self, sleigh: &impl Sleigh) -> Result<Disassembly<AssemblyInstruction>> {
+        if let ProcessorState::Decode(d) = &self.state {
+            d.disassemble(sleigh, ExecutableMemory(&self.memory))
+        } else {
+            Err(Error::InvalidArgument(format!(
+                "cannot disassemble outside of decoding state: {state:?}",
+                state = self.state
+            )))
+        }
+    }
+
     pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
         match &mut self.state {
             ProcessorState::Fetch => {

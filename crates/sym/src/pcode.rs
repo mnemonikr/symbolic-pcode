@@ -43,19 +43,19 @@ impl PcodeOps for SymbolicBitVec {
     }
 
     fn unsigned_divide(self, other: Self) -> Self {
-        self.unsigned_divide(other).0
+        other.unsigned_divide(self).0
     }
 
     fn signed_divide(self, other: Self) -> Self {
-        self.signed_divide(other).0
+        other.signed_divide(self).0
     }
 
     fn unsigned_remainder(self, other: Self) -> Self {
-        self.unsigned_divide(other).1
+        other.unsigned_divide(self).1
     }
 
     fn signed_remainder(self, other: Self) -> Self {
-        self.signed_divide(other).1
+        other.signed_divide(self).1
     }
 
     fn zero_extend(self, new_size: usize) -> Self {
@@ -70,7 +70,7 @@ impl PcodeOps for SymbolicBitVec {
     fn sign_extend(self, new_size: usize) -> Self {
         let num_bits_extension = (u8::BITS as usize * new_size).saturating_sub(self.len());
         if num_bits_extension > 0 {
-            self.zero_extend(num_bits_extension)
+            self.sign_extend(num_bits_extension)
         } else {
             self
         }

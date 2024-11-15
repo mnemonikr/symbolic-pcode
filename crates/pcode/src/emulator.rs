@@ -84,9 +84,9 @@ pub enum ControlFlow {
 }
 
 pub trait PcodeEmulator {
-    fn emulate(
+    fn emulate<M: VarnodeDataStore>(
         &self,
-        memory: &mut impl VarnodeDataStore,
+        memory: &mut M,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow>;
 }
@@ -164,9 +164,9 @@ macro_rules! bool_binary_op {
 }
 
 impl PcodeEmulator for StandardPcodeEmulator {
-    fn emulate(
+    fn emulate<M: VarnodeDataStore>(
         &self,
-        memory: &mut impl VarnodeDataStore,
+        memory: &mut M,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
         match instruction.op_code {
