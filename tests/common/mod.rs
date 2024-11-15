@@ -81,12 +81,60 @@ pub struct TracingEmulator {
 }
 
 impl PcodeEmulator for TracingEmulator {
-    fn emulate(
+    fn emulate<T: VarnodeDataStore>(
         &self,
-        memory: &mut impl VarnodeDataStore,
+        memory: &mut T,
         instruction: &sla::PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
+        println!("Executing: {instruction}");
+        match &instruction.op_code {
+            OpCode::Store => (),
+            OpCode::Branch
+            | OpCode::BranchIndirect
+            | OpCode::BranchConditional
+            | OpCode::Call
+            | OpCode::CallIndirect
+            | OpCode::Return => (),
+            _ => {
+                for instr_input in instruction.inputs.iter() {
+                    let input_result = memory.read(instr_input).unwrap();
+                    let input =
+                        <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(input_result);
+                    if let Ok(input) = input {
+                        println!("Input: {input:0width$x}", width = 2 * instr_input.size);
+                    } else {
+                        println!("Input: Symbolic");
+                    }
+                }
+            }
+        };
+
         let result = self.inner.emulate(memory, instruction)?;
+        match &instruction.op_code {
+            OpCode::Store => println!("Store"),
+            OpCode::Branch
+            | OpCode::BranchIndirect
+            | OpCode::BranchConditional
+            | OpCode::Call
+            | OpCode::CallIndirect
+            | OpCode::Return => {
+                println!("Branch: {result:?}")
+            }
+            _ => {
+                let output_result = memory.read(instruction.output.as_ref().unwrap()).unwrap();
+                let output =
+                    <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(output_result);
+                if let Ok(output) = output {
+                    println!(
+                        "Output: {output:0width$x}",
+                        width = 2 * instruction.output.as_ref().unwrap().size
+                    );
+                } else {
+                    println!("Output: Symbolic");
+                }
+            }
+        };
+
         *self
             .executed_instructions
             .borrow_mut()

@@ -359,6 +359,10 @@ fn pcode_coverage() -> processor::Result<()> {
         }
 
         let processor = processors[0];
+        if matches!(processor.state(), ProcessorState::Decode(_)) {
+            println!("Executing: {}", processor.disassemble(manager.sleigh())?);
+        }
+
         let instruction_pointer: u64 = processor
             .memory()
             .read(&rip)?
