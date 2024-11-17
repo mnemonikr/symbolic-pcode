@@ -1,9 +1,18 @@
+/// This trait is used to implement Sleigh pcode operations. While the representation of the value
+/// is not prescribed, several of the operations assume the ability to reason about the bytes of
+/// the value. In some cases the value may be interpreted as a boolean value as the result of a
+/// condition evaluation.
 pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + From<u64> + FromIterator<Self::Byte> {
+    /// A representation of a byte (8-bit) value.
     type Byte: From<u8> + TryInto<u8> + Clone + From<Self::Bit>;
+
+    /// A representation of a single bit.
     type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;
 
+    /// Returns the number of bytes used to represent this value.
     fn num_bytes(&self) -> usize;
 
+    /// Returns an iterator of bytes in a little endian sequence.
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
 
     /// This is standard integer addition. It works for either unsigned or signed interpretations
@@ -73,14 +82,37 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + From<u64> + FromIterator<Se
     /// satisfies the equation q*input1 + output = input0, using the INT_MULT and INT_ADD
     /// operations.
     fn signed_remainder(self, rhs: Self) -> Self;
+
+    /// Zero-extend the data in input0 and store the result in output. Copy all the data from input0
+    /// into the least significant positions of output. Fill out any remaining space in the most
+    /// significant bytes of output with zero. The size of output must be strictly bigger than the
+    /// size of input.
     fn zero_extend(self, new_size: usize) -> Self;
+
+    /// Sign-extend the data in input0 and store the result in output. Copy all the data from input0
+    /// into the least significant positions of output. Fill out any remaining space in the most
+    /// significant bytes of output with either zero or all ones (0xff) depending on the most
+    /// significant bit of input0. The size of output must be strictly bigger than the size of
+    /// input0.
     fn sign_extend(self, new_size: usize) -> Self;
+
+    /// This is a concatenation operator that understands the endianess of the data. The size of
+    /// input0 and input1 must add up to the size of output. The data from the inputs is
+    /// concatenated in such a way that, if the inputs and output are considered integers, the first
+    /// input makes up the most significant part of the output.
     fn piece(self, lsb: Self) -> Self;
 
-    // Subpiece is implemented as a combination of these truncation operations
+    /// This is a truncation operator understands the endianness of the data. Reduces the value size
+    /// to the specified number of bytes. If this size is is smaller than the current size, then the
+    /// additional most significant bytes are truncated.
     fn truncate_to_size(self, new_size: usize) -> Self;
+
+    /// This is a truncation operator that understands the endianess of the data. Discards the
+    /// specified number of least significant bytes of the value.
     fn truncate_trailing_bytes(self, amount: u64) -> Self;
 
+    /// Reduces the value to its least significant bit. Primarily used for operations involving
+    /// conditions such as branches.
     fn lsb(self) -> Self::Bit;
 
     /// This is a bit count (population count) operator. Within the binary representation of the
@@ -144,12 +176,32 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + From<u64> + FromIterator<Se
     /// size, and the output must have a size of 1.
     fn signed_less_than_or_equals(self, rhs: Self) -> Self::Bit;
 
+    /// This is a signed integer comparison operator. If the signed integer input0 is greater than
+    /// the signed integer input1, output is set to true. Both inputs must be the same size, and the
+    /// output must have a size of 1.
     fn signed_greater_than(self, rhs: Self) -> Self::Bit;
+
+    /// This is a signed integer comparison operator. If the signed integer input0 is greater than
+    /// or equal to the signed integer input1, output is set to true. Both inputs must be the same
+    /// size, and the output must have a size of 1.
     fn signed_greater_than_or_equals(self, rhs: Self) -> Self::Bit;
+
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is greater
+    /// than the unsigned integer input1, output is set to true. Both inputs must be the same size,
+    /// and the output must have a size of 1.
     fn unsigned_greater_than(self, rhs: Self) -> Self::Bit;
+
+    /// This is an unsigned integer comparison operator. If the unsigned integer input0 is greater
+    /// than or equal to the unsigned integer input1, output is set to true. Both inputs must be the
+    /// same size, and the output must have a size of 1.
     fn unsigned_greater_than_or_equals(self, rhs: Self) -> Self::Bit;
 
+    /// This evalutes the value predicated on the given condition. This is a bitwise conditional
+    /// evaluation. If the condition is false each bit of the value should evaluate to true.
     fn predicated_on(self, condition: Self::Bit) -> Self;
+
+    /// This asserts the condition for the given value. This is a bitwise conditional evaluation.
+    /// If the condition is false each bit of the value should evaluate to false.
     fn assert(self, condition: Self::Bit) -> Self;
 }
 
