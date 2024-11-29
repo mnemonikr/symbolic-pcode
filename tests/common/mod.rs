@@ -1,12 +1,12 @@
 use std::{collections::BTreeMap, fs};
 
 use sla::{Address, AddressSpace, GhidraSleigh, OpCode, Sleigh, VarnodeData};
-use sym::SymbolicByte;
+use sym::{SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
-use symbolic_pcode::mem::{
-    MemoryBranch, SymbolicMemory, SymbolicMemoryReader, SymbolicMemoryWriter,
-};
+use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
 use symbolic_pcode::processor::{self, PcodeExecution, ProcessorResponseHandler};
+
+pub type Memory = GenericMemory<SymbolicBitVec>;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorHandlerX86 {
@@ -27,19 +27,26 @@ impl ProcessorHandlerX86 {
     }
 }
 
-impl ProcessorResponseHandler for ProcessorHandlerX86 {
-    fn fetched(&mut self, memory: &mut MemoryBranch) -> processor::Result<Address> {
-        let instruction = memory.read(&self.rip)?;
-        let offset: u64 = sym::concretize_into(instruction)?;
+impl ProcessorResponseHandler<Memory> for ProcessorHandlerX86 {
+    fn fetched(&mut self, memory: &mut MemoryBranch<Memory>) -> processor::Result<Address> {
+        let offset = memory.read(&self.rip)?.try_into().map_err(|err| {
+            processor::Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         Ok(Address::new(self.instruction_address_space.clone(), offset))
     }
 
     fn decoded(
         &mut self,
-        memory: &mut MemoryBranch,
+        memory: &mut MemoryBranch<Memory>,
         execution: &PcodeExecution,
     ) -> processor::Result<()> {
-        let rip_value: u64 = sym::concretize_into(memory.read(&self.rip)?)?;
+        let rip_value: u64 = memory.read(&self.rip)?.try_into().map_err(|err| {
+            processor::Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         let bytes_read = u64::try_from(execution.origin().size).map_err(|err| {
             processor::Error::InternalError(format!(
                 "RIP value {rip_value:016x} failed to convert to u64: {err}",
@@ -52,23 +59,17 @@ impl ProcessorResponseHandler for ProcessorHandlerX86 {
             ))
         })?;
 
-        memory.write(
-            &self.rip,
-            rip_value.to_le_bytes().into_iter().map(SymbolicByte::from),
-        )?;
+        memory.write(&self.rip, rip_value.into())?;
 
         Ok(())
     }
 
-    fn jumped(&mut self, memory: &mut MemoryBranch, address: &Address) -> processor::Result<()> {
-        memory.write(
-            &self.rip,
-            address
-                .offset
-                .to_le_bytes()
-                .into_iter()
-                .map(SymbolicByte::from),
-        )?;
+    fn jumped(
+        &mut self,
+        memory: &mut MemoryBranch<Memory>,
+        address: &Address,
+    ) -> processor::Result<()> {
+        memory.write(&self.rip, address.offset.into())?;
         Ok(())
     }
 }
@@ -80,12 +81,60 @@ pub struct TracingEmulator {
 }
 
 impl PcodeEmulator for TracingEmulator {
-    fn emulate(
+    fn emulate<T: VarnodeDataStore>(
         &self,
-        memory: &mut impl SymbolicMemory,
+        memory: &mut T,
         instruction: &sla::PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
+        println!("Executing: {instruction}");
+        match &instruction.op_code {
+            OpCode::Store => (),
+            OpCode::Branch
+            | OpCode::BranchIndirect
+            | OpCode::BranchConditional
+            | OpCode::Call
+            | OpCode::CallIndirect
+            | OpCode::Return => (),
+            _ => {
+                for instr_input in instruction.inputs.iter() {
+                    let input_result = memory.read(instr_input).unwrap();
+                    let input =
+                        <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(input_result);
+                    if let Ok(input) = input {
+                        println!("Input: {input:0width$x}", width = 2 * instr_input.size);
+                    } else {
+                        println!("Input: Symbolic");
+                    }
+                }
+            }
+        };
+
         let result = self.inner.emulate(memory, instruction)?;
+        match &instruction.op_code {
+            OpCode::Store => println!("Store"),
+            OpCode::Branch
+            | OpCode::BranchIndirect
+            | OpCode::BranchConditional
+            | OpCode::Call
+            | OpCode::CallIndirect
+            | OpCode::Return => {
+                println!("Branch: {result:?}")
+            }
+            _ => {
+                let output_result = memory.read(instruction.output.as_ref().unwrap()).unwrap();
+                let output =
+                    <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(output_result);
+                if let Ok(output) = output {
+                    println!(
+                        "Output: {output:0width$x}",
+                        width = 2 * instruction.output.as_ref().unwrap().size
+                    );
+                } else {
+                    println!("Output: Symbolic");
+                }
+            }
+        };
+
         *self
             .executed_instructions
             .borrow_mut()

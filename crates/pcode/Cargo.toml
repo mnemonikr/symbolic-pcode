@@ -9,5 +9,5 @@ edition.workspace = true
 
 [dependencies]
 sla = { path = "../sla" }
-sym = { path = "../sym" }
+pcode-ops = { path = "../pcode-ops" }
 thiserror.workspace = true

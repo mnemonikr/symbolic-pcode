@@ -196,6 +196,12 @@ impl FromIterator<SymbolicByte> for SymbolicBitVec {
     }
 }
 
+impl FromIterator<u8> for SymbolicBitVec {
+    fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+        symbolize(iter).collect()
+    }
+}
+
 pub fn symbolize(iter: impl IntoIterator<Item = u8>) -> impl Iterator<Item = SymbolicBit> {
     iter.into_iter().flat_map(|byte| {
         let mut bits = [sym::FALSE; 8];

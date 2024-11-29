@@ -170,6 +170,10 @@ impl SymbolicBitVec {
         self.bits.is_empty()
     }
 
+    pub fn num_bytes(&self) -> usize {
+        self.bits.len().next_multiple_of(8) / 8
+    }
+
     pub fn len(&self) -> usize {
         self.bits.len()
     }
@@ -1335,9 +1339,10 @@ mod tests {
             let value = SymbolicBitVec::constant(0b0000_0001, 8);
             let shift_amount = SymbolicBitVec::constant(n, 8);
             let expected = if n < 8 { 1 << n } else { 0 };
-            let result: u8 = (value << shift_amount)
-                .try_into()
-                .expect("failed conversion");
+            let result = value << shift_amount;
+            assert_eq!(result.len(), 8);
+
+            let result: u8 = result.try_into().expect("failed conversion");
             assert_eq!(result, expected, "failed 1 << {n}");
         }
     }

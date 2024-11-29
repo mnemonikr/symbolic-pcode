@@ -11,6 +11,7 @@ license.workspace = true
 [dependencies]
 sla = { path = "../crates/sla" }
 sym = { path = "../crates/sym" }
+pcode-ops = { path = "../crates/pcode-ops" }
 symbolic-pcode = { path = "../crates/pcode" }
 
 [dev-dependencies]

@@ -2,12 +2,12 @@ mod common;
 
 use std::path::Path;
 
-use common::{x86_64_sleigh, ProcessorHandlerX86, TracingEmulator};
+use common::{x86_64_sleigh, Memory, ProcessorHandlerX86, TracingEmulator};
 use sla::{Address, Sleigh, VarnodeData};
 use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::{
     emulator::StandardPcodeEmulator,
-    mem::{Memory, MemoryTree, SymbolicMemoryReader, SymbolicMemoryWriter},
+    mem::{MemoryTree, VarnodeDataStore},
     processor::{self, Processor, ProcessorManager, ProcessorState},
 };
 
@@ -17,9 +17,9 @@ const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
 fn processor_with_image(
     image: impl AsRef<Path>,
     entry: u64,
-) -> ProcessorManager<TracingEmulator, ProcessorHandlerX86> {
+) -> ProcessorManager<TracingEmulator, Memory, ProcessorHandlerX86> {
     let sleigh = x86_64_sleigh();
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
 
     // Write image into memory
     let data = std::fs::read(image).expect("failed to read image file");
@@ -32,20 +32,20 @@ fn processor_with_image(
     };
 
     memory
-        .write(&data_location, data.into_iter().map(SymbolicByte::from))
+        .write(&data_location, data.into_iter().collect())
         .expect("failed to write image into memory");
 
     // Init RIP to entry
 
     let rip = sleigh.register_from_name("RIP").expect("invalid register");
-    let data = entry.to_le_bytes().into_iter().map(SymbolicByte::from);
-    memory.write(&rip, data).expect("failed to initialize RIP");
+    memory
+        .write(&rip, entry.into())
+        .expect("failed to initialize RIP");
 
     // Init RBP to magic EXIT_RIP value
     let rbp = sleigh.register_from_name("RBP").expect("invalid register");
-    let data = EXIT_RIP.to_le_bytes().into_iter().map(SymbolicByte::from);
     memory
-        .write(&rbp, data.clone())
+        .write(&rbp, EXIT_RIP.into())
         .expect("failed to initialize RBP");
 
     // Init stack address in memory to magic EXIT_RIP value
@@ -56,19 +56,17 @@ fn processor_with_image(
                 .address_space_by_name("ram")
                 .expect("failed to find ram"),
         },
-        size: data.len(),
+        size: EXIT_RIP.to_le_bytes().len(),
     };
     memory
-        .write(&stack_addr, data)
+        .write(&stack_addr, EXIT_RIP.into())
         .expect("failed to initialize stack");
 
     // Init RSP to stack address
     let rsp = sleigh.register_from_name("RSP").expect("invalid register");
-    let data = INITIAL_STACK
-        .to_le_bytes()
-        .into_iter()
-        .map(SymbolicByte::from);
-    memory.write(&rsp, data).expect("failed to initialize RSP");
+    memory
+        .write(&rsp, INITIAL_STACK.into())
+        .expect("failed to initialize RSP");
 
     init_registers(&sleigh, &mut memory);
 
@@ -81,7 +79,7 @@ fn processor_with_image(
     ProcessorManager::new(sleigh, processor)
 }
 
-fn init_registers(sleigh: &impl Sleigh, memory: &mut impl SymbolicMemoryWriter) {
+fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
     let mut bitvar = 0;
     let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI"]
         .into_iter()
@@ -111,7 +109,7 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut impl SymbolicMemoryWriter) 
             .register_from_name(&register_name)
             .unwrap_or_else(|err| panic!("invalid register {register_name}: {err}"));
         memory
-            .write(&register, bytes.into_iter())
+            .write(&register, bytes.into_iter().collect())
             .unwrap_or_else(|err| panic!("failed to write register {register_name}: {err}"));
     }
 }
@@ -126,7 +124,7 @@ fn x86_64_registers() {
             .register_from_name(name)
             .expect(&format!("invalid register {name}"));
         memory
-            .write(&register, data.into_iter().cloned())
+            .write(&register, data.into_iter().copied().collect())
             .expect(&format!("failed to write register {name}"));
     };
 
@@ -139,35 +137,40 @@ fn x86_64_registers() {
             .expect(&format!("failed to read register {name}"))
     };
 
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
     let registers = vec!['A', 'B', 'C', 'D'];
     for register in registers {
         let name = format!("R{register}X");
         let data = vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
         write_register(&mut memory, &name, &data);
 
-        let rax: u64 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u64");
+        let rax: u64 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(rax, 0x8877665544332211);
 
         let name = format!("E{register}X");
-        let eax: u32 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u32");
+        let eax: u32 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(eax, 0x44332211);
 
         let name = format!("{register}X");
-        let ax: u16 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u16");
+        let ax: u16 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(ax, 0x2211);
 
         let name = format!("{register}H");
-        let ah: u8 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u8");
+        let ah: u8 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(ah, 0x22);
 
         let name = format!("{register}L");
-        let al: u8 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u8");
+        let al: u8 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(al, 0x11);
     }
 
@@ -177,23 +180,27 @@ fn x86_64_registers() {
         let data = vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
         write_register(&mut memory, &name, &data);
 
-        let r: u64 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u64");
+        let r: u64 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
 
         let name = format!("E{register}");
-        let e: u32 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u32");
+        let e: u32 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(e, 0x44332211);
 
         let name = format!("{register}");
-        let b: u16 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u16");
+        let b: u16 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(b, 0x2211);
 
         let name = format!("{register}L");
-        let l: u8 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u8");
+        let l: u8 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(l, 0x11);
     }
 
@@ -202,23 +209,27 @@ fn x86_64_registers() {
         let data = vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
         write_register(&mut memory, &name, &data);
 
-        let r: u64 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u64");
+        let r: u64 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u64");
         assert_eq!(r, 0x8877665544332211);
 
         let name = format!("R{register}D");
-        let rd: u32 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u32");
+        let rd: u32 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u32");
         assert_eq!(rd, 0x44332211);
 
         let name = format!("R{register}W");
-        let rw: u16 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u16");
+        let rw: u16 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u16");
         assert_eq!(rw, 0x2211);
 
         let name = format!("R{register}B");
-        let rb: u8 =
-            sym::concretize_into(read_register(&memory, &name)).expect("failed to convert to u8");
+        let rb: u8 = read_register(&memory, &name)
+            .try_into()
+            .expect("failed to convert to u8");
         assert_eq!(rb, 0x11);
     }
 }
@@ -236,7 +247,7 @@ fn x86_64_registers() {
 fn doubler_32b() -> processor::Result<()> {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
     let base_addr = 0x84210000;
     let num_instructions = 7;
 
@@ -245,29 +256,29 @@ fn doubler_32b() -> processor::Result<()> {
             .register_from_name(name)
             .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
         memory
-            .write(&register, data.iter().copied())
+            .write(&register, data.iter().copied().collect())
             .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
     };
 
     let code_space = sleigh.default_code_space();
-    memory.write_address(
-        Address::new(code_space, base_addr),
-        b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3\x00\x00"
-            .iter()
-            .copied(),
-    )?;
+    let code = b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3\x00\x00";
+    let destination = VarnodeData::new(Address::new(code_space, base_addr), code.len());
+    memory.write(&destination, code.into_iter().copied().collect())?;
 
     write_register(&mut memory, "RSP", b"\x00\x01\x01\x01\x01\x01\x01\x00");
     write_register(&mut memory, "RBP", b"\x00\x02\x02\x02\x02\x02\x02\x00");
 
-    memory.write_address(
-        Address::new(
-            sleigh
-                .address_space_by_name("ram")
-                .expect("failed to find ram"),
-            0x0001010101010100,
+    memory.write(
+        &VarnodeData::new(
+            Address::new(
+                sleigh
+                    .address_space_by_name("ram")
+                    .expect("failed to find ram"),
+                0x0001010101010100,
+            ),
+            8,
         ),
-        vec![0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66].into_iter(),
+        0x66778899aabbccddu64.into(),
     )?;
 
     let initial_value: u32 = 0x99;
@@ -293,14 +304,20 @@ fn doubler_32b() -> processor::Result<()> {
     let rip = sleigh
         .register_from_name("RIP")
         .expect("failed to get RIP register");
-    let rip_value: u64 = sym::concretize_into(processor.memory().read(&rip)?)
+    let rip_value: u64 = processor
+        .memory()
+        .read(&rip)?
+        .try_into()
         .expect("failed to convert rip value to u64");
     assert_eq!(rip_value, 0x66778899aabbccdd, "return address on stack");
 
     let rax = sleigh
         .register_from_name("RAX")
         .expect("failed to get RAX register");
-    let rax_value: u64 = sym::concretize_into(processor.memory().read(&rax)?)
+    let rax_value: u64 = processor
+        .memory()
+        .read(&rax)?
+        .try_into()
         .expect("failed to convert rax value to u64");
     assert_eq!(
         u32::try_from(rax_value)
@@ -342,7 +359,15 @@ fn pcode_coverage() -> processor::Result<()> {
         }
 
         let processor = processors[0];
-        let instruction_pointer: u64 = sym::concretize_into(processor.memory().read(&rip)?)?;
+        if matches!(processor.state(), ProcessorState::Decode(_)) {
+            println!("Executing: {}", processor.disassemble(manager.sleigh())?);
+        }
+
+        let instruction_pointer: u64 = processor
+            .memory()
+            .read(&rip)?
+            .try_into()
+            .expect("failed to concretize RIP");
 
         if instruction_pointer == EXIT_RIP && matches!(processor.state(), ProcessorState::Fetch) {
             break;
@@ -354,7 +379,11 @@ fn pcode_coverage() -> processor::Result<()> {
         .sleigh()
         .register_from_name("RAX")
         .expect("failed to get RAX register");
-    let return_value: u64 = sym::concretize_into(processor.memory().read(&rax)?)?;
+    let return_value: u64 = processor
+        .memory()
+        .read(&rax)?
+        .try_into()
+        .expect("failed to concretize RAX");
     assert_eq!(
         return_value, 0,
         "unexpected return value: {return_value:016x}"
@@ -387,13 +416,13 @@ fn pcode_coverage() -> processor::Result<()> {
 fn z3_integration() -> processor::Result<()> {
     let sleigh = x86_64_sleigh();
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
     let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
         let register = sleigh
             .register_from_name(name)
             .expect(&format!("invalid register {name}"));
         memory
-            .write(&register, data.into_iter().cloned())
+            .write(&register, data.into_iter().copied().collect())
             .expect(&format!("failed to write register {name}"));
     };
 
@@ -415,9 +444,12 @@ fn z3_integration() -> processor::Result<()> {
     ];
 
     let code_offset = 0;
-    memory.write_address(
-        Address::new(sleigh.default_code_space(), code_offset),
-        program_bytes.into_iter(),
+    memory.write(
+        &VarnodeData::new(
+            Address::new(sleigh.default_code_space(), code_offset),
+            program_bytes.len(),
+        ),
+        program_bytes.into_iter().collect(),
     )?;
     write_register(&mut memory, "RIP", &code_offset.to_le_bytes());
 
@@ -426,14 +458,17 @@ fn z3_integration() -> processor::Result<()> {
     write_register(&mut memory, "RBP", &INITIAL_STACK.to_le_bytes());
 
     // Put EXIT_RIP onto the stack. The final RET will trigger this.
-    memory.write_address(
-        Address::new(
-            sleigh
-                .address_space_by_name("ram")
-                .expect("failed to find ram"),
-            INITIAL_STACK,
+    memory.write(
+        &VarnodeData::new(
+            Address::new(
+                sleigh
+                    .address_space_by_name("ram")
+                    .expect("failed to find ram"),
+                INITIAL_STACK,
+            ),
+            EXIT_RIP.to_le_bytes().len(),
         ),
-        EXIT_RIP.to_le_bytes().into_iter(),
+        EXIT_RIP.into(),
     )?;
 
     let input_value = sym::SymbolicBitVec::with_size(32);
@@ -444,7 +479,7 @@ fn z3_integration() -> processor::Result<()> {
         .register_from_name(name)
         .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
     memory
-        .write(&register, input_value.into_bytes())
+        .write(&register, input_value)
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
@@ -459,9 +494,12 @@ fn z3_integration() -> processor::Result<()> {
 
     loop {
         finished.append(&mut manager.remove_all(|p| {
-            let rip_value: u64 =
-                sym::concretize_into(p.memory().read(&rip).expect("failed to read RIP"))
-                    .expect("failed to concretize RIP");
+            let rip_value: u64 = p
+                .memory()
+                .read(&rip)
+                .expect("failed to read RIP")
+                .try_into()
+                .expect("failed to concretize RIP");
             rip_value == EXIT_RIP
         }));
 

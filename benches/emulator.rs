@@ -2,13 +2,16 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use pcode_ops::PcodeOps;
 use sla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use sym::SymbolicByte;
+use sym::{SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
-use symbolic_pcode::mem::{Memory, SymbolicMemoryWriter};
+use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
+
+type Memory = GenericMemory<SymbolicBitVec>;
 
 const fn processor_space() -> AddressSpace {
     AddressSpace {
@@ -44,11 +47,8 @@ const fn internal_space() -> AddressSpace {
 }
 
 fn setup_copy() -> (Memory, PcodeInstruction) {
-    let data = 0x1122334455667788u64
-        .to_le_bytes()
-        .into_iter()
-        .map(SymbolicByte::from);
-    let mut memory = Memory::new();
+    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
+    let mut memory = Memory::default();
 
     let pcode_copy = PcodeInstruction {
         address: Address {
@@ -114,20 +114,17 @@ fn setup_load() -> (Memory, PcodeInstruction) {
         }),
     };
 
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
 
     // Write indirect offset to memory
     let offset = 0x5678u64;
-    let indirect_offset = offset.to_le_bytes().into_iter().map(SymbolicByte::from);
+    let indirect_offset = SymbolicBitVec::from_le(offset);
     memory
         .write(&pcode_load.inputs[1], indirect_offset)
         .expect("failed to write indirect offset");
 
     // Write data to memory
-    let data = 0x1122334455667788u64
-        .to_le_bytes()
-        .into_iter()
-        .map(SymbolicByte::from);
+    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
     let data_varnode = VarnodeData {
         address: Address {
             offset,
@@ -177,20 +174,17 @@ fn setup_store() -> (Memory, PcodeInstruction) {
         output: None,
     };
 
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
 
     // Write indirect offset to memory
     let offset = 0x5678u64;
-    let indirect_offset = offset.to_le_bytes().into_iter().map(SymbolicByte::from);
+    let indirect_offset = SymbolicBitVec::from_le(offset);
     memory
         .write(&instruction.inputs[1], indirect_offset)
         .expect("failed to write indirect offset");
 
     // Write data to memory
-    let data = 0x1122334455667788u64
-        .to_le_bytes()
-        .into_iter()
-        .map(SymbolicByte::from);
+    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
     memory
         .write(&instruction.inputs[2], data)
         .expect("failed to write data");
@@ -233,13 +227,10 @@ fn setup_subpiece() -> (Memory, PcodeInstruction) {
         }),
     };
 
-    let mut memory = Memory::new();
+    let mut memory = Memory::default();
 
     // Write data to memory
-    let data = 0x1122334455667788u64
-        .to_le_bytes()
-        .into_iter()
-        .map(SymbolicByte::from);
+    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
     memory
         .write(&instruction.inputs[0], data)
         .expect("failed to write data");
@@ -294,7 +285,7 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
             _ => 8,
         };
 
-        let mut memory = Memory::new();
+        let mut memory = Memory::default();
         let instruction = PcodeInstruction {
             address: Address {
                 address_space: processor_space(),
@@ -318,7 +309,8 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
                     .to_le_bytes()
                     .into_iter()
                     .map(SymbolicByte::from)
-                    .take(instruction.inputs[0].size),
+                    .take(instruction.inputs[0].size)
+                    .collect(),
             )
             .expect("failed to write lhs");
 
@@ -330,7 +322,8 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
                         .to_le_bytes()
                         .into_iter()
                         .map(SymbolicByte::from)
-                        .take(instruction.inputs[1].size),
+                        .take(instruction.inputs[1].size)
+                        .collect(),
                 )
                 .expect("failed to write rhs");
         }
