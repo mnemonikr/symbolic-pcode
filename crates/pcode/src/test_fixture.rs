@@ -138,7 +138,7 @@ impl PcodeOps for ConcreteValue {
 
     fn subtract(self, rhs: Self) -> Self {
         assert_eq!(self.valid_bits, rhs.valid_bits);
-        self.map(|value| value - rhs.value())
+        self.map(|value| value.wrapping_sub(rhs.value()))
     }
 
     fn borrow(self, rhs: Self) -> Self::Bit {
@@ -513,4 +513,10 @@ impl BitwisePcodeOps for SymbolicValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pcode_ops::validator::*;
+
+    #[test]
+    fn concrete_value_pcode_validation() -> Result {
+        Validator::<ConcreteValue>::validate()
+    }
 }
