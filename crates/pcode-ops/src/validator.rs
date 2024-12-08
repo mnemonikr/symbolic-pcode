@@ -23,7 +23,7 @@ pub enum ValidationError {
 }
 
 fn expect_op<T: PcodeOps>(op: Operation, expected: u64) -> Result {
-    let actual: u64 = op
+    let actual = op
         .evaluate::<T>()
         .try_into()
         .map_err(|_| ValidationError::ValueConversionFailure { op, expected })?;
@@ -38,11 +38,77 @@ fn expect_op<T: PcodeOps>(op: Operation, expected: u64) -> Result {
     }
 }
 
+fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result {
+    let actual = op
+        .evaluate::<T>()
+        .try_into()
+        .map_err(|_| ValidationError::BitConversionFailure { op, expected })?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(ValidationError::IncorrectBit {
+            op,
+            actual,
+            expected,
+        })
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BitOperation {
     UnsignedCarry(u64, u64),
     SignedCarry(i64, i64),
     Borrow(i64, i64),
+    Lsb(u64),
+    Equals(u64, u64),
+    NotEquals(u64, u64),
+    UnsignedLessThan(u64, u64),
+    UnsignedGreaterThan(u64, u64),
+    UnsignedLessThanOrEquals(u64, u64),
+    UnsignedGreaterThanOrEquals(u64, u64),
+    SignedLessThan(i64, i64),
+    SignedGreaterThan(i64, i64),
+    SignedLessThanOrEquals(i64, i64),
+    SignedGreaterThanOrEquals(i64, i64),
+}
+
+impl BitOperation {
+    pub fn evaluate<T: PcodeOps>(self) -> T::Bit {
+        match self {
+            BitOperation::UnsignedCarry(lhs, rhs) => {
+                T::from_le(lhs).unsigned_carry(T::from_le(rhs))
+            }
+            BitOperation::SignedCarry(lhs, rhs) => T::from_le(lhs).signed_carry(T::from_le(rhs)),
+            BitOperation::Borrow(lhs, rhs) => T::from_le(lhs).borrow(T::from_le(rhs)),
+            BitOperation::Lsb(x) => T::from_le(x).lsb(),
+            BitOperation::Equals(lhs, rhs) => T::from_le(lhs).equals(T::from_le(rhs)),
+            BitOperation::NotEquals(lhs, rhs) => T::from_le(lhs).not_equals(T::from_le(rhs)),
+            BitOperation::UnsignedLessThan(lhs, rhs) => {
+                T::from_le(lhs).unsigned_less_than(T::from_le(rhs))
+            }
+            BitOperation::UnsignedGreaterThan(lhs, rhs) => {
+                T::from_le(lhs).unsigned_greater_than(T::from_le(rhs))
+            }
+            BitOperation::UnsignedLessThanOrEquals(lhs, rhs) => {
+                T::from_le(lhs).unsigned_less_than_or_equals(T::from_le(rhs))
+            }
+            BitOperation::UnsignedGreaterThanOrEquals(lhs, rhs) => {
+                T::from_le(lhs).unsigned_greater_than_or_equals(T::from_le(rhs))
+            }
+            BitOperation::SignedLessThan(lhs, rhs) => {
+                T::from_le(lhs).signed_less_than(T::from_le(rhs))
+            }
+            BitOperation::SignedGreaterThan(lhs, rhs) => {
+                T::from_le(lhs).signed_greater_than(T::from_le(rhs))
+            }
+            BitOperation::SignedLessThanOrEquals(lhs, rhs) => {
+                T::from_le(lhs).signed_less_than_or_equals(T::from_le(rhs))
+            }
+            BitOperation::SignedGreaterThanOrEquals(lhs, rhs) => {
+                T::from_le(lhs).signed_greater_than_or_equals(T::from_le(rhs))
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -65,6 +131,9 @@ pub enum Operation {
     ZeroExtend(u8, usize),
     SignExtend(u8, usize),
     Popcount(u64),
+    Piece(u64, u64),
+    TruncateToSize(u64, usize),
+    TruncateTrailingBytes(u64, usize),
 }
 
 impl Operation {
@@ -88,6 +157,9 @@ impl Operation {
             Self::Negate(x) => T::from_le(x).negate(),
             Self::ZeroExtend(x, y) => T::from_le(x).zero_extend(y),
             Self::SignExtend(x, y) => T::from_le(x).sign_extend(y),
+            Self::Piece(x, y) => T::from_le(x).piece(T::from_le(y)),
+            Self::TruncateToSize(x, y) => T::from_le(x).truncate_to_size(y),
+            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_to_size(y),
         }
     }
 }
@@ -320,11 +392,7 @@ impl<T: PcodeOps> Validator<T> {
         ];
 
         for (lhs, rhs, expected) in values {
-            let op = BitOperation::UnsignedCarry(lhs, rhs);
-            let lhs = T::from_le(lhs);
-            let rhs = T::from_le(rhs);
-            let actual = lhs.unsigned_carry(rhs);
-            Self::check_bit(op, actual, expected)?;
+            expect_bit_op::<T>(BitOperation::UnsignedCarry(lhs, rhs), expected)?;
         }
 
         Ok(())
@@ -340,11 +408,7 @@ impl<T: PcodeOps> Validator<T> {
         ];
 
         for (lhs, rhs, expected) in values {
-            let op = BitOperation::SignedCarry(lhs, rhs);
-            let lhs = T::from_le(lhs);
-            let rhs = T::from_le(rhs);
-            let actual = lhs.signed_carry(rhs);
-            Self::check_bit(op, actual, expected)?;
+            expect_bit_op::<T>(BitOperation::SignedCarry(lhs, rhs), expected)?;
         }
 
         Ok(())
@@ -384,11 +448,7 @@ impl<T: PcodeOps> Validator<T> {
         ];
 
         for (lhs, rhs, expected) in values {
-            let op = BitOperation::Borrow(lhs, rhs);
-            let lhs = T::from_le(lhs);
-            let rhs = T::from_le(rhs);
-            let actual = lhs.borrow(rhs);
-            Self::check_bit(op, actual, expected)?;
+            expect_bit_op::<T>(BitOperation::Borrow(lhs, rhs), expected)?;
         }
 
         Ok(())
@@ -480,20 +540,5 @@ impl<T: PcodeOps> Validator<T> {
         }
 
         Ok(())
-    }
-
-    fn check_bit(op: BitOperation, actual: <T as PcodeOps>::Bit, expected: bool) -> Result {
-        let actual: bool = actual
-            .try_into()
-            .map_err(|_| ValidationError::BitConversionFailure { op, expected })?;
-        if actual == expected {
-            Ok(())
-        } else {
-            Err(ValidationError::IncorrectBit {
-                op,
-                actual,
-                expected,
-            })
-        }
     }
 }
