@@ -176,10 +176,10 @@ impl PcodeOps for SymbolicBitVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pcode_ops::validator;
+    use pcode_ops::validate;
 
     #[test]
-    fn validate_pcode() -> validator::Result {
-        validator::Validator::<SymbolicBitVec>::validate()
+    fn validate_pcode() -> validate::Result {
+        validate::Validator::<SymbolicBitVec>::validate()
     }
 }

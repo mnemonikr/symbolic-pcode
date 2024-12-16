@@ -513,7 +513,7 @@ impl BitwisePcodeOps for SymbolicValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pcode_ops::validator::*;
+    use pcode_ops::validate::*;
 
     #[test]
     fn concrete_value_pcode_validation() -> Result {
