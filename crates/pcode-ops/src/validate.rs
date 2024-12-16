@@ -1,5 +1,6 @@
 use crate::PcodeOps;
 
+/// Error returned when validation fails
 #[derive(Debug)]
 pub enum ValidationError {
     IncorrectValue {
@@ -24,52 +25,32 @@ pub enum ValidationError {
     },
 }
 
-fn expect_op<T: PcodeOps + std::fmt::Debug>(op: Operation, expected: u64) -> Result
-where
-    <T as TryInto<u64>>::Error: std::fmt::Debug,
-{
-    let actual = op.evaluate::<T>();
-    let actual_str = format!("{actual:?}");
-    let actual = actual
-        .try_into()
-        .map_err(|err| ValidationError::ValueConversionFailure {
-            op,
-            expected,
-            err: format!("Failed to convert {actual_str}: {err:?}"),
-        })?;
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(ValidationError::IncorrectValue {
-            op,
-            actual,
-            expected,
-        })
-    }
-}
+/// Validation result
+pub type Result = std::result::Result<(), ValidationError>;
 
-fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result
-where
-    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
-{
-    let actual = op.evaluate::<T>();
-    let actual_str = format!("{actual:?}");
-    let actual = actual
-        .try_into()
-        .map_err(|err| ValidationError::BitConversionFailure {
-            op,
-            expected,
-            err: format!("Failed to convert {actual_str}: {err:?}"),
-        })?;
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(ValidationError::IncorrectBit {
-            op,
-            actual,
-            expected,
-        })
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Operation {
+    And(u64, u64),
+    Or(u64, u64),
+    Xor(u64, u64),
+    Not(u8),
+    ShiftLeft(u8, u32),
+    SignedShiftRight(u8, u32),
+    UnsignedShiftRight(u8, u32),
+    Add(u64, u64),
+    Subtract(i64, i64),
+    Multiply(i64, i64),
+    UnsignedDivide(u64, u64),
+    SignedDivide(i64, i64),
+    UnsignedRemainder(u64, u64),
+    SignedRemainder(i64, i64),
+    Negate(i64),
+    ZeroExtend(u8, usize),
+    SignExtend(u8, usize),
+    Popcount(u64),
+    Piece(u8, u8),
+    TruncateToSize(u16, usize),
+    TruncateTrailingBytes(u16, usize),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -88,6 +69,34 @@ pub enum BitOperation {
     SignedGreaterThan(i8, i8),
     SignedLessThanOrEquals(i8, i8),
     SignedGreaterThanOrEquals(i8, i8),
+}
+
+impl Operation {
+    pub fn evaluate<T: PcodeOps>(&self) -> T {
+        match *self {
+            Self::Popcount(x) => T::from_le(x).popcount(),
+            Self::And(x, y) => T::from_le(x).and(T::from_le(y)),
+            Self::Or(x, y) => T::from_le(x).or(T::from_le(y)),
+            Self::Xor(x, y) => T::from_le(x).xor(T::from_le(y)),
+            Self::Not(x) => T::from_le(x).not(),
+            Self::ShiftLeft(x, y) => T::from_le(x).shift_left(T::from_le(y)),
+            Self::SignedShiftRight(x, y) => T::from_le(x).signed_shift_right(T::from_le(y)),
+            Self::UnsignedShiftRight(x, y) => T::from_le(x).unsigned_shift_right(T::from_le(y)),
+            Self::Add(x, y) => T::from_le(x).add(T::from_le(y)),
+            Self::Subtract(x, y) => T::from_le(x).subtract(T::from_le(y)),
+            Self::Multiply(x, y) => T::from_le(x).multiply(T::from_le(y)),
+            Self::UnsignedDivide(x, y) => T::from_le(x).unsigned_divide(T::from_le(y)),
+            Self::SignedDivide(x, y) => T::from_le(x).signed_divide(T::from_le(y)),
+            Self::UnsignedRemainder(x, y) => T::from_le(x).unsigned_remainder(T::from_le(y)),
+            Self::SignedRemainder(x, y) => T::from_le(x).signed_remainder(T::from_le(y)),
+            Self::Negate(x) => T::from_le(x).negate(),
+            Self::ZeroExtend(x, y) => T::from_le(x).zero_extend(y),
+            Self::SignExtend(x, y) => T::from_le(x).sign_extend(y),
+            Self::Piece(x, y) => T::from_le(x).piece(T::from_le(y)),
+            Self::TruncateToSize(x, y) => T::from_le(x).truncate_to_size(y),
+            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_trailing_bytes(y as u64),
+        }
+    }
 }
 
 impl BitOperation {
@@ -128,61 +137,6 @@ impl BitOperation {
         }
     }
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Operation {
-    And(u64, u64),
-    Or(u64, u64),
-    Xor(u64, u64),
-    Not(u8),
-    ShiftLeft(u8, u32),
-    SignedShiftRight(u8, u32),
-    UnsignedShiftRight(u8, u32),
-    Add(u64, u64),
-    Subtract(i64, i64),
-    Multiply(i64, i64),
-    UnsignedDivide(u64, u64),
-    SignedDivide(i64, i64),
-    UnsignedRemainder(u64, u64),
-    SignedRemainder(i64, i64),
-    Negate(i64),
-    ZeroExtend(u8, usize),
-    SignExtend(u8, usize),
-    Popcount(u64),
-    Piece(u8, u8),
-    TruncateToSize(u16, usize),
-    TruncateTrailingBytes(u16, usize),
-}
-
-impl Operation {
-    pub fn evaluate<T: PcodeOps>(&self) -> T {
-        match *self {
-            Self::Popcount(x) => T::from_le(x).popcount(),
-            Self::And(x, y) => T::from_le(x).and(T::from_le(y)),
-            Self::Or(x, y) => T::from_le(x).or(T::from_le(y)),
-            Self::Xor(x, y) => T::from_le(x).xor(T::from_le(y)),
-            Self::Not(x) => T::from_le(x).not(),
-            Self::ShiftLeft(x, y) => T::from_le(x).shift_left(T::from_le(y)),
-            Self::SignedShiftRight(x, y) => T::from_le(x).signed_shift_right(T::from_le(y)),
-            Self::UnsignedShiftRight(x, y) => T::from_le(x).unsigned_shift_right(T::from_le(y)),
-            Self::Add(x, y) => T::from_le(x).add(T::from_le(y)),
-            Self::Subtract(x, y) => T::from_le(x).subtract(T::from_le(y)),
-            Self::Multiply(x, y) => T::from_le(x).multiply(T::from_le(y)),
-            Self::UnsignedDivide(x, y) => T::from_le(x).unsigned_divide(T::from_le(y)),
-            Self::SignedDivide(x, y) => T::from_le(x).signed_divide(T::from_le(y)),
-            Self::UnsignedRemainder(x, y) => T::from_le(x).unsigned_remainder(T::from_le(y)),
-            Self::SignedRemainder(x, y) => T::from_le(x).signed_remainder(T::from_le(y)),
-            Self::Negate(x) => T::from_le(x).negate(),
-            Self::ZeroExtend(x, y) => T::from_le(x).zero_extend(y),
-            Self::SignExtend(x, y) => T::from_le(x).sign_extend(y),
-            Self::Piece(x, y) => T::from_le(x).piece(T::from_le(y)),
-            Self::TruncateToSize(x, y) => T::from_le(x).truncate_to_size(y),
-            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_trailing_bytes(y as u64),
-        }
-    }
-}
-
-pub type Result = std::result::Result<(), ValidationError>;
 
 pub struct Validator<T: PcodeOps> {
     // No subtyping (invariant), !Send + !Sync
@@ -737,5 +691,53 @@ where
         }
 
         Ok(())
+    }
+}
+
+fn expect_op<T: PcodeOps + std::fmt::Debug>(op: Operation, expected: u64) -> Result
+where
+    <T as TryInto<u64>>::Error: std::fmt::Debug,
+{
+    let actual = op.evaluate::<T>();
+    let actual_str = format!("{actual:?}");
+    let actual = actual
+        .try_into()
+        .map_err(|err| ValidationError::ValueConversionFailure {
+            op,
+            expected,
+            err: format!("Failed to convert {actual_str}: {err:?}"),
+        })?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(ValidationError::IncorrectValue {
+            op,
+            actual,
+            expected,
+        })
+    }
+}
+
+fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result
+where
+    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
+{
+    let actual = op.evaluate::<T>();
+    let actual_str = format!("{actual:?}");
+    let actual = actual
+        .try_into()
+        .map_err(|err| ValidationError::BitConversionFailure {
+            op,
+            expected,
+            err: format!("Failed to convert {actual_str}: {err:?}"),
+        })?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(ValidationError::IncorrectBit {
+            op,
+            actual,
+            expected,
+        })
     }
 }
