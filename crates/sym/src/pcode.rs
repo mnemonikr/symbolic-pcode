@@ -172,3 +172,14 @@ impl PcodeOps for SymbolicBitVec {
             & self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pcode_ops::validator;
+
+    #[test]
+    fn validate_pcode() -> validator::Result {
+        validator::Validator::<SymbolicBitVec>::validate()
+    }
+}
