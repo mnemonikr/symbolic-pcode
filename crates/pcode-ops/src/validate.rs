@@ -28,6 +28,7 @@ pub enum ValidationError {
 /// Validation result
 pub type Result = std::result::Result<(), ValidationError>;
 
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Operation {
     And(u64, u64),
@@ -53,6 +54,7 @@ pub enum Operation {
     TruncateTrailingBytes(u16, usize),
 }
 
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BitOperation {
     UnsignedCarry(u64, u64),
@@ -72,7 +74,7 @@ pub enum BitOperation {
 }
 
 impl Operation {
-    pub fn evaluate<T: PcodeOps>(&self) -> T {
+    fn evaluate<T: PcodeOps>(&self) -> T {
         match *self {
             Self::Popcount(x) => T::from_le(x).popcount(),
             Self::And(x, y) => T::from_le(x).and(T::from_le(y)),
@@ -100,7 +102,7 @@ impl Operation {
 }
 
 impl BitOperation {
-    pub fn evaluate<T: PcodeOps>(self) -> T::Bit {
+    fn evaluate<T: PcodeOps>(self) -> T::Bit {
         match self {
             BitOperation::UnsignedCarry(lhs, rhs) => {
                 T::from_le(lhs).unsigned_carry(T::from_le(rhs))
