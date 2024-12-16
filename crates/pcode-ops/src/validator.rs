@@ -15,18 +15,28 @@ pub enum ValidationError {
     ValueConversionFailure {
         op: Operation,
         expected: u64,
+        err: String,
     },
     BitConversionFailure {
         op: BitOperation,
         expected: bool,
+        err: String,
     },
 }
 
-fn expect_op<T: PcodeOps>(op: Operation, expected: u64) -> Result {
-    let actual = op
-        .evaluate::<T>()
+fn expect_op<T: PcodeOps + std::fmt::Debug>(op: Operation, expected: u64) -> Result
+where
+    <T as TryInto<u64>>::Error: std::fmt::Debug,
+{
+    let actual = op.evaluate::<T>();
+    let actual_str = format!("{actual:?}");
+    let actual = actual
         .try_into()
-        .map_err(|_| ValidationError::ValueConversionFailure { op, expected })?;
+        .map_err(|err| ValidationError::ValueConversionFailure {
+            op,
+            expected,
+            err: format!("Failed to convert {actual_str}: {err:?}"),
+        })?;
     if actual == expected {
         Ok(())
     } else {
@@ -38,11 +48,19 @@ fn expect_op<T: PcodeOps>(op: Operation, expected: u64) -> Result {
     }
 }
 
-fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result {
-    let actual = op
-        .evaluate::<T>()
+fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result
+where
+    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
+{
+    let actual = op.evaluate::<T>();
+    let actual_str = format!("{actual:?}");
+    let actual = actual
         .try_into()
-        .map_err(|_| ValidationError::BitConversionFailure { op, expected })?;
+        .map_err(|err| ValidationError::BitConversionFailure {
+            op,
+            expected,
+            err: format!("Failed to convert {actual_str}: {err:?}"),
+        })?;
     if actual == expected {
         Ok(())
     } else {
@@ -62,14 +80,14 @@ pub enum BitOperation {
     Lsb(u64),
     Equals(u64, u64),
     NotEquals(u64, u64),
-    UnsignedLessThan(u64, u64),
-    UnsignedGreaterThan(u64, u64),
-    UnsignedLessThanOrEquals(u64, u64),
-    UnsignedGreaterThanOrEquals(u64, u64),
-    SignedLessThan(i64, i64),
-    SignedGreaterThan(i64, i64),
-    SignedLessThanOrEquals(i64, i64),
-    SignedGreaterThanOrEquals(i64, i64),
+    UnsignedLessThan(u8, u8),
+    UnsignedGreaterThan(u8, u8),
+    UnsignedLessThanOrEquals(u8, u8),
+    UnsignedGreaterThanOrEquals(u8, u8),
+    SignedLessThan(i8, i8),
+    SignedGreaterThan(i8, i8),
+    SignedLessThanOrEquals(i8, i8),
+    SignedGreaterThanOrEquals(i8, i8),
 }
 
 impl BitOperation {
@@ -131,9 +149,9 @@ pub enum Operation {
     ZeroExtend(u8, usize),
     SignExtend(u8, usize),
     Popcount(u64),
-    Piece(u64, u64),
-    TruncateToSize(u64, usize),
-    TruncateTrailingBytes(u64, usize),
+    Piece(u8, u8),
+    TruncateToSize(u16, usize),
+    TruncateTrailingBytes(u16, usize),
 }
 
 impl Operation {
@@ -159,7 +177,7 @@ impl Operation {
             Self::SignExtend(x, y) => T::from_le(x).sign_extend(y),
             Self::Piece(x, y) => T::from_le(x).piece(T::from_le(y)),
             Self::TruncateToSize(x, y) => T::from_le(x).truncate_to_size(y),
-            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_to_size(y),
+            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_trailing_bytes(y as u64),
         }
     }
 }
@@ -171,7 +189,11 @@ pub struct Validator<T: PcodeOps> {
     _phantom: std::marker::PhantomData<*mut T>,
 }
 
-impl<T: PcodeOps> Validator<T> {
+impl<T: PcodeOps + std::fmt::Debug> Validator<T>
+where
+    <T as TryInto<u64>>::Error: std::fmt::Debug,
+    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
+{
     /// Validate all of the [PcodeOps] operations.
     pub fn validate() -> Result {
         // Shift ops
@@ -179,10 +201,14 @@ impl<T: PcodeOps> Validator<T> {
         Self::signed_shift_right()?;
         Self::unsigned_shift_right()?;
 
-        // Extension ops
+        // Size manipulation ops
         Self::zero_extend()?;
         Self::sign_extend()?;
+        Self::piece()?;
+        Self::truncate_to_size()?;
+        Self::truncate_trailing_bytes()?;
 
+        // Arithmetic
         Self::add()?;
         Self::unsigned_carry()?;
         Self::signed_carry()?;
@@ -195,13 +221,26 @@ impl<T: PcodeOps> Validator<T> {
         Self::unsigned_remainder()?;
         Self::signed_remainder()?;
 
-        Self::popcount()?;
-
         // Bitwise ops
         Self::and()?;
         Self::or()?;
         Self::xor()?;
         Self::not()?;
+
+        // Comparison ops
+        Self::signed_less_than()?;
+        Self::unsigned_less_than()?;
+        Self::signed_greater_than()?;
+        Self::unsigned_greater_than()?;
+        Self::signed_less_than_or_equals()?;
+        Self::unsigned_less_than_or_equals()?;
+        Self::signed_greater_than_or_equals()?;
+        Self::unsigned_greater_than_or_equals()?;
+        Self::equals()?;
+        Self::not_equals()?;
+
+        // Other
+        Self::popcount()?;
 
         Ok(())
     }
@@ -262,6 +301,133 @@ impl<T: PcodeOps> Validator<T> {
 
         for (lhs, expected) in test_values {
             expect_op::<T>(Operation::Not(lhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn equals() -> Result {
+        let test_values = [(0xFF, 0x00, false), (0x00, 0xFF, false), (0x00, 0x00, true)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::Equals(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn not_equals() -> Result {
+        let test_values = [(0xFF, 0x00, true), (0x00, 0xFF, true), (0x00, 0x00, false)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::NotEquals(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn unsigned_greater_than() -> Result {
+        let test_values = [(0xFF, 0x00, true), (0x00, 0xFF, false), (0x00, 0x00, false)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::UnsignedGreaterThan(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn unsigned_less_than() -> Result {
+        let test_values = [(0xFF, 0x00, false), (0x00, 0xFF, true), (0x00, 0x00, false)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::UnsignedLessThan(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn unsigned_greater_than_or_equals() -> Result {
+        let test_values = [(0xFF, 0x00, true), (0x00, 0xFF, false), (0x00, 0x00, true)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(
+                BitOperation::UnsignedGreaterThanOrEquals(lhs, rhs),
+                expected,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn unsigned_less_than_or_equals() -> Result {
+        let test_values = [(0, 0, true), (1, 0, false), (0, 1, true)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::UnsignedLessThanOrEquals(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn signed_greater_than() -> Result {
+        let test_values = [
+            (-1, 0, false),
+            (0, -1, true),
+            (0, 0, false),
+            (1, 0, true),
+            (0, 1, false),
+        ];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::SignedGreaterThan(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn signed_less_than() -> Result {
+        let test_values = [
+            (-1, 0, true),
+            (0, -1, false),
+            (0, 0, false),
+            (1, 0, false),
+            (0, 1, true),
+        ];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::SignedLessThan(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn signed_greater_than_or_equals() -> Result {
+        let test_values = [
+            (-1, 0, false),
+            (0, -1, true),
+            (0, 0, true),
+            (1, 0, true),
+            (0, 1, false),
+        ];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::SignedGreaterThanOrEquals(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn signed_less_than_or_equals() -> Result {
+        let test_values = [
+            (-1, 0, true),
+            (0, -1, false),
+            (0, 0, true),
+            (1, 0, false),
+            (0, 1, true),
+        ];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_bit_op::<T>(BitOperation::SignedLessThanOrEquals(lhs, rhs), expected)?;
         }
 
         Ok(())
@@ -537,6 +703,37 @@ impl<T: PcodeOps> Validator<T> {
 
         for (lhs, rhs, expected) in test_values {
             expect_op::<T>(Operation::SignedRemainder(lhs, rhs), expected as u64)?;
+        }
+
+        Ok(())
+    }
+
+    fn piece() -> Result {
+        let test_values = [(0xAB, 0xCD, 0xABCD), (0xF0, 0x0F, 0xF00F)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_op::<T>(Operation::Piece(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn truncate_to_size() -> Result {
+        let test_values = [(0xABCD, 1, 0xCD), (0xABCD, 2, 0xABCD), (0xABCD, 3, 0xABCD)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_op::<T>(Operation::TruncateToSize(lhs, rhs), expected)?;
+        }
+
+        Ok(())
+    }
+
+    fn truncate_trailing_bytes() -> Result {
+        // NOTE: Truncation exceeding the number of bytes in an input is prohibited
+        let test_values = [(0xABCD, 1, 0xAB), (0xABCD, 0, 0xABCD)];
+
+        for (lhs, rhs, expected) in test_values {
+            expect_op::<T>(Operation::TruncateTrailingBytes(lhs, rhs), expected)?;
         }
 
         Ok(())
