@@ -30,6 +30,7 @@ pub enum Error {
     InternalError(String),
 }
 
+/// Result returned by Sleigh APIs
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Interface for the Sleigh API. See [GhidraSleigh] for the Ghidra implementation.
@@ -69,6 +70,7 @@ pub trait Sleigh {
     ) -> Result<Disassembly<AssemblyInstruction>>;
 }
 
+/// An address is represented by an offset into an address space
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
@@ -110,6 +112,7 @@ impl From<&sys::Address> for Address {
     }
 }
 
+/// A VarnodeData represents the address and size of data.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VarnodeData {
     pub address: Address,
@@ -150,7 +153,7 @@ impl From<&sys::VarnodeData> for VarnodeData {
     }
 }
 
-/// Address space identifier
+/// Address space identifier for an address space
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AddressSpaceId(usize);
 
@@ -179,6 +182,7 @@ impl AddressSpaceId {
     }
 }
 
+/// Information about an address space
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AddressSpace {
     pub id: AddressSpaceId,
