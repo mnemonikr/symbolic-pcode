@@ -9,18 +9,20 @@ use crate::mem::{self, VarnodeDataStore};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Error occurred while accessing a memory location
+    /// Error occurred while accessing a memory location.
     #[error(transparent)]
     MemoryAccess(#[from] mem::Error),
 
-    /// The provided instruction violates some invariant. An example of this could be missing an
-    /// output varnode for an instruction that requires an output.
+    /// The provided instruction violates an invariant described by the error kind.
     #[error("illegal instruction {instruction}: {kind}")]
     IllegalInstruction {
         instruction: Box<PcodeInstruction>,
         kind: IllegalInstructionKind,
     },
 
+    /// The offset stored in memory was retrieved successfully but failed to be converted to the
+    /// type required to construct an address offset. This can occur if the offset stored in memory
+    /// is symbolic.
     #[error("failed to construct indirect address for {instruction:?}")]
     IndirectAddressOffset {
         instruction: Box<PcodeInstruction>,
@@ -28,10 +30,13 @@ pub enum Error {
         target_address_space: Box<AddressSpace>,
     },
 
-    /// Emulation of this instruction is not implemented
+    /// Emulation of this instruction is not implemented.
     #[error("unsupported instruction {instruction:?}")]
     UnsupportedInstruction { instruction: Box<PcodeInstruction> },
 
+    /// No address space with the given identifier is associated with this emulator. This can occur
+    /// if the instruction was decoded with a different set of address spaces than the ones
+    /// registered with this emulator.
     #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
     UnknownAddressSpace {
         instruction: Box<PcodeInstruction>,
@@ -39,6 +44,7 @@ pub enum Error {
         space_id: AddressSpaceId,
     },
 
+    /// An internal error occurred. This is a fatal error that cannot be safely handled.
     #[error("internal error: {0}")]
     InternalError(String),
 }
