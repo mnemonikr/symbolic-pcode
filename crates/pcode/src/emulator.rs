@@ -7,6 +7,7 @@ use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};
 
+/// Emulator error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Error occurred while accessing a memory location.
@@ -49,6 +50,7 @@ pub enum Error {
     InternalError(String),
 }
 
+/// Kinds of illegal instructions
 #[derive(Debug)]
 pub enum IllegalInstructionKind {
     VarnodeNotPermitted(usize),
@@ -58,6 +60,7 @@ pub enum IllegalInstructionKind {
     InvalidInstructionAddressSpace,
 }
 
+/// Emulator result
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The pcode emulator structure that holds the necessary data for emulation.
@@ -98,7 +101,14 @@ pub enum ControlFlow {
     },
 }
 
+/// Interface for Pcode emulator
 pub trait PcodeEmulator {
+    /// Emulates the given instruction. Depending on the instruction, this may result in the
+    /// provided memory being updated. This may also result in a non-default [ControlFlow] value
+    /// being returned, such as in the case of branching instructions.
+    ///
+    /// It is strongly encouraged for alternative implementations of this trait to call the emulate
+    /// function in [StandardPcodeEmulator] for the core emulation logic.
     fn emulate<M: VarnodeDataStore>(
         &self,
         memory: &mut M,
