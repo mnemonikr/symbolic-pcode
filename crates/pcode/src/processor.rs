@@ -119,9 +119,6 @@ pub struct Processor<
     H: ProcessorResponseHandler<M> + Clone,
 > {
     memory: MemoryBranch<M>,
-
-    // This state is mutable and can be transformed. This SomeThing object should mutate itself but
-    // never be replaced directly
     state: ProcessorState,
     handler: H,
     emulator: E,
