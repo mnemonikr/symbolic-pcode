@@ -7,42 +7,60 @@ use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};
 
+/// Emulator error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Error occurred while accessing a memory location
+    /// Error occurred while accessing a memory location.
     #[error(transparent)]
     MemoryAccess(#[from] mem::Error),
 
-    /// The provided instruction violates some invariant. An example of this could be missing an
-    /// output varnode for an instruction that requires an output.
-    #[error("illegal instruction {instruction}: {reason}")]
+    /// The provided instruction violates an invariant described by the error kind.
+    #[error("illegal instruction {instruction}: {kind}")]
     IllegalInstruction {
-        instruction: PcodeInstruction,
-        reason: String,
+        instruction: Box<PcodeInstruction>,
+        kind: IllegalInstructionKind,
     },
 
+    /// The offset stored in memory was retrieved successfully but failed to be converted to the
+    /// type required to construct an address offset. This can occur if the offset stored in memory
+    /// is symbolic.
     #[error("failed to construct indirect address for {instruction:?}")]
     IndirectAddressOffset {
-        instruction: PcodeInstruction,
+        instruction: Box<PcodeInstruction>,
         offset_varnode: VarnodeData,
-        target_address_space: AddressSpace,
+        target_address_space: Box<AddressSpace>,
     },
 
-    /// Emulation of this instruction is not implemented
+    /// Emulation of this instruction is not implemented.
     #[error("unsupported instruction {instruction:?}")]
-    UnsupportedInstruction { instruction: PcodeInstruction },
+    UnsupportedInstruction { instruction: Box<PcodeInstruction> },
 
+    /// No address space with the given identifier is associated with this emulator. This can occur
+    /// if the instruction was decoded with a different set of address spaces than the ones
+    /// registered with this emulator.
     #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
     UnknownAddressSpace {
-        instruction: PcodeInstruction,
+        instruction: Box<PcodeInstruction>,
         varnode: VarnodeData,
         space_id: AddressSpaceId,
     },
 
+    /// An internal error occurred. This is a fatal error that cannot be safely handled.
     #[error("internal error: {0}")]
     InternalError(String),
 }
 
+/// Kinds of illegal instructions
+#[derive(Debug)]
+pub enum IllegalInstructionKind {
+    VarnodeNotPermitted(usize),
+    VarnodeMissing(usize),
+    InvalidVarnodeSize(usize),
+    InvalidVarnodeAddressSpace(usize),
+    InvalidInstructionAddressSpace,
+}
+
+/// Emulator result
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The pcode emulator structure that holds the necessary data for emulation.
@@ -83,7 +101,14 @@ pub enum ControlFlow {
     },
 }
 
+/// Interface for Pcode emulator
 pub trait PcodeEmulator {
+    /// Emulates the given instruction. Depending on the instruction, this may result in the
+    /// provided memory being updated. This may also result in a non-default [ControlFlow] value
+    /// being returned, such as in the case of branching instructions.
+    ///
+    /// It is strongly encouraged for alternative implementations of this trait to call the emulate
+    /// function in [StandardPcodeEmulator] for the core emulation logic.
     fn emulate<M: VarnodeDataStore>(
         &self,
         memory: &mut M,
@@ -170,9 +195,9 @@ impl PcodeEmulator for StandardPcodeEmulator {
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
         match instruction.op_code {
-            OpCode::Copy => self.copy(memory, &instruction)?,
-            OpCode::Load => self.load(memory, &instruction)?,
-            OpCode::Store => self.store(memory, &instruction)?,
+            OpCode::Copy => self.copy(memory, instruction)?,
+            OpCode::Load => self.load(memory, instruction)?,
+            OpCode::Store => self.store(memory, instruction)?,
             OpCode::Int(IntOp::Bitwise(BoolOp::And)) => binary_op!(memory, instruction, and),
             OpCode::Int(IntOp::Bitwise(BoolOp::Or)) => binary_op!(memory, instruction, or),
             OpCode::Int(IntOp::Bitwise(BoolOp::Xor)) => binary_op!(memory, instruction, xor),
@@ -201,14 +226,12 @@ impl PcodeEmulator for StandardPcodeEmulator {
                 binary_op!(memory, instruction, signed_remainder)
             }
             OpCode::Int(IntOp::Extension(IntSign::Unsigned)) => {
-                self.int_zext(memory, &instruction)?
+                self.int_zext(memory, instruction)?
             }
-            OpCode::Int(IntOp::Extension(IntSign::Signed)) => {
-                self.int_sext(memory, &instruction)?
-            }
-            OpCode::Popcount => self.popcount(memory, &instruction)?,
-            OpCode::Piece => self.piece(memory, &instruction)?,
-            OpCode::Subpiece => self.subpiece(memory, &instruction)?,
+            OpCode::Int(IntOp::Extension(IntSign::Signed)) => self.int_sext(memory, instruction)?,
+            OpCode::Popcount => self.popcount(memory, instruction)?,
+            OpCode::Piece => self.piece(memory, instruction)?,
+            OpCode::Subpiece => self.subpiece(memory, instruction)?,
             OpCode::Int(IntOp::Equal) => binary_op_bit!(memory, instruction, equals),
             OpCode::Int(IntOp::NotEqual) => binary_op_bit!(memory, instruction, not_equals),
             OpCode::Int(IntOp::LessThan(IntSign::Signed)) => {
@@ -234,15 +257,15 @@ impl PcodeEmulator for StandardPcodeEmulator {
             OpCode::Bool(BoolOp::And) => bool_binary_op!(memory, instruction, and),
             OpCode::Bool(BoolOp::Or) => bool_binary_op!(memory, instruction, or),
             OpCode::Bool(BoolOp::Xor) => bool_binary_op!(memory, instruction, xor),
-            OpCode::Return => return self.return_instruction(memory, &instruction),
-            OpCode::BranchIndirect => return self.branch_ind(memory, &instruction),
-            OpCode::Branch => return self.branch(&instruction),
-            OpCode::BranchConditional => return self.conditional_branch(memory, &instruction),
-            OpCode::Call => return self.call(&instruction),
-            OpCode::CallIndirect => return self.call_ind(memory, &instruction),
+            OpCode::Return => return self.return_instruction(memory, instruction),
+            OpCode::BranchIndirect => return self.branch_ind(memory, instruction),
+            OpCode::Branch => return self.branch(instruction),
+            OpCode::BranchConditional => return self.conditional_branch(memory, instruction),
+            OpCode::Call => return self.call(instruction),
+            OpCode::CallIndirect => return self.call_ind(memory, instruction),
             _ => {
                 return Err(Error::UnsupportedInstruction {
-                    instruction: instruction.clone(),
+                    instruction: Box::new(instruction.clone()),
                 })
             }
         }
@@ -271,12 +294,12 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, true)?;
-        require_input_sizes_match_output(&instruction)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, true)?;
+        require_input_sizes_match_output(instruction)?;
 
         let input = &instruction.inputs[0];
-        memory.write(&instruction.output.as_ref().unwrap(), memory.read(input)?)?;
+        memory.write(instruction.output.as_ref().unwrap(), memory.read(input)?)?;
 
         Ok(())
     }
@@ -311,7 +334,7 @@ impl StandardPcodeEmulator {
             size: output.size,
         };
 
-        memory.write(&instruction.output.as_ref().unwrap(), memory.read(&input)?)?;
+        memory.write(instruction.output.as_ref().unwrap(), memory.read(&input)?)?;
 
         Ok(())
     }
@@ -340,7 +363,7 @@ impl StandardPcodeEmulator {
             size: input.size,
         };
 
-        memory.write(&output, memory.read(&input)?)?;
+        memory.write(&output, memory.read(input)?)?;
 
         Ok(())
     }
@@ -366,8 +389,8 @@ impl StandardPcodeEmulator {
     /// instruction, it can branch to operation with index 8 by specifying a constant destination
     /// "address" of 3. Negative constants can be used for backward branches.
     fn branch(&self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, false)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, false)?;
         Ok(ControlFlow::Jump(Self::branch_destination(
             &instruction.inputs[0],
         )))
@@ -438,9 +461,9 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
-        require_num_inputs(&instruction, 2)?;
-        require_has_output(&instruction, false)?;
-        require_input_size_equals(&instruction, 1, 1)?;
+        require_num_inputs(instruction, 2)?;
+        require_has_output(instruction, false)?;
+        require_input_size_equals(instruction, 1, 1)?;
 
         Ok(ControlFlow::ConditionalBranch {
             condition: memory.read_bit(&instruction.inputs[1])?.try_into().ok(),
@@ -458,14 +481,14 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, true)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, true)?;
         let input = &instruction.inputs[0];
-        require_output_size_exceeds(&instruction, input.size)?;
+        require_output_size_exceeds(instruction, input.size)?;
         let output = instruction.output.as_ref().unwrap();
 
         let lhs = memory.read(&instruction.inputs[0])?;
-        memory.write(&output, lhs.zero_extend(output.size))?;
+        memory.write(output, lhs.zero_extend(output.size))?;
 
         Ok(())
     }
@@ -480,14 +503,14 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, true)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, true)?;
         let input = &instruction.inputs[0];
-        require_output_size_exceeds(&instruction, input.size)?;
+        require_output_size_exceeds(instruction, input.size)?;
         let output = instruction.output.as_ref().unwrap();
 
         let lhs = memory.read(&instruction.inputs[0])?;
-        memory.write(&output, lhs.sign_extend(output.size))?;
+        memory.write(output, lhs.sign_extend(output.size))?;
 
         Ok(())
     }
@@ -502,8 +525,8 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, true)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, true)?;
 
         let output = instruction.output.as_ref().unwrap();
         let popcount = memory.read(&instruction.inputs[0])?.popcount();
@@ -521,10 +544,10 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 2)?;
-        require_has_output(&instruction, true)?;
+        require_num_inputs(instruction, 2)?;
+        require_has_output(instruction, true)?;
         require_output_size_equals(
-            &instruction,
+            instruction,
             instruction.inputs[0].size + instruction.inputs[1].size,
         )?;
 
@@ -545,9 +568,9 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<()> {
-        require_num_inputs(&instruction, 2)?;
-        require_has_output(&instruction, true)?;
-        require_input_address_space_type(&instruction, 1, AddressSpaceType::Constant)?;
+        require_num_inputs(instruction, 2)?;
+        require_has_output(instruction, true)?;
+        require_input_address_space_type(instruction, 1, AddressSpaceType::Constant)?;
         let value = memory.read(&instruction.inputs[0])?;
 
         // Remove this number of least significant bytes. If for some reason the offset exceeds
@@ -560,7 +583,7 @@ impl StandardPcodeEmulator {
         let value = value.truncate_to_size(output.size);
 
         // Clone remaining bytes
-        memory.write(&output, value)?;
+        memory.write(output, value)?;
 
         Ok(())
     }
@@ -577,18 +600,15 @@ impl StandardPcodeEmulator {
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
-        require_num_inputs(&instruction, 1)?;
-        require_has_output(&instruction, false)?;
+        require_num_inputs(instruction, 1)?;
+        require_has_output(instruction, false)?;
 
         // Constant address space indicates a p-code relative branch.
         let address_space = &instruction.address.address_space;
         if address_space.space_type == AddressSpaceType::Constant {
             return Err(Error::IllegalInstruction {
-                instruction: instruction.clone(),
-                reason: format!(
-                    "P-code relative branching is not possible with {:?}",
-                    instruction.op_code
-                ),
+                instruction: Box::new(instruction.clone()),
+                kind: IllegalInstructionKind::InvalidInstructionAddressSpace,
             });
         }
 
@@ -630,8 +650,8 @@ impl StandardPcodeEmulator {
         instruction: &PcodeInstruction,
     ) -> Result<Address> {
         // Space identifier must be a constant value
-        require_input_address_space_type(&instruction, 0, AddressSpaceType::Constant)?;
-        let address_space = self.address_space(&instruction, 0)?.clone();
+        require_input_address_space_type(instruction, 0, AddressSpaceType::Constant)?;
+        let address_space = self.address_space(instruction, 0)?.clone();
         let offset = Self::indirect_offset(memory, instruction, 1, &address_space)?;
 
         Ok(Address {
@@ -654,9 +674,9 @@ impl StandardPcodeEmulator {
             .read(&instruction.inputs[input_index])?
             .try_into()
             .map_err(|_err| Error::IndirectAddressOffset {
-                instruction: instruction.clone(),
+                instruction: Box::new(instruction.clone()),
                 offset_varnode: instruction.inputs[input_index].clone(),
-                target_address_space: target_space.clone(),
+                target_address_space: Box::new(target_space.clone()),
             })
     }
 
@@ -678,64 +698,103 @@ impl StandardPcodeEmulator {
         self.address_spaces_by_id
             .get(&space_id)
             .ok_or(Error::UnknownAddressSpace {
-                instruction: instruction.clone(),
+                instruction: Box::new(instruction.clone()),
                 varnode: input.clone(),
                 space_id,
             })
     }
 }
 
+impl std::fmt::Display for IllegalInstructionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let varnode_name_lookup = |index: &usize| {
+            if *index == 0 {
+                "output".to_string()
+            } else {
+                format!("input {input_index}", input_index = index - 1)
+            }
+        };
+
+        match self {
+            IllegalInstructionKind::VarnodeNotPermitted(varnode_index) => {
+                write!(
+                    f,
+                    "{name} varnode not permitted",
+                    name = varnode_name_lookup(varnode_index)
+                )
+            }
+            IllegalInstructionKind::VarnodeMissing(varnode_index) => {
+                write!(
+                    f,
+                    "{name} varnode missing",
+                    name = varnode_name_lookup(varnode_index)
+                )
+            }
+            IllegalInstructionKind::InvalidVarnodeSize(varnode_index) => {
+                write!(
+                    f,
+                    "{name} varnode size is invalid",
+                    name = varnode_name_lookup(varnode_index)
+                )
+            }
+            IllegalInstructionKind::InvalidVarnodeAddressSpace(varnode_index) => {
+                write!(
+                    f,
+                    "{name} varnode address space is invalid",
+                    name = varnode_name_lookup(varnode_index)
+                )
+            }
+            IllegalInstructionKind::InvalidInstructionAddressSpace => {
+                write!(f, "instruction address space is invalid")
+            }
+        }
+    }
+}
+
 /// Require that the number of inputs matches the number expected by the instruction
 fn require_num_inputs(instruction: &PcodeInstruction, num_inputs: usize) -> Result<()> {
-    if instruction.inputs.len() == num_inputs {
-        Ok(())
-    } else {
-        Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!(
-                "expected {num_inputs} inputs, found {actual}",
-                actual = instruction.inputs.len()
-            ),
-        })
+    match instruction.inputs.len().cmp(&num_inputs) {
+        std::cmp::Ordering::Less => Err(Error::IllegalInstruction {
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::VarnodeMissing(num_inputs - instruction.inputs.len()),
+        }),
+        std::cmp::Ordering::Equal => Ok(()),
+        std::cmp::Ordering::Greater => Err(Error::IllegalInstruction {
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::VarnodeNotPermitted(num_inputs + 1),
+        }),
     }
 }
 
 /// Require the instruction output existence to match the expected value
 fn require_has_output(instruction: &PcodeInstruction, has_output: bool) -> Result<()> {
-    if instruction.output.is_some() == has_output {
-        if has_output
-            && instruction
-                .output
-                .as_ref()
-                .unwrap()
-                .address
-                .address_space
-                .is_constant()
+    if has_output {
+        if instruction.output.is_none() {
+            return Err(Error::IllegalInstruction {
+                instruction: Box::new(instruction.clone()),
+                kind: IllegalInstructionKind::VarnodeMissing(0),
+            });
+        } else if instruction
+            .output
+            .as_ref()
+            .unwrap()
+            .address
+            .address_space
+            .is_constant()
         {
-            Err(Error::IllegalInstruction {
-                instruction: instruction.clone(),
-                reason: format!(
-                    "instruction output address space is constant: {:?}",
-                    instruction.output
-                ),
-            })
-        } else {
-            Ok(())
+            return Err(Error::IllegalInstruction {
+                instruction: Box::new(instruction.clone()),
+                kind: IllegalInstructionKind::InvalidVarnodeAddressSpace(0),
+            });
         }
-    } else {
-        Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!(
-                "instruction has unexpected output: {:?}",
-                instruction.output
-            ),
-        })
+    } else if instruction.output.is_some() {
+        return Err(Error::IllegalInstruction {
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::VarnodeNotPermitted(0),
+        });
     }
-}
 
-/// Require that the input sizes match the value expected by the instruction
-fn require_input_sizes_match(instruction: &PcodeInstruction) -> Result<()> {
-    require_input_sizes_equal(instruction, (&instruction.inputs[0]).size)
+    Ok(())
 }
 
 /// Require that the input sizes match the size of the instruction output
@@ -746,8 +805,7 @@ fn require_input_sizes_match_output(instruction: &PcodeInstruction) -> Result<()
 /// Require that the input sizes are all equal
 fn require_input_sizes_equal(instruction: &PcodeInstruction, expected_size: usize) -> Result<()> {
     (0..instruction.inputs.len())
-        .map(|i| require_input_size_equals(instruction, i, expected_size))
-        .collect()
+        .try_for_each(|i| require_input_size_equals(instruction, i, expected_size))
 }
 
 /// Require the input address space to be of the expected type
@@ -762,10 +820,8 @@ fn require_input_address_space_type(
         .space_type;
     if space_type != expected_space_type {
         return Err(Error::IllegalInstruction {
-                instruction: instruction.clone(),
-                reason: format!(
-                    "input[{input_index}] address space type is {space_type:?}, expected {expected_space_type:?}"
-                ),
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::InvalidVarnodeAddressSpace(input_index + 1),
         });
     }
 
@@ -781,11 +837,8 @@ fn require_input_size_equals(
     let input = &instruction.inputs[input_index];
     if input.size != expected_size {
         Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!(
-                "input[{input_index}] size {} != {expected_size}",
-                input.size
-            ),
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::InvalidVarnodeSize(input_index + 1),
         })
     } else {
         Ok(())
@@ -797,8 +850,8 @@ fn require_output_size_equals(instruction: &PcodeInstruction, expected_size: usi
     let output_size = instruction.output.as_ref().unwrap().size;
     if output_size != expected_size {
         return Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!("output size {output_size} != {expected_size}"),
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::InvalidVarnodeSize(0),
         });
     }
 
@@ -810,24 +863,8 @@ fn require_output_size_exceeds(instruction: &PcodeInstruction, expected_size: us
     let output_size = instruction.output.as_ref().unwrap().size;
     if output_size <= expected_size {
         return Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!("output size {output_size} must exceed {expected_size}"),
-        });
-    }
-
-    Ok(())
-}
-
-/// Require that the instruction output size is at least the expected size
-fn require_output_size_at_least(
-    instruction: &PcodeInstruction,
-    expected_size: usize,
-) -> Result<()> {
-    let output_size = instruction.output.as_ref().unwrap().size;
-    if output_size < expected_size {
-        return Err(Error::IllegalInstruction {
-            instruction: instruction.clone(),
-            reason: format!("output size {output_size} must be at least {expected_size}"),
+            instruction: Box::new(instruction.clone()),
+            kind: IllegalInstructionKind::InvalidVarnodeSize(0),
         });
     }
 
@@ -907,7 +944,7 @@ mod tests {
     ) -> Result<VarnodeData> {
         let varnode = VarnodeData {
             address: processor_address(offset),
-            size: value.num_bytes() as usize,
+            size: value.num_bytes(),
         };
 
         memory.write(&varnode, value)?;

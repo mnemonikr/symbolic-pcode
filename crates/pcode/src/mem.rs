@@ -47,6 +47,8 @@ pub trait VarnodeDataStore {
     ) -> Result<()>;
 }
 
+/// Generic memory structure that stores [PcodeOps::Byte] keyed on [AddressSpaceId]. This structure
+/// is the foundation for other memory structures.
 pub struct GenericMemory<T: PcodeOps> {
     data: BTreeMap<AddressSpaceId, BTreeMap<u64, T::Byte>>,
 }
@@ -184,10 +186,12 @@ impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
     }
 }
 
-/// Trait for memory with symbolic bytes that can be read from.
-/// A branching memory model which branches on `SymbolicBit` predicates. Note that this does not
-/// enforce the predicate. It simply tracks the assumptions made. Note that `[Self::read()]` is
-/// *not* conditioned on the branch predicate. See `[Self::predicated_read()]`.
+/// A branching memory model which branches on [PcodeOps::Bit] predicates. Note that this only
+/// tracks the predicate value, it does not enforce it.
+///
+/// # Reading values
+///
+/// [Self::read] is *not* conditioned on the branch predicate. See [Self::predicated_read].
 #[derive(Debug)]
 pub struct MemoryBranch<M: VarnodeDataStore + Default> {
     leaf_predicate: <M::Value as PcodeOps>::Bit,
@@ -215,11 +219,18 @@ impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
         }
     }
 
+    /// Get the predicate associated with the entire branch. The branch predicate is the
+    /// conjunction of all predicates leading to and including the leaf predicate of this branch.
+    ///
+    /// The root memory branch has a branch predicate of `true` as [PcodeOps::Bit].
     pub fn branch_predicate(&self) -> &<M::Value as PcodeOps>::Bit {
         &self.branch_predicate
     }
 
-    /// Get the predicate associated with this branch.
+    /// Get the predicate associated with the leaf of this branch. Other predicates in the branch
+    /// are **not** included.
+    ///
+    /// The root memory branch has a leaf predicate of `true` as [PcodeOps::Bit].
     pub fn leaf_predicate(&self) -> &<M::Value as PcodeOps>::Bit {
         &self.leaf_predicate
     }
@@ -320,7 +331,7 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
 }
 
 /// Collection of all memory branches into a single tree. Tree is composed of both live and dead
-/// branches. A dead branch is a branch of memory that has no bearing on an outcome. These branches
+/// branches. A *dead branch* is a branch of memory that has no bearing on an outcome. These branches
 /// are necessary to include so that their predicates are appropriately excluded from the outcome.
 pub struct MemoryTree<'b, 'd, M: VarnodeDataStore + Default> {
     branches: Vec<&'b MemoryBranch<M>>,
@@ -328,6 +339,7 @@ pub struct MemoryTree<'b, 'd, M: VarnodeDataStore + Default> {
 }
 
 impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
+    /// Create a new memory tree composed of the given (live) branches and dead branches.
     pub fn new(
         branches: impl IntoIterator<Item = &'b MemoryBranch<M>>,
         dead_branches: impl IntoIterator<Item = &'d MemoryBranch<M>>,
@@ -338,20 +350,8 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
         }
     }
 
-    fn dead_branches_not_taken_predicate(&self) -> <M::Value as PcodeOps>::Bit {
-        let dead_branch_taken = self
-            .dead_branches
-            .iter()
-            .map(|&branch| branch.branch_predicate())
-            .fold(<M::Value as PcodeOps>::Bit::from(false), |x, y| {
-                x.clone().or(y.clone())
-            });
-
-        dead_branch_taken.not()
-    }
-
     /// Read data from the requested source. This will read data from each live branch using a
-    /// [predicated read](MemoryBranch::predicated_read()) and return the conjunction these
+    /// [predicated read](MemoryBranch::predicated_read) and return the conjunction these
     /// conditional values. These values are subsequently conditioned on none of the dead branches
     /// being taken.
     ///
@@ -406,13 +406,25 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
 
         Ok(result.assert(self.dead_branches_not_taken_predicate()))
     }
+
+    fn dead_branches_not_taken_predicate(&self) -> <M::Value as PcodeOps>::Bit {
+        let dead_branch_taken = self
+            .dead_branches
+            .iter()
+            .map(|&branch| branch.branch_predicate())
+            .fold(<M::Value as PcodeOps>::Bit::from(false), |x, y| {
+                x.clone().or(y.clone())
+            });
+
+        dead_branch_taken.not()
+    }
 }
 
 /// Memory that holds binary-encoded executable instructions.
 pub struct ExecutableMemory<'a, M: VarnodeDataStore>(pub &'a M);
 
 /// Implementation of the LoadImage trait to enable loading instructions from memory
-impl<'a, M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'a, M> {
+impl<M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'_, M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
         let value = self.0.read(input);
 
