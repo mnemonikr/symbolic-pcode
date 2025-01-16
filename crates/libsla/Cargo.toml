@@ -8,9 +8,22 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# List includes to avoid including entire Ghidra submodule
+include = [
+    "Cargo.toml",
+    "build.rs",
+    "src/*",
+    "ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
+    "ghidra/DISCLAIMER.md",
+    "ghidra/NOTICE",
+    "ghidra/LICENSE",
+    "ghidra/licenses/*",
+]
+
 [dependencies]
 cxx = "1.0"
 thiserror.workspace = true
 
 [build-dependencies]
 cxx-build = "1.0"
+
