@@ -2,8 +2,8 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
+use libsla::{Address, AddressSpaceId, AddressSpaceType, LoadImage, VarnodeData};
 use pcode_ops::{BitwisePcodeOps, PcodeOps};
-use sla::{Address, AddressSpaceId, AddressSpaceType, VarnodeData};
 
 /// Memory result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -424,7 +424,7 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
 pub struct ExecutableMemory<'a, M: VarnodeDataStore>(pub &'a M);
 
 /// Implementation of the LoadImage trait to enable loading instructions from memory
-impl<M: VarnodeDataStore> sla::LoadImage for ExecutableMemory<'_, M> {
+impl<M: VarnodeDataStore> LoadImage for ExecutableMemory<'_, M> {
     fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
         let value = self.0.read(input);
 
@@ -461,8 +461,8 @@ mod tests {
     use crate::test_fixture::{ConcreteValue, SymbolicValue};
     use std::borrow::Cow;
 
+    use libsla::AddressSpace;
     use pcode_ops::PcodeOps;
-    use sla::{AddressSpace, LoadImage};
 
     use super::*;
 

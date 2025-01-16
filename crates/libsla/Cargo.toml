@@ -1,5 +1,5 @@
 [package]
-name = "sla"
+name = "libsla"
 description = "Rust bindings to Ghidra Sleigh library libsla"
 version = "0.1.0"
 

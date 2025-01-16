@@ -1,5 +1,5 @@
 pub mod convert;
-mod ops;
 pub mod validate;
 
+mod ops;
 pub use ops::*;

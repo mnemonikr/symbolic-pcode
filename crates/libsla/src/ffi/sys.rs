@@ -217,7 +217,7 @@ mod default {
     }
 
     unsafe extern "C++" {
-        include!("sla/src/ffi/cpp/bridge.hh");
+        include!("libsla/src/ffi/cpp/bridge.hh");
 
         type OpCode;
         type spacetype;
