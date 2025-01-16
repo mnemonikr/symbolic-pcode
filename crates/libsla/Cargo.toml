@@ -4,8 +4,9 @@ description = "Rust bindings to Ghidra Sleigh library libsla"
 version = "0.1.0"
 
 authors.workspace = true
-license.workspace = true
 edition.workspace = true 
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 cxx = "1.0"
