@@ -17,7 +17,6 @@ include = [
     "ghidra/DISCLAIMER.md",
     "ghidra/NOTICE",
     "ghidra/LICENSE",
-    "ghidra/licenses/*",
 ]
 
 [dependencies]
