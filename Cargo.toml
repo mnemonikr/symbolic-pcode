@@ -4,8 +4,9 @@ members = ["crates/*", "benches", "tests"]
 
 [workspace.package]
 authors = ["mnemonikr"]
-license = "Apache-2.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/mnemonikr/symbolic-pcode"
 
 [workspace.dependencies]
 thiserror = "1.0"
