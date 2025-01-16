@@ -2,8 +2,9 @@ use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
-use sla::{
-    Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
+use libsla::{
+    Address, AddressSpace, AssemblyInstruction, Disassembly, GhidraSleigh, PcodeInstruction,
+    Sleigh, VarnodeData,
 };
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -19,7 +20,7 @@ pub enum Error {
     MemoryAccess(#[from] crate::mem::Error),
 
     #[error("failed to decode instruction: {0}")]
-    InstructionDecoding(#[from] sla::Error),
+    InstructionDecoding(#[from] libsla::Error),
 
     #[error("address {address} not in expected space {expected}")]
     InvalidAddressSpace {
@@ -53,20 +54,20 @@ pub struct ProcessorManager<
     H: ProcessorResponseHandler<M>,
 > {
     processors: Vec<Processor<E, M, H>>,
-    sleigh: sla::GhidraSleigh,
+    sleigh: GhidraSleigh,
 }
 
 impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler<M>>
     ProcessorManager<E, M, H>
 {
-    pub fn new(sleigh: sla::GhidraSleigh, processor: Processor<E, M, H>) -> Self {
+    pub fn new(sleigh: GhidraSleigh, processor: Processor<E, M, H>) -> Self {
         Self {
             sleigh,
             processors: vec![processor],
         }
     }
 
-    pub fn sleigh(&self) -> &sla::GhidraSleigh {
+    pub fn sleigh(&self) -> &GhidraSleigh {
         &self.sleigh
     }
 

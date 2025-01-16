@@ -8,6 +8,6 @@ license.workspace = true
 edition.workspace = true
 
 [dependencies]
-sla = { path = "../sla" }
+libsla = { path = "../libsla" }
 pcode-ops = { path = "../pcode-ops" }
 thiserror.workspace = true

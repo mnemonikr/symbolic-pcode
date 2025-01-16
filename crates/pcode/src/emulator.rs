@@ -1,8 +1,8 @@
-use pcode_ops::{BitwisePcodeOps, PcodeOps};
-use sla::{
+use libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
+use pcode_ops::{BitwisePcodeOps, PcodeOps};
 use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};

@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
-use sla::{Address, AddressSpace, GhidraSleigh, OpCode, Sleigh, VarnodeData};
-use sym::{SymbolicBitVec, SymbolicByte};
+use libsla::{Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, Sleigh, VarnodeData};
+use sym::SymbolicBitVec;
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
 use symbolic_pcode::processor::{self, PcodeExecution, ProcessorResponseHandler};
@@ -84,7 +84,7 @@ impl PcodeEmulator for TracingEmulator {
     fn emulate<T: VarnodeDataStore>(
         &self,
         memory: &mut T,
-        instruction: &sla::PcodeInstruction,
+        instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
         println!("Executing: {instruction}");
         match &instruction.op_code {
@@ -166,7 +166,7 @@ pub fn x86_64_sleigh() -> GhidraSleigh {
     let sleigh_spec =
         fs::read_to_string("data/x86-64.sla").expect("failed to read processor spec file");
     let processor_spec = fs::read_to_string(
-        "../crates/sla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
+        "../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
     )
     .expect("failed to read processor spec file");
     sleigh

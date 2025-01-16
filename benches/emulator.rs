@@ -2,11 +2,11 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use pcode_ops::PcodeOps;
-use sla::{
+use libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
+use pcode_ops::PcodeOps;
 use sym::{SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
