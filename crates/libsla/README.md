@@ -33,6 +33,7 @@ responsible for interpreting the meaning of these values.
 # Example
 
 ```rust
+// Construct new sleigh instance
 let mut sleigh = GhidraSleigh::new();
 
 // Compiled from x86-64.slaspec in Ghidra repository
@@ -48,8 +49,11 @@ sleigh.initialize(&slaspec, &pspec).expect("failed to initialize sleigh");
 let instruction_reader = InstructionReader::new();
 
 // Instruction to decode from the reader.
+let instruction_offset = 0x800000;
+let address_space = sleigh.default_code_space();
 let instruction_address = Address::new(instruction_offset, address_space);
 
+// Disassemble!
 let pcode_disassembly = sleigh.disassemble_pcode(&instruction_reader, instruction_address).expect("disassembly failed");
 ```
 
