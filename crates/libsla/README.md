@@ -33,7 +33,7 @@ responsible for interpreting the meaning of these values.
 # Example
 
 This gives an overview of the general structure for disassembling code into p-code. For a working
-example using x86-64 see the [src/sleigh.rs](sleigh unit tests);
+example using x86-64 see the [sleigh unit tests](./src/sleigh.rs).
 
 ```rust
 // Construct new sleigh instance
