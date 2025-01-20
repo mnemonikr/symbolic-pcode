@@ -10,15 +10,15 @@ repository.workspace = true
 
 # List includes to avoid including entire Ghidra submodule
 include = [
-    "Cargo.toml",
-    "README.md",
-    "build.rs",
-    "src/*",
-    "ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
-    "ghidra/DISCLAIMER.md",
-    "ghidra/NOTICE",
-    "ghidra/LICENSE",
-    "ghidra/licenses/*",
+    "/Cargo.toml",
+    "/README.md",
+    "/build.rs",
+    "/src/*",
+    "/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
+    "/ghidra/DISCLAIMER.md",
+    "/ghidra/NOTICE",
+    "/ghidra/LICENSE",
+    "/ghidra/licenses/*",
 ]
 
 [dependencies]
