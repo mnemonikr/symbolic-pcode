@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::sync::Once;
 
 use cxx::{let_cxx_string, UniquePtr};
-use thiserror;
 
 use crate::ffi::api;
 use crate::ffi::rust;
@@ -143,9 +142,9 @@ impl VarnodeData {
 
 impl From<&sys::VarnodeData> for VarnodeData {
     fn from(varnode: &sys::VarnodeData) -> Self {
-        let size = sys::varnode_size(&varnode);
+        let size = sys::varnode_size(varnode);
         Self {
-            address: sys::varnode_address(&varnode).as_ref().unwrap().into(),
+            address: sys::varnode_address(varnode).as_ref().unwrap().into(),
             size: size.try_into().unwrap_or_else(|err| {
                 panic!("unable to convert Ghidra varnode size: {size}. {err}")
             }),
@@ -396,16 +395,16 @@ impl api::PcodeEmit for Vec<PcodeInstruction> {
 /// This is required in order to pass a trait object reference down into the native API.
 struct InstructionLoader<'a>(&'a dyn LoadImage);
 
-impl<'a> InstructionLoader<'a> {
+impl InstructionLoader<'_> {
     /// Returns true only if the requested number of instruction bytes are read.
     fn readable(&self, varnode: &VarnodeData) -> bool {
         self.0
-            .instruction_bytes(&varnode)
-            .map_or(false, |data| data.len() == varnode.size)
+            .instruction_bytes(varnode)
+            .is_ok_and(|data| data.len() == varnode.size)
     }
 }
 
-impl<'a> api::LoadImage for InstructionLoader<'a> {
+impl api::LoadImage for InstructionLoader<'_> {
     fn load_fill(
         &self,
         data: &mut [u8],
@@ -434,60 +433,116 @@ enum DisassemblyKind<'a> {
     Pcode(&'a mut Vec<PcodeInstruction>),
 }
 
-pub struct GhidraSleigh {
-    /// The sleigh object. This object holds a reference to the image loader.
-    sleigh: UniquePtr<sys::SleighProxy>,
+/// The sleigh or processor specification has not yet been provided
+pub enum MissingSpec {}
+
+/// The sleigh or processor specification has been provided
+pub enum HasSpec {}
+
+/// Builder for [GhidraSleigh]. The parameters `S` and `P` track whether the sleigh and processor
+/// specifications have been provided.
+pub struct GhidraSleighBuilder<S, P> {
+    /// Document store for sleigh and processor specifications
+    store: UniquePtr<sys::DocumentStorage>,
+
+    /// Phantom data for type tracking whether sleigh specification has been provided
+    sleigh_spec: std::marker::PhantomData<S>,
+
+    /// Phantom data for type tracking whether processor specification has been provided
+    processor_spec: std::marker::PhantomData<P>,
 }
 
-impl GhidraSleigh {
-    pub fn new() -> Self {
-        Self {
-            sleigh: sys::new_sleigh(sys::new_context_internal()),
-        }
-    }
-
-    pub fn initialize(&mut self, sleigh_spec: &str, processor_spec: &str) -> Result<()> {
+impl Default for GhidraSleighBuilder<MissingSpec, MissingSpec> {
+    fn default() -> Self {
         // This global libsla initialization is required for parsing sleigh document
         LIBSLA_INIT.call_once(|| {
             sys::initialize_element_id();
             sys::initialize_attribute_id();
         });
 
-        let_cxx_string!(sleigh_spec = sleigh_spec);
+        Self {
+            store: sys::new_document_storage(),
+            sleigh_spec: Default::default(),
+            processor_spec: Default::default(),
+        }
+    }
+}
+
+impl<S> GhidraSleighBuilder<S, MissingSpec> {
+    /// Use this processor specification for this sleigh instance.
+    pub fn processor_spec(
+        mut self,
+        processor_spec: &str,
+    ) -> Result<GhidraSleighBuilder<S, HasSpec>> {
         let_cxx_string!(processor_spec = processor_spec);
-
-        let mut store = sys::new_document_storage();
-        sys::parse_document_and_register_root(store.pin_mut(), &sleigh_spec).map_err(|err| {
-            Error::DependencyError {
-                message: Cow::Borrowed("failed to parse sleigh specification"),
-                source: Box::new(err),
-            }
-        })?;
-
-        sys::parse_document_and_register_root(store.pin_mut(), &processor_spec).map_err(|err| {
-            Error::DependencyError {
+        sys::parse_document_and_register_root(self.store.pin_mut(), &processor_spec).map_err(
+            |err| Error::DependencyError {
                 message: Cow::Borrowed("failed to parse processor specification"),
                 source: Box::new(err),
-            }
-        })?;
+            },
+        )?;
 
-        self.sleigh
+        Ok(GhidraSleighBuilder::<S, HasSpec> {
+            store: self.store,
+            sleigh_spec: std::marker::PhantomData,
+            processor_spec: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<P> GhidraSleighBuilder<MissingSpec, P> {
+    /// Use this sleigh specification for this sleigh instance.
+    pub fn sleigh_spec(mut self, sleigh_spec: &str) -> Result<GhidraSleighBuilder<HasSpec, P>> {
+        let_cxx_string!(sleigh_spec = sleigh_spec);
+        sys::parse_document_and_register_root(self.store.pin_mut(), &sleigh_spec).map_err(
+            |err| Error::DependencyError {
+                message: Cow::Borrowed("failed to parse sleigh specification"),
+                source: Box::new(err),
+            },
+        )?;
+
+        Ok(GhidraSleighBuilder::<HasSpec, P> {
+            store: self.store,
+            sleigh_spec: std::marker::PhantomData,
+            processor_spec: std::marker::PhantomData,
+        })
+    }
+}
+
+impl GhidraSleighBuilder<HasSpec, HasSpec> {
+    pub fn build(mut self) -> Result<GhidraSleigh> {
+        let mut sleigh = sys::new_sleigh(sys::new_context_internal());
+
+        sleigh
             .pin_mut()
-            .initialize(store.pin_mut())
+            .initialize(self.store.pin_mut())
             .map_err(|err| Error::DependencyError {
                 message: Cow::Borrowed("failed to initialize Ghidra sleigh"),
                 source: Box::new(err),
             })?;
 
-        self.sleigh
+        sleigh
             .pin_mut()
-            .parse_processor_config(&store)
+            .parse_processor_config(&self.store)
             .map_err(|err| Error::DependencyError {
                 message: Cow::Borrowed("failed to import processor config"),
                 source: Box::new(err),
             })?;
 
-        Ok(())
+        Ok(GhidraSleigh { sleigh })
+    }
+}
+
+/// Sleigh instance that uses Ghidra libsla for its disassembly.
+pub struct GhidraSleigh {
+    /// The sleigh object. This object holds a reference to the image loader.
+    sleigh: UniquePtr<sys::SleighProxy>,
+}
+
+impl GhidraSleigh {
+    /// Create a new sleigh builder. Use this to construct a sleigh instance.
+    pub fn builder() -> GhidraSleighBuilder<MissingSpec, MissingSpec> {
+        Default::default()
     }
 
     fn sys_address_space(&self, space_id: AddressSpaceId) -> Option<*mut AddrSpace> {
@@ -504,7 +559,6 @@ impl GhidraSleigh {
         None
     }
 
-    #[must_use]
     fn disassemble(
         &self,
         loader: &dyn LoadImage,
@@ -668,11 +722,10 @@ mod tests {
     }
 
     #[test]
-    fn test_pcode() {
+    fn test_pcode() -> Result<()> {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x0f\xaf\xc0\x5d\xc3".to_vec());
-        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
             .expect("Failed to read sleigh spec file");
 
@@ -680,9 +733,10 @@ mod tests {
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
                 .expect("Failed to read processor spec file");
 
-        sleigh
-            .initialize(&sleigh_spec, &processor_spec)
-            .expect("Failed to initialize sleigh");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
 
         let mut offset = 0;
         for _ in 0..NUM_INSTRUCTIONS {
@@ -698,23 +752,24 @@ mod tests {
             offset += response.origin.size as u64;
         }
         assert_eq!(offset, 15, "Expected 15 bytes to be decoded");
+        Ok(())
     }
 
     #[test]
-    fn test_assembly() {
+    fn test_assembly() -> Result<()> {
         const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
-        let mut sleigh = GhidraSleigh::new();
         let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
                 .expect("Failed to read processor spec file");
 
-        sleigh
-            .initialize(&sleigh_spec, &processor_spec)
-            .expect("Failed to initialize sleigh");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
 
         let mut offset = 0;
         let expected = vec![
@@ -767,24 +822,27 @@ mod tests {
             );
             offset += response.origin.size as u64;
         }
+
+        Ok(())
     }
 
     #[test]
-    pub fn register_from_name() {
-        let mut sleigh = GhidraSleigh::new();
+    pub fn register_from_name() -> Result<()> {
         let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
             .expect("Failed to read processor spec file");
         let processor_spec =
             fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
                 .expect("Failed to read processor spec file");
 
-        sleigh
-            .initialize(&sleigh_spec, &processor_spec)
-            .expect("Failed to initialize sleigh");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
 
         let rax = sleigh.register_from_name("RAX").expect("invalid register");
         assert_eq!(rax.address.address_space.name, "register");
         assert_eq!(rax.address.offset, 0);
         assert_eq!(rax.size, 8);
+        Ok(())
     }
 }

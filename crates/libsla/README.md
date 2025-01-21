@@ -36,17 +36,17 @@ This gives an overview of the general structure for disassembling code into p-co
 example using x86-64 see the [sleigh unit tests](./src/sleigh.rs).
 
 ```rust
-// Construct new sleigh instance
-let mut sleigh = GhidraSleigh::new();
-
 // Compiled from x86-64.slaspec in Ghidra repository
 let slaspec = std::fs::read_to_string("x86-64.sla");
 
 // Located in Ghidra repository. No compilation necessary.
 let pspec = std::fs::read_to_string("x86-64.pspec");
 
-// Initialize sleigh. Required before decoding can be performed.
-sleigh.initialize(&slaspec, &pspec).expect("failed to initialize sleigh");
+// Construct new sleigh instance
+let sleigh = GhidraSleigh::builder()
+    .sleigh_spec(&slaspec)?
+    .processor_spec(&pspec)?
+    .build()?;
 
 // The instruction reader is defined by the user and implements the LoadImage trait.
 let instruction_reader = InstructionReader::new();
