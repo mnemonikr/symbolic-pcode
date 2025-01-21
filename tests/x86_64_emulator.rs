@@ -18,7 +18,7 @@ fn processor_with_image(
     image: impl AsRef<Path>,
     entry: u64,
 ) -> ProcessorManager<TracingEmulator, Memory, ProcessorHandlerX86> {
-    let sleigh = x86_64_sleigh();
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let mut memory = Memory::default();
 
     // Write image into memory
@@ -117,7 +117,7 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
 #[test]
 fn x86_64_registers() {
-    let sleigh = x86_64_sleigh();
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
 
     let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
         let register = sleigh
@@ -245,7 +245,7 @@ fn x86_64_registers() {
 /// ram:000000000000000d | RET
 #[test]
 fn doubler_32b() -> processor::Result<()> {
-    let sleigh = x86_64_sleigh();
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::default();
     let base_addr = 0x84210000;
@@ -414,7 +414,7 @@ fn pcode_coverage() -> processor::Result<()> {
 
 #[test]
 fn z3_integration() -> processor::Result<()> {
-    let sleigh = x86_64_sleigh();
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::default();
     let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
