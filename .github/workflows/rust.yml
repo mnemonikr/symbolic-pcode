@@ -45,5 +45,7 @@ jobs:
         --instr-profile=merged.profdata \
         --summary-only \
         --use-color \
-        --ignore-filename-regex='/.cargo/registry'
+        --ignore-filename-regex='/.cargo/registry' \
+        --ignore-filename-regex='rustc/'
+
 
