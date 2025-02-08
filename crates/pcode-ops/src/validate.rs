@@ -1,3 +1,6 @@
+use std::fmt::Debug;
+use std::marker::PhantomData;
+
 use crate::PcodeOps;
 
 /// Error returned when validation fails
@@ -140,15 +143,16 @@ impl BitOperation {
     }
 }
 
+///
 pub struct Validator<T: PcodeOps> {
     // No subtyping (invariant), !Send + !Sync
-    _phantom: std::marker::PhantomData<*mut T>,
+    _phantom: PhantomData<*mut T>,
 }
 
 impl<T: PcodeOps + std::fmt::Debug> Validator<T>
 where
-    <T as TryInto<u64>>::Error: std::fmt::Debug,
-    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
+    <T as TryInto<u64>>::Error: Debug,
+    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: Debug,
 {
     /// Validate all of the [PcodeOps] operations.
     pub fn validate() -> Result {
@@ -696,9 +700,9 @@ where
     }
 }
 
-fn expect_op<T: PcodeOps + std::fmt::Debug>(op: Operation, expected: u64) -> Result
+fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result
 where
-    <T as TryInto<u64>>::Error: std::fmt::Debug,
+    <T as TryInto<u64>>::Error: Debug,
 {
     let actual = op.evaluate::<T>();
     let actual_str = format!("{actual:?}");
@@ -722,7 +726,7 @@ where
 
 fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result
 where
-    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: std::fmt::Debug,
+    <<T as PcodeOps>::Bit as TryInto<bool>>::Error: Debug,
 {
     let actual = op.evaluate::<T>();
     let actual_str = format!("{actual:?}");
