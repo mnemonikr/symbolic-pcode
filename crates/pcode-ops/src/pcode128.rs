@@ -278,20 +278,10 @@ impl PcodeOps for Pcode128 {
         self.value() >= rhs.value()
     }
 
-    fn predicated_on(self, condition: Self::Bit) -> Self {
-        if condition {
-            self
-        } else {
-            Pcode128::new(self.bitmask(), self.valid_bits)
-        }
-    }
-
-    fn assert(self, condition: Self::Bit) -> Self {
-        if condition {
-            self
-        } else {
-            Pcode128::new(0, self.valid_bits)
-        }
+    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
+        std::iter::repeat(if bit { u8::MAX } else { 0 })
+            .take(num_bytes)
+            .collect()
     }
 
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {

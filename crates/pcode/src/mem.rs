@@ -270,7 +270,8 @@ impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
     /// predicated on the parent predicate in which it is stored.
     pub fn predicated_read(&self, varnode: &VarnodeData) -> Result<M::Value> {
         let value: M::Value = self.read(varnode)?;
-        Ok(value.predicated_on(self.branch_predicate.clone()))
+        let predicate = M::Value::fill_bytes_with(self.branch_predicate.clone(), varnode.size);
+        Ok(predicate.not().or(value))
     }
 }
 
@@ -404,7 +405,11 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
                 Error::InternalError("memory tree has no live branches".to_string())
             })??;
 
-        Ok(result.assert(self.dead_branches_not_taken_predicate()))
+        // Assert dead branches not taken
+        Ok(result.and(M::Value::fill_bytes_with(
+            self.dead_branches_not_taken_predicate(),
+            varnode.size,
+        )))
     }
 
     fn dead_branches_not_taken_predicate(&self) -> <M::Value as PcodeOps>::Bit {

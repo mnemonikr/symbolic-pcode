@@ -158,18 +158,10 @@ impl PcodeOps for SymbolicBitVec {
         self.greater_than_eq(other)
     }
 
-    fn predicated_on(self, condition: Self::Bit) -> Self {
-        std::iter::repeat(!condition)
-            .take(self.len())
-            .collect::<Self>()
-            | self
-    }
-
-    fn assert(self, condition: Self::Bit) -> Self {
-        std::iter::repeat(condition)
-            .take(self.len())
-            .collect::<Self>()
-            & self
+    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
+        std::iter::repeat(bit)
+            .take(u8::BITS as usize * num_bytes)
+            .collect()
     }
 }
 
