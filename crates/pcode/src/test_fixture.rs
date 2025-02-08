@@ -184,12 +184,8 @@ impl PcodeOps for SymbolicValue {
         self
     }
 
-    fn predicated_on(self, _condition: Self::Bit) -> Self {
-        self
-    }
-
-    fn assert(self, _condition: Self::Bit) -> Self {
-        self
+    fn fill_bytes_with(_bit: Self::Bit, _num_bytes: usize) -> Self {
+        Self::default()
     }
 }
 

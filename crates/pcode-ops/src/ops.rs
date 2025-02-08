@@ -9,6 +9,9 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + FromIterator<Self::Byte> {
     /// A representation of a single bit.
     type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;
 
+    /// Create a value that is the given bit repeated to fill the specified number of bytes.
+    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self;
+
     /// Returns the number of bytes used to represent this value.
     fn num_bytes(&self) -> usize;
 
@@ -204,14 +207,6 @@ pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + FromIterator<Self::Byte> {
     /// than or equal to the unsigned integer input1, output is set to true. Both inputs must be the
     /// same size, and the output must have a size of 1.
     fn unsigned_greater_than_or_equals(self, rhs: Self) -> Self::Bit;
-
-    /// This evalutes the value predicated on the given condition. This is a bitwise conditional
-    /// evaluation. If the condition is false each bit of the value should evaluate to true.
-    fn predicated_on(self, condition: Self::Bit) -> Self;
-
-    /// This asserts the condition for the given value. This is a bitwise conditional evaluation.
-    /// If the condition is false each bit of the value should evaluate to false.
-    fn assert(self, condition: Self::Bit) -> Self;
 }
 
 /// Bitwise operations supported by pcode values.
