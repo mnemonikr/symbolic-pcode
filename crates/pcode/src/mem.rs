@@ -458,11 +458,11 @@ impl<M: VarnodeDataStore> LoadImage for ExecutableMemory<'_, M> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_fixture::{ConcreteValue, SymbolicValue};
+    use crate::test_fixture::SymbolicValue;
     use std::borrow::Cow;
 
     use libsla::AddressSpace;
-    use pcode_ops::PcodeOps;
+    use pcode_ops::Pcode128;
 
     use super::*;
 
@@ -490,9 +490,9 @@ mod tests {
 
     #[test]
     fn read_and_write() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 8);
-        let value: ConcreteValue = 0x8877665544332211u64.into();
+        let value: Pcode128 = 0x8877665544332211u64.into();
 
         // Read and write value into memory
         memory.write(&varnode, value)?;
@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn memory_branch_read() -> Result<()> {
         // Setup memory with an address space
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
 
         // Write an initial value to this address space
         let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
@@ -542,7 +542,7 @@ mod tests {
     fn new_branch() -> Result<()> {
         // Setup memory with an address space
         let addr_space = address_space(0);
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
 
         // Write an initial value to this address space
         let mut varnode = VarnodeData {
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn memory_tree() -> Result<()> {
-        let mut memory = MemoryBranch::new(GenericMemory::<ConcreteValue>::default());
+        let mut memory = MemoryBranch::new(GenericMemory::<Pcode128>::default());
         let x = true;
         let y = true;
         let panic_memory = memory.new_branch(x);
@@ -609,7 +609,7 @@ mod tests {
 
     #[test]
     fn memory_tree_false_branch_unwritten() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
         memory.write(&varnode, 0xbebeu16.into())?;
 
@@ -637,7 +637,7 @@ mod tests {
 
     #[test]
     fn memory_tree_live_branch_taken() -> Result<()> {
-        let mut memory = MemoryBranch::<GenericMemory<ConcreteValue>>::default();
+        let mut memory = MemoryBranch::<GenericMemory<Pcode128>>::default();
         let condition = true;
         let memory_else = memory.new_branch(condition);
         let return_address = VarnodeData::new(Address::new(address_space(0), 0), 1);
@@ -663,7 +663,7 @@ mod tests {
 
     #[test]
     fn memory_tree_live_branch_not_taken() -> Result<()> {
-        let mut memory = MemoryBranch::<GenericMemory<ConcreteValue>>::default();
+        let mut memory = MemoryBranch::<GenericMemory<Pcode128>>::default();
         let condition = false;
         let memory_else = memory.new_branch(condition);
         let return_address = VarnodeData::new(Address::new(address_space(0), 0), 1);
@@ -689,7 +689,7 @@ mod tests {
 
     #[test]
     fn write_too_few_bytes() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let destination = VarnodeData::new(Address::new(address_space(0), 0), 2);
         let original_value = 0xbeefu16;
         memory.write(&destination, original_value.into())?;
@@ -708,7 +708,7 @@ mod tests {
 
     #[test]
     fn write_too_many_bytes() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let destination = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let original_value = 0xbeu8;
         memory.write(&destination, original_value.into())?;
@@ -727,7 +727,7 @@ mod tests {
 
     #[test]
     fn write_overflows_address() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let destination = VarnodeData::new(Address::new(address_space(0), u64::MAX), 1);
         let result = memory.write(&destination, 0xffu8.into());
         assert!(
@@ -741,7 +741,7 @@ mod tests {
         let mut branch = MemoryBranch::<GenericMemory<_>>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let value = 1;
-        branch.write(&varnode, ConcreteValue::from(value))?;
+        branch.write(&varnode, Pcode128::from(value))?;
 
         let _child = branch.new_branch(true);
         let read_value: u8 = branch.read(&varnode)?.try_into().unwrap();
@@ -755,7 +755,7 @@ mod tests {
         let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let value = 1u8;
         let _child = branch.new_branch(true);
-        branch.write(&varnode, ConcreteValue::from(value))?;
+        branch.write(&varnode, Pcode128::from(value))?;
 
         // Increase varnode size such that will now read undefined data
         varnode.size = 2;
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn memory_branch_predicated_read() -> Result<()> {
-        let mut branch = MemoryBranch::<GenericMemory<ConcreteValue>>::default();
+        let mut branch = MemoryBranch::<GenericMemory<Pcode128>>::default();
         let _child = branch.new_branch(true);
         let varnode = VarnodeData::new(Address::new(address_space(0), u64::MAX), 1);
         let result = branch.read(&varnode);
@@ -784,7 +784,7 @@ mod tests {
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let mut true_branch = MemoryBranch::<GenericMemory<_>>::default();
         let false_branch = true_branch.new_branch(true);
-        true_branch.write(&varnode, ConcreteValue::from(value))?;
+        true_branch.write(&varnode, Pcode128::from(value))?;
 
         let live_branches = [true_branch, false_branch];
         let tree = MemoryTree::new(live_branches.iter(), std::iter::empty());
@@ -801,7 +801,7 @@ mod tests {
     fn memory_tree_without_branches() -> Result<()> {
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let tree =
-            MemoryTree::<GenericMemory<ConcreteValue>>::new(std::iter::empty(), std::iter::empty());
+            MemoryTree::<GenericMemory<Pcode128>>::new(std::iter::empty(), std::iter::empty());
         let result = tree.read(&varnode);
         assert!(
             matches!(result, Err(Error::InternalError(msg)) if msg == "memory tree has no live branches")
@@ -813,7 +813,7 @@ mod tests {
     fn executable_memory_instruction_bytes() -> Result<()> {
         // Setup memory with an address space
         let value = 0xbe;
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
 
         // Write an initial value to this address space
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
@@ -831,7 +831,7 @@ mod tests {
 
     #[test]
     fn executable_memory_undefined_data() -> Result<()> {
-        let memory = GenericMemory::<ConcreteValue>::default();
+        let memory = GenericMemory::<Pcode128>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let exec_mem = ExecutableMemory(&memory);
 
@@ -860,7 +860,7 @@ mod tests {
     fn executable_memory_partial_undefined_data() -> Result<()> {
         // Setup memory with an address space
         let value = 0xbe;
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
 
         // Write an initial value to this address space
         let mut varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
@@ -884,7 +884,7 @@ mod tests {
     fn read_const_addr_space() -> Result<()> {
         let expected_value = 0xdeadbeef;
         let varnode = VarnodeData::new(Address::new(const_space(), expected_value.into()), 4);
-        let memory = GenericMemory::<ConcreteValue>::default();
+        let memory = GenericMemory::<Pcode128>::default();
         let value: u32 = memory.read(&varnode)?.try_into().unwrap();
         assert_eq!(value, expected_value);
         Ok(())
@@ -893,7 +893,7 @@ mod tests {
     #[test]
     fn read_const_addr_space_invalid() -> Result<()> {
         let varnode = VarnodeData::new(Address::new(const_space(), 0), 9);
-        let memory = GenericMemory::<ConcreteValue>::default();
+        let memory = GenericMemory::<Pcode128>::default();
         let result = memory.read(&varnode);
         assert!(
             matches!(result, Err(Error::InvalidArguments(msg)) if msg == format!("varnode size {size} exceeds maximum allowed for constant address space", size = varnode.size))
@@ -903,7 +903,7 @@ mod tests {
 
     #[test]
     fn read_data_gap() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
 
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         memory.write(&varnode, 0x5au8.into())?;
@@ -921,7 +921,7 @@ mod tests {
 
     #[test]
     fn read_bit() -> Result<()> {
-        let mut memory = GenericMemory::<ConcreteValue>::default();
+        let mut memory = GenericMemory::<Pcode128>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let value = 0x01u8;
         memory.write(&varnode, value.into())?;
@@ -932,7 +932,7 @@ mod tests {
 
     #[test]
     fn read_bit_invalid_varnode_size() -> Result<()> {
-        let memory = GenericMemory::<ConcreteValue>::default();
+        let memory = GenericMemory::<Pcode128>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
         let result = memory.read_bit(&varnode);
         assert!(
@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn read_bit_undefined() -> Result<()> {
-        let memory = GenericMemory::<ConcreteValue>::default();
+        let memory = GenericMemory::<Pcode128>::default();
         let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
         let result = memory.read_bit(&varnode);
         assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
