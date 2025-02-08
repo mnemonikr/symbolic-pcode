@@ -1,11 +1,13 @@
 use crate::{BitwisePcodeOps, PcodeOps};
 
+/// Representation of a value with a bit size no greater than 128.
 #[derive(Copy, Clone, Debug)]
 pub struct Pcode128 {
     value: u128,
     valid_bits: u32,
 }
 
+/// Default value is a 0 byte (8 bits).
 impl Default for Pcode128 {
     fn default() -> Self {
         Self {
@@ -19,7 +21,7 @@ impl Pcode128 {
     const MAX_BYTES: u32 = const { u128::BITS / u8::BITS };
 
     pub fn new(value: u128, valid_bits: u32) -> Self {
-        assert!(valid_bits <= u128::BITS);
+        assert!(valid_bits <= u128::BITS && valid_bits > 0);
         let mask = u128::MAX >> (u128::BITS - valid_bits);
 
         Self {
@@ -57,6 +59,18 @@ impl Pcode128 {
         };
 
         value as i128
+    }
+}
+
+impl From<u128> for Pcode128 {
+    fn from(value: u128) -> Self {
+        Pcode128::new(value, u128::BITS)
+    }
+}
+
+impl From<Pcode128> for u128 {
+    fn from(pcode_value: Pcode128) -> Self {
+        pcode_value.value()
     }
 }
 
@@ -105,7 +119,7 @@ impl PcodeOps for Pcode128 {
     type Byte = u8;
 
     fn num_bytes(&self) -> usize {
-        ((self.valid_bits + u8::BITS - 1) / u8::BITS) as usize
+        self.valid_bits.div_ceil(u8::BITS) as usize
     }
 
     fn add(self, rhs: Self) -> Self {
@@ -124,6 +138,7 @@ impl PcodeOps for Pcode128 {
     }
 
     fn signed_carry(self, rhs: Self) -> Self::Bit {
+        assert_eq!(self.valid_bits, rhs.valid_bits);
         let value = self.signed_value().checked_add(rhs.signed_value());
         if let Some(value) = value {
             value != Pcode128::new(value as u128, self.valid_bits).signed_value()
