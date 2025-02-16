@@ -143,7 +143,7 @@ impl BitOperation {
     }
 }
 
-///
+/// Validation functions for the implementation of [PcodeOps] for a given type.
 pub struct Validator<T: PcodeOps> {
     // No subtyping (invariant), !Send + !Sync
     _phantom: PhantomData<*mut T>,
