@@ -758,7 +758,6 @@ mod tests {
 
     #[test]
     fn test_assembly() -> Result<()> {
-        const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
         let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
