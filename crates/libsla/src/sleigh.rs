@@ -19,7 +19,7 @@ pub enum Error {
     #[error("insufficient data at varnode {0}")]
     InsufficientData(VarnodeData),
 
-    #[error("dependency error: {message}: {source}")]
+    #[error("dependency error: {message} caused by {source}")]
     DependencyError {
         message: Cow<'static, str>,
         source: Box<dyn std::error::Error>,
@@ -305,6 +305,7 @@ impl std::fmt::Display for PcodeInstruction {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct AssemblyInstruction {
     pub address: Address,
     pub mnemonic: String,
@@ -757,7 +758,6 @@ mod tests {
 
     #[test]
     fn test_assembly() -> Result<()> {
-        const NUM_INSTRUCTIONS: usize = 7;
         let load_image =
             LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
         let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
@@ -802,7 +802,7 @@ mod tests {
             ("ram".to_string(), 13, "RET".to_string(), "".to_string()),
         ];
 
-        for i in 0..NUM_INSTRUCTIONS {
+        for expected_entry in expected {
             let address = Address {
                 offset,
                 address_space: sleigh.default_code_space(),
@@ -812,13 +812,13 @@ mod tests {
                 .disassemble_native(&load_image, address)
                 .expect("Failed to decode instruction");
             let instruction = &response.instructions[0];
-            assert_eq!(instruction.address.address_space.name, expected[i].0);
-            assert_eq!(instruction.address.offset, expected[i].1);
-            assert_eq!(instruction.mnemonic, expected[i].2);
-            assert_eq!(instruction.body, expected[i].3);
+            assert_eq!(instruction.address.address_space.name, expected_entry.0);
+            assert_eq!(instruction.address.offset, expected_entry.1);
+            assert_eq!(instruction.mnemonic, expected_entry.2);
+            assert_eq!(instruction.body, expected_entry.3);
             println!(
                 "{}:{:016x} | {} {}",
-                expected[i].0, expected[i].1, expected[i].2, expected[i].3
+                expected_entry.0, expected_entry.1, expected_entry.2, expected_entry.3
             );
             offset += response.origin.size as u64;
         }
@@ -843,6 +843,133 @@ mod tests {
         assert_eq!(rax.address.address_space.name, "register");
         assert_eq!(rax.address.offset, 0);
         assert_eq!(rax.size, 8);
+        Ok(())
+    }
+
+    #[test]
+    pub fn addr_space_type() -> Result<()> {
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_IOP),
+            AddressSpaceType::PcodeOp
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_CONSTANT),
+            AddressSpaceType::Constant
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_PROCESSOR),
+            AddressSpaceType::Processor
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_JOIN),
+            AddressSpaceType::Join
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_FSPEC),
+            AddressSpaceType::FuncCallSpecs
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_INTERNAL),
+            AddressSpaceType::Internal
+        );
+        assert_eq!(
+            AddressSpaceType::from(sys::spacetype::IPTR_SPACEBASE),
+            AddressSpaceType::BaseRegister
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn invalid_register_name() -> Result<()> {
+        let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
+            .expect("Failed to read processor spec file");
+        let processor_spec =
+            fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+                .expect("Failed to read processor spec file");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
+
+        let invalid_register_name = "invalid_register";
+        let err = sleigh
+            .register_from_name(invalid_register_name)
+            .expect_err(&format!(
+                "register '{invalid_register_name}' should be invalid"
+            ));
+
+        let expected_message: Cow<'static, str> =
+            Cow::Owned(format!("failed to get register {invalid_register_name}"));
+        match err {
+            Error::DependencyError { message, .. } => {
+                assert_eq!(message, expected_message);
+            }
+            _ => panic!("Expected dependency error, got {err:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn insufficient_data() -> Result<()> {
+        let load_image = LoadImageImpl(b"\x00".to_vec());
+        let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
+            .expect("Failed to read processor spec file");
+        let processor_spec =
+            fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+                .expect("Failed to read processor spec file");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
+        let offset = 0;
+        let address = Address {
+            offset,
+            address_space: sleigh.default_code_space(),
+        };
+
+        let err = sleigh
+            .disassemble_native(&load_image, address)
+            .expect_err("Expected decoding error");
+        println!("{err:?}");
+
+        assert!(matches!(err, Error::InsufficientData { .. }));
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn invalid_instruction() -> Result<()> {
+        let load_image = LoadImageImpl(std::iter::repeat_n(0xFF, 16).collect());
+        let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
+            .expect("Failed to read processor spec file");
+        let processor_spec =
+            fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+                .expect("Failed to read processor spec file");
+        let sleigh = GhidraSleigh::builder()
+            .sleigh_spec(&sleigh_spec)?
+            .processor_spec(&processor_spec)?
+            .build()?;
+        let offset = 0;
+        let address = Address {
+            offset,
+            address_space: sleigh.default_code_space(),
+        };
+
+        let err = sleigh
+            .disassemble_native(&load_image, address)
+            .expect_err("Expected decoding error");
+        println!("{err:?}");
+
+        assert!(matches!(
+            err,
+            Error::DependencyError {
+                message: Cow::Borrowed("failed to decode instruction"),
+                ..
+            }
+        ));
+
         Ok(())
     }
 }
