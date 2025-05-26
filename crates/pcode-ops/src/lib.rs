@@ -6,3 +6,6 @@ mod pcode128;
 
 pub use ops::*;
 pub use pcode128::*;
+
+#[cfg(test)]
+mod tests;

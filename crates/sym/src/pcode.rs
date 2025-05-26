@@ -159,19 +159,6 @@ impl PcodeOps for SymbolicBitVec {
     }
 
     fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
-        std::iter::repeat(bit)
-            .take(u8::BITS as usize * num_bytes)
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pcode_ops::validate;
-
-    #[test]
-    fn validate_pcode() -> validate::Result {
-        validate::Validator::<SymbolicBitVec>::validate()
+        std::iter::repeat_n(bit, u8::BITS as usize * num_bytes).collect()
     }
 }

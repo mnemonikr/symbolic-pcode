@@ -30,10 +30,6 @@ impl Pcode128 {
         }
     }
 
-    fn bitmask(&self) -> u128 {
-        u128::MAX >> (u128::BITS - self.valid_bits)
-    }
-
     fn map(&self, f: impl Fn(u128) -> u128) -> Self {
         Self::new(f(self.value), self.valid_bits)
     }
@@ -279,9 +275,7 @@ impl PcodeOps for Pcode128 {
     }
 
     fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
-        std::iter::repeat(if bit { u8::MAX } else { 0 })
-            .take(num_bytes)
-            .collect()
+        std::iter::repeat_n(if bit { u8::MAX } else { 0 }, num_bytes).collect()
     }
 
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {
@@ -301,16 +295,5 @@ impl FromIterator<u8> for Pcode128 {
             valid_bits += 8;
         }
         Pcode128::new(u128::from_le_bytes(buffer), valid_bits)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::validate::*;
-
-    #[test]
-    fn validate_pcode128_impl() -> Result {
-        Validator::<Pcode128>::validate()
     }
 }
