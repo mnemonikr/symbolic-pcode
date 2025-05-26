@@ -8,4 +8,4 @@ pub use ops::*;
 pub use pcode128::*;
 
 #[cfg(test)]
-mod test;
+mod tests;
