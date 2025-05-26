@@ -43,6 +43,15 @@ impl SymbolicBit {
     pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
     }
+
+    pub fn evaluate(&self, callback: impl Fn(usize) -> bool) -> bool {
+        match self {
+            Self::Literal(x) => *x,
+            Self::Variable(id) => callback(*id),
+            Self::Not(bit) => !bit.evaluate(callback),
+            Self::And(lhs, rhs) => lhs.evaluate(&callback) && rhs.evaluate(callback),
+        }
+    }
 }
 
 impl Default for SymbolicBit {
