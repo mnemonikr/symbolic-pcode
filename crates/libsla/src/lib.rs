@@ -14,3 +14,6 @@ mod sleigh;
 
 pub use opcodes::*;
 pub use sleigh::*;
+
+#[cfg(test)]
+mod tests;
