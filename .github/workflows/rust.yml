@@ -46,6 +46,6 @@ jobs:
         --summary-only \
         --use-color \
         --ignore-filename-regex='/.cargo/registry' \
-        --ignore-filename-regex='rustc/'
-
+        --ignore-filename-regex='rustc/' \
+        --ignore-filename-regex='src/tests/'
 
