@@ -14,7 +14,12 @@ symbolic-pcode = { path = "../crates/pcode" }
 sym = { path = "../crates/sym" }
 
 [dev-dependencies]
+# This requires z3 to be installed locally as a shared library.
 z3 = "0.12"
+
+# This supports building and statically linking it but requires cmake to be installed
+# and substantially increases the cost of a clean build
+# z3 = { version = "0.12", features = ["static-link-z3"] }
 
 [[test]]
 name = "x86_64_emulator"
