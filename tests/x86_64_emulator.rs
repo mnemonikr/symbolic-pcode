@@ -4,7 +4,7 @@ use std::path::Path;
 
 use common::{x86_64_sleigh, Memory, ProcessorHandlerX86, TracingEmulator};
 use libsla::{Address, Sleigh, VarnodeData};
-use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableMapping};
 use symbolic_pcode::{
     emulator::StandardPcodeEmulator,
     mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
@@ -680,7 +680,8 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     // symbolic value, we will evaluate the branch using the concrete value instead.
     let concrete_input = -3i32;
     let concrete_input = SymbolicBitVec::from(concrete_input as u32);
-    let mut evaluator = Evaluator::with_concrete_values(&input_value, &concrete_input);
+    let mut evaluator =
+        Evaluator::new(VariableMapping::from_bitvecs(&input_value, &concrete_input));
 
     // Input register is EDI
     let name = "EDI";
