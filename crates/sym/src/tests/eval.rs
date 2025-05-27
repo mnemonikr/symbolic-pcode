@@ -29,9 +29,9 @@ fn evaluate_expression() {
 fn evaluator_cache() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
-    let mut eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, true)]));
-    let z = x.clone() & y.clone();
-    let w = y & x;
+    let mut eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, false)]));
+    let z = x.clone() & !y.clone();
+    let w = !y & x;
 
     // This will not trigger the cache because individual AND gates are not shared.
     // assert!(eval.evaluate(&z));
@@ -41,4 +41,13 @@ fn evaluator_cache() {
     // The cache is used even though the operands are swapped.
     assert!(eval.evaluate(&(z.clone() & w.clone())));
     assert!(eval.evaluate(&(w & z)));
+}
+
+#[test]
+fn var_assignments_from_bitvecs() {
+    let variables = SymbolicBitVec::from_iter([SymbolicBit::Variable(0), SymbolicBit::Variable(1)]);
+    let literals = SymbolicBitVec::from_iter([TRUE, FALSE]);
+    let assignments = VariableAssignments::from_bitvecs(&variables, &literals);
+    assert!(assignments.get(0).unwrap());
+    assert!(!assignments.get(1).unwrap());
 }
