@@ -43,16 +43,67 @@ impl SymbolicBit {
     pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
     }
+}
 
-    pub fn evaluate<F>(&self, resolver: F) -> bool
-    where
-        F: Copy + Fn(usize) -> bool,
-    {
-        match self {
-            Self::Literal(x) => *x,
-            Self::Variable(id) => resolver(*id),
-            Self::Not(bit) => !bit.evaluate(resolver),
-            Self::And(lhs, rhs) => lhs.evaluate(resolver) && rhs.evaluate(resolver),
+#[derive(Clone, Debug, Default)]
+pub struct Evaluator {
+    variables: std::collections::HashMap<usize, bool>,
+    and_gates: std::collections::HashMap<(usize, usize), bool>,
+}
+
+impl Evaluator {
+    pub fn with_concrete_values(variables: &SymbolicBitVec, literals: &SymbolicBitVec) -> Self {
+        let variables = std::iter::zip(variables.iter(), literals.iter())
+            .filter_map(|(variable, literal)| {
+                if let SymbolicBit::Variable(variable) = variable {
+                    if let SymbolicBit::Literal(literal) = literal {
+                        return Some((*variable, *literal));
+                    }
+                }
+
+                None
+            })
+            .collect();
+
+        Self {
+            variables,
+            and_gates: Default::default(),
+        }
+    }
+
+    pub fn evaluate(&mut self, bit: &SymbolicBit) -> bool {
+        match bit {
+            SymbolicBit::Literal(x) => *x,
+            SymbolicBit::Variable(id) => *self
+                .variables
+                .get(id)
+                .expect("variable should be defined in cache"),
+            SymbolicBit::Not(bit) => !self.evaluate(bit),
+            SymbolicBit::And(lhs, rhs) => {
+                let lhs_addr = Rc::as_ptr(lhs).addr();
+                let rhs_addr = Rc::as_ptr(rhs).addr();
+                let cache_key = (
+                    usize::min(lhs_addr, rhs_addr),
+                    usize::max(lhs_addr, rhs_addr),
+                );
+
+                if let Some(value) = self.and_gates.get(&cache_key).copied() {
+                    value
+                } else {
+                    let value = self.evaluate(lhs) && self.evaluate(rhs);
+                    self.and_gates.insert(cache_key, value);
+                    value
+                }
+            }
+        }
+    }
+}
+
+impl FromIterator<(usize, bool)> for Evaluator {
+    fn from_iter<T: IntoIterator<Item = (usize, bool)>>(iter: T) -> Self {
+        Self {
+            variables: iter.into_iter().collect(),
+            and_gates: Default::default(),
         }
     }
 }

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use common::{x86_64_sleigh, Memory, ProcessorHandlerX86, TracingEmulator};
 use libsla::{Address, Sleigh, VarnodeData};
-use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::{
     emulator::StandardPcodeEmulator,
     mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
@@ -676,6 +676,12 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     let input_value: [_; 32] = std::array::from_fn(sym::SymbolicBit::Variable);
     let input_value = input_value.into_iter().collect();
 
+    // The test will emulate with a symbolic value. However if we encounter any branch that uses a
+    // symbolic value, we will evaluate the branch using the concrete value instead.
+    let concrete_input = -3i32;
+    let concrete_input = SymbolicBitVec::from(concrete_input as u32);
+    let mut evaluator = Evaluator::with_concrete_values(&input_value, &concrete_input);
+
     // Input register is EDI
     let name = "EDI";
     let register = sleigh
@@ -691,19 +697,10 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         .register_from_name("RIP")
         .expect("failed to get RIP register");
 
-    // The test will emulate with a symbolic value. However if we encounter any branch that uses a
-    // symbolic value, we will evaluate the branch using the concrete value instead.
-    let concrete_input = -3i32;
     loop {
         if let Some(false_processor) = processor.step(&sleigh)? {
             // Evaluate the branch using the concrete value instead of the symbolic value
-            let concrete_evaluation = processor.memory().leaf_predicate().evaluate(|variable_id| {
-                let byte_index = variable_id as u32 / u8::BITS;
-                let bytes = concrete_input.to_le_bytes();
-                let bit_offset = variable_id as u32 % u8::BITS;
-                let value = bytes[byte_index as usize] & (1u8 << bit_offset);
-                value > 0
-            });
+            let concrete_evaluation = evaluator.evaluate(processor.memory().leaf_predicate());
 
             // The processor will step forward using the true branch and will return the false
             // branch as the other option. If the concrete value indicates we should take the false
