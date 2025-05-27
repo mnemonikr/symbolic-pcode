@@ -3,20 +3,20 @@ use std::rc::Rc;
 
 use crate::{SymbolicBit, SymbolicBitVec};
 
-/// A simple evaluator that evaluates a [SymbolicBit] given a [VariableMapping]. Portions of the
-/// evaluation may be cached since the variable mapping is fixed for a given evaluator.
+/// A simple evaluator that evaluates a [SymbolicBit] given a [VariableAssignments]. Portions of the
+/// evaluation may be cached since the variable assignments are fixed for a given evaluator.
 #[derive(Clone, Debug, Default)]
 pub struct Evaluator {
-    mapping: VariableMapping,
+    assignments: VariableAssignments,
     and_gates: std::collections::HashMap<(usize, usize), bool>,
 }
 
 impl Evaluator {
-    /// Create a new instance using the given [VariableMapping]. The variable mapping is fixed for
+    /// Create a new instance using the given [VariableAssignments]. The assignments are fixed for
     /// the lifetime of this evaluator.
-    pub fn new(mapping: VariableMapping) -> Self {
+    pub fn new(assignments: VariableAssignments) -> Self {
         Self {
-            mapping,
+            assignments,
             and_gates: Default::default(),
         }
     }
@@ -26,7 +26,7 @@ impl Evaluator {
         match bit {
             SymbolicBit::Literal(x) => *x,
             SymbolicBit::Variable(id) => self
-                .mapping
+                .assignments
                 .get(*id)
                 .expect("variable should be defined in cache"),
             SymbolicBit::Not(bit) => !self.evaluate(bit),
@@ -50,20 +50,20 @@ impl Evaluator {
     }
 }
 
-impl From<VariableMapping> for Evaluator {
-    fn from(value: VariableMapping) -> Self {
+impl From<VariableAssignments> for Evaluator {
+    fn from(value: VariableAssignments) -> Self {
         Self::new(value)
     }
 }
 
 /// Mapping [SymbolicBit::Variable] identifiers to [SymbolicBit::Literal] values.
 #[derive(Clone, Debug, Default)]
-pub struct VariableMapping {
+pub struct VariableAssignments {
     assignments: BTreeMap<usize, bool>,
 }
 
-impl VariableMapping {
-    /// Create a variable mapping given a [SymbolicBitVec] containing only [SymbolicBit::Variable]
+impl VariableAssignments {
+    /// Create variable assignments given a [SymbolicBitVec] containing only [SymbolicBit::Variable]
     /// variants and another [SymbolicBitVec] containing only [SymbolicBit::Literal] variants.
     /// Incorrect variants in either will be ignored.
     ///
@@ -88,7 +88,7 @@ impl VariableMapping {
     }
 }
 
-impl FromIterator<(usize, bool)> for VariableMapping {
+impl FromIterator<(usize, bool)> for VariableAssignments {
     fn from_iter<T: IntoIterator<Item = (usize, bool)>>(iter: T) -> Self {
         Self {
             assignments: iter.into_iter().collect(),

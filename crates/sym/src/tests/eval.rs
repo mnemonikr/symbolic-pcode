@@ -11,7 +11,7 @@ fn evaluate_literal() {
 fn evaluate_variable() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
-    let mut eval = Evaluator::new(VariableMapping::from_iter([(0, true), (1, false)]));
+    let mut eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, false)]));
     assert!(eval.evaluate(&x));
     assert!(!eval.evaluate(&y));
 }
@@ -20,7 +20,7 @@ fn evaluate_variable() {
 fn evaluate_expression() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
-    let mut eval = Evaluator::new(VariableMapping::from_iter([(0, true), (1, false)]));
+    let mut eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, false)]));
     let z = x ^ y;
     assert!(eval.evaluate(&z));
 }
@@ -29,7 +29,7 @@ fn evaluate_expression() {
 fn evaluator_cache() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
-    let mut eval = Evaluator::new(VariableMapping::from_iter([(0, true), (1, true)]));
+    let mut eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, true)]));
     let z = x.clone() & y.clone();
     let w = y & x;
 
