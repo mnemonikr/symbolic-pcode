@@ -51,3 +51,13 @@ fn var_assignments_from_bitvecs() {
     assert!(assignments.get(0).unwrap());
     assert!(!assignments.get(1).unwrap());
 }
+
+#[test]
+fn evaluator_from_assignments() {
+    let variables = SymbolicBitVec::from_iter([SymbolicBit::Variable(0), SymbolicBit::Variable(1)]);
+    let literals = SymbolicBitVec::from_iter([TRUE, FALSE]);
+    let assignments = VariableAssignments::from_bitvecs(&variables, &literals);
+    let mut evaluator = Evaluator::from(assignments);
+    assert!(evaluator.evaluate(&SymbolicBit::Variable(0)));
+    assert!(!evaluator.evaluate(&SymbolicBit::Variable(1)));
+}
