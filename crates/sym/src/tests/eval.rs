@@ -53,6 +53,29 @@ fn var_assignments_from_bitvecs() {
 }
 
 #[test]
+fn var_assignments_from_swapped_bitvecs() {
+    let variables = SymbolicBitVec::from_iter([SymbolicBit::Variable(0), SymbolicBit::Variable(1)]);
+    let literals = SymbolicBitVec::from_iter([TRUE, FALSE]);
+
+    // Swapped the literals and the variables
+    let assignments = VariableAssignments::from_bitvecs(&literals, &variables);
+
+    assert!(assignments.get(0).is_none());
+    assert!(assignments.get(1).is_none());
+}
+
+#[test]
+fn var_assignments_from_bitvecs_without_literals() {
+    let variables = SymbolicBitVec::from_iter([SymbolicBit::Variable(0), SymbolicBit::Variable(1)]);
+
+    // Swapped the literals and the variables
+    let assignments = VariableAssignments::from_bitvecs(&variables, &variables);
+
+    assert!(assignments.get(0).is_none());
+    assert!(assignments.get(1).is_none());
+}
+
+#[test]
 fn evaluator_from_assignments() {
     let variables = SymbolicBitVec::from_iter([SymbolicBit::Variable(0), SymbolicBit::Variable(1)]);
     let literals = SymbolicBitVec::from_iter([TRUE, FALSE]);
