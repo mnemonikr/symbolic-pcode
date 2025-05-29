@@ -812,7 +812,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
 
             // The initial concrete value was a negative number, so the branch taken was x <= 0.
             // Taking the other branch would entail x > 0 meaning the most-significant bit should
-            // be unset. The other bits could be anything.
+            // be unset. The other bits could be anything as long as x != 0
             if variable_id == 31 {
                 assert!(
                     !solved_value,
