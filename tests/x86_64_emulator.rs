@@ -4,10 +4,10 @@ use std::path::Path;
 
 use common::{x86_64_sleigh, Memory, ProcessorHandlerX86, TracingEmulator};
 use libsla::{Address, Sleigh, VarnodeData};
-use sym::{self, SymbolicBit, SymbolicBitVec, SymbolicByte};
+use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
     emulator::StandardPcodeEmulator,
-    mem::{MemoryTree, VarnodeDataStore},
+    mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
     processor::{self, Processor, ProcessorManager, ProcessorState},
 };
 
@@ -609,6 +609,225 @@ fn z3_integration() -> processor::Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+#[test]
+fn take_the_path_not_taken() -> processor::Result<()> {
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
+    let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+    let mut memory = Memory::default();
+    let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
+        let register = sleigh
+            .register_from_name(name)
+            .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
+        memory
+            .write(&register, data.iter().copied().collect())
+            .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
+    };
+
+    // Small program: if x > 0 { x + x } else { x * x }
+    // The input x is provided in the register EDI and is signed 32-bit
+    let program_bytes: Vec<u8> = vec![
+        0x55, // PUSH RBP
+        0x48, 0x89, 0xe5, // MOV RBP, RSP
+        0x89, 0x7d, 0xfc, // MOV DWORD PTR [RBP - 4], EDI
+        0x83, 0x7d, 0xfc, 0x00, // CMP DWORD PTR [RBP - 4], 0
+        0x7e, 0x07, // JLE [START + 0x14]
+        0x8b, 0x45, 0xfc, // MOV EAX, DWORD PTR [RBP - 0x4]
+        0x01, 0xc0, // ADD EAX, EAX
+        0xeb, 0x06, // JMP [START + 0x1a]
+        0x8b, 0x45, 0xfc, // MOV EAX, DWORD PTR [RBP - 0x4]
+        0x0f, 0xaf, 0xc0, // IMUL EAX, EAX
+        0x5d, // POP RBP
+        0xc3, // RET
+    ];
+
+    let code_offset = 0;
+    memory.write(
+        &VarnodeData::new(
+            Address::new(sleigh.default_code_space(), code_offset),
+            program_bytes.len(),
+        ),
+        program_bytes.into_iter().collect(),
+    )?;
+    write_register(&mut memory, "RIP", &code_offset.to_le_bytes());
+
+    // Initialize stack and base pointer registers
+    write_register(&mut memory, "RSP", &INITIAL_STACK.to_le_bytes());
+    write_register(&mut memory, "RBP", &INITIAL_STACK.to_le_bytes());
+
+    // Put EXIT_RIP onto the stack. The final RET will trigger this.
+    memory.write(
+        &VarnodeData::new(
+            Address::new(
+                sleigh
+                    .address_space_by_name("ram")
+                    .expect("failed to find ram"),
+                INITIAL_STACK,
+            ),
+            EXIT_RIP.to_le_bytes().len(),
+        ),
+        EXIT_RIP.into(),
+    )?;
+
+    // Create symbolic input
+    let input_value: [_; 32] = std::array::from_fn(sym::SymbolicBit::Variable);
+    let input_value = input_value.into_iter().collect();
+
+    // The test will emulate with a symbolic value. However if we encounter any branch that uses a
+    // symbolic value, we will evaluate the branch using the concrete value instead.
+    let concrete_input = -3i32;
+    let concrete_input = SymbolicBitVec::from(concrete_input as u32);
+    let mut evaluator = Evaluator::new(VariableAssignments::from_bitvecs(
+        &input_value,
+        &concrete_input,
+    ));
+
+    // Input register is EDI
+    let name = "EDI";
+    let register = sleigh
+        .register_from_name(name)
+        .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
+    memory
+        .write(&register, input_value)
+        .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
+
+    let handler = ProcessorHandlerX86::new(&sleigh);
+    let mut processor = Processor::new(memory, emulator, handler);
+    let rip = sleigh
+        .register_from_name("RIP")
+        .expect("failed to get RIP register");
+
+    loop {
+        if let Some(false_processor) = processor.step(&sleigh)? {
+            // Evaluate the branch using the concrete value instead of the symbolic value
+            let concrete_evaluation = evaluator.evaluate(processor.memory().leaf_predicate());
+
+            // The processor will step forward using the true branch and will return the false
+            // branch as the other option. If the concrete value indicates we should take the false
+            // branch then change processors
+            if !concrete_evaluation {
+                processor = false_processor;
+            }
+        }
+
+        // Exit loop when we reach the magic RIP
+        let instruction_pointer: u64 = processor
+            .memory()
+            .read(&rip)?
+            .try_into()
+            .expect("failed to concretize RIP");
+        if instruction_pointer == EXIT_RIP && matches!(processor.state(), ProcessorState::Fetch) {
+            break;
+        }
+    }
+
+    // The processor was evaluated with the concrete value for branching. Now lets ask Z3 what
+    // concrete input value could have been used to take the other path of the most recent branch.
+    let parent_predicate = processor
+        .memory()
+        .parent()
+        .map(MemoryBranch::branch_predicate)
+        .unwrap_or(&sym::TRUE);
+    let other_branch = parent_predicate.clone() & !processor.memory().leaf_predicate().clone();
+
+    // Solve with Z3
+    let aiger = sym::aiger::Aiger::from_bits(std::iter::once(other_branch));
+    let cfg = z3::Config::new();
+    let ctx = z3::Context::new(&cfg);
+
+    let mut z3_ast = std::collections::BTreeMap::new();
+    for input in aiger.inputs() {
+        if input.is_negated() {
+            panic!("input literal is negated: {input}");
+        }
+
+        let z3_name = format!("x{index}", index = input.index());
+        z3_ast.insert(input, z3::ast::Bool::new_const(&ctx, z3_name));
+    }
+
+    for gate in aiger.gates() {
+        let aiger_literal = gate.input_lhs();
+        if !z3_ast.contains_key(&aiger_literal) {
+            assert!(aiger_literal.is_negated());
+            let z3_value = z3_ast
+                .get(&aiger_literal.negated())
+                .unwrap_or_else(|| panic!("missing literal (negated): {aiger_literal}"));
+            z3_ast.insert(aiger_literal, z3::ast::Bool::not(z3_value));
+        };
+
+        let aiger_literal = gate.input_rhs();
+        if !z3_ast.contains_key(&aiger_literal) {
+            assert!(aiger_literal.is_negated());
+            let z3_value = z3_ast
+                .get(&aiger_literal.negated())
+                .unwrap_or_else(|| panic!("missing literal (negated): {aiger_literal}"));
+            z3_ast.insert(aiger_literal, z3::ast::Bool::not(z3_value));
+        };
+
+        let z3_lhs = z3_ast.get(&gate.input_lhs()).expect("missing lhs");
+        let z3_rhs = z3_ast.get(&gate.input_rhs()).expect("missing rhs");
+        let z3_gate = z3::ast::Bool::and(&ctx, &[z3_lhs, z3_rhs]);
+
+        if gate.gate_literal().is_negated() {
+            panic!("gate literal is negated: {gate:?}");
+        }
+
+        z3_ast.insert(gate.gate_literal(), z3_gate);
+    }
+
+    let solver = z3::Solver::new(&ctx);
+    for output in aiger.outputs() {
+        if output.is_const() {
+            println!("Output is constant: {output}");
+            break;
+        }
+
+        if output.is_negated() {
+            let z3_output = z3_ast
+                .get(&output.negated())
+                .expect("missing output (negated)");
+            solver.assert(&z3::ast::Bool::not(z3_output));
+        } else {
+            let z3_output = z3_ast.get(&output).expect("missing output");
+            solver.assert(z3_output);
+        }
+    }
+
+    let sat_result = solver.check();
+    assert_eq!(sat_result, z3::SatResult::Sat);
+
+    let model = solver.get_model().expect("model not returned by solver");
+    let mut nonzero_lower_bit = false;
+    for input in aiger.inputs() {
+        let z3_input = z3_ast.get(&input).expect("missing input");
+        if let Some(z3_value) = model.get_const_interp(z3_input) {
+            let variable_id = aiger
+                .input_variable_id(input)
+                .unwrap_or_else(|| panic!("input {input} does not map to a variable"));
+            let solved_value = z3_value.as_bool().expect("non-bool assignment for {input}");
+            println!("Input variable id {variable_id} has value {solved_value}");
+
+            // The initial concrete value was a negative number, so the branch taken was x <= 0.
+            // Taking the other branch would entail x > 0 meaning the most-significant bit should
+            // be unset. The other bits could be anything as long as x != 0
+            if variable_id == 31 {
+                assert!(
+                    !solved_value,
+                    "expected input variable {variable_id} to be unset"
+                );
+            } else if solved_value {
+                nonzero_lower_bit = true;
+            }
+        }
+    }
+
+    assert!(
+        nonzero_lower_bit,
+        "expected at least one lower bit to be set"
+    );
 
     Ok(())
 }

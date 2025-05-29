@@ -219,6 +219,11 @@ impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
         }
     }
 
+    /// Get the parent memory branch if it exists
+    pub fn parent(&self) -> Option<&MemoryBranch<M>> {
+        self.parent.as_deref()
+    }
+
     /// Get the predicate associated with the entire branch. The branch predicate is the
     /// conjunction of all predicates leading to and including the leaf predicate of this branch.
     ///

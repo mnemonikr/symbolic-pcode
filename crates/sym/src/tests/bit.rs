@@ -1,4 +1,4 @@
-use crate::SymbolicBit;
+use crate::*;
 
 #[test]
 fn bit_equality() {

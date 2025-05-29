@@ -46,3 +46,7 @@ The sleigh compiler must be built from the [Ghidra decompiler source](https://gi
 ## Compile Sleigh Processor Specification (.slaspec)
 
 The relevant .slaspec file must be compiled using the Sleigh compiler to generate the appropriate .sla file for the target architecture. Existing .slaspec files can be found in the [Ghidra processors repository](https://github.com/NationalSecurityAgency/ghidra/tree/stable/Ghidra/Processors).
+
+# Building tests
+
+The integration tests use [Z3](https://github.com/Z3Prover/z3) to perform constraint solving and expects the Z3 shared library to be installed. Alternatively the integration test [Cargo.toml](./tests/Cargo.toml) can be updated to build and statically link Z3. See the comments in that file for more details.
