@@ -800,6 +800,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     assert_eq!(sat_result, z3::SatResult::Sat);
 
     let model = solver.get_model().expect("model not returned by solver");
+    let mut nonzero_lower_bit = false;
     for input in aiger.inputs() {
         let z3_input = z3_ast.get(&input).expect("missing input");
         if let Some(z3_value) = model.get_const_interp(z3_input) {
@@ -817,9 +818,16 @@ fn take_the_path_not_taken() -> processor::Result<()> {
                     !solved_value,
                     "expected input variable {variable_id} to be unset"
                 );
+            } else if solved_value {
+                nonzero_lower_bit = true;
             }
         }
     }
+
+    assert!(
+        nonzero_lower_bit,
+        "expected at least one lower bit to be set"
+    );
 
     Ok(())
 }
