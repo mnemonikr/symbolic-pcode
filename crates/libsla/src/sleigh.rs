@@ -70,7 +70,7 @@ pub trait Sleigh {
 }
 
 /// An address is represented by an offset into an address space
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
     /// However, when used in conjunction with the constant address space, the offset is the actual
@@ -86,6 +86,15 @@ impl Address {
             address_space,
             offset,
         }
+    }
+}
+
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Address")
+            .field("offset", &format!("{offset:#016x}", offset = &self.offset))
+            .field("address_space", &self.address_space)
+            .finish()
     }
 }
 
@@ -153,8 +162,20 @@ impl From<&sys::VarnodeData> for VarnodeData {
 }
 
 /// Address space identifier for an address space
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AddressSpaceId(usize);
+
+impl std::fmt::Debug for AddressSpaceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AddressSpaceId")
+            .field(&format!(
+                "{id:#0width$x}",
+                id = &self.0,
+                width = 2 * std::mem::size_of::<usize>()
+            ))
+            .finish()
+    }
+}
 
 impl std::fmt::Display for AddressSpaceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -347,7 +368,7 @@ impl<T> Disassembly<T> {
 
 impl<T: std::fmt::Display> std::fmt::Display for Disassembly<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        writeln!(
             f,
             "[{origin}]: {count} instructions",
             origin = self.origin,
