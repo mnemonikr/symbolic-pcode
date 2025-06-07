@@ -11,9 +11,12 @@ edition.workspace = true
 [dependencies]
 libsla = { path = "../crates/libsla" }
 symbolic-pcode = { path = "../crates/pcode" }
+pcode-ops = { path = "../crates/pcode-ops" }
 sym = { path = "../crates/sym" }
 
 [dev-dependencies]
+elf = "0.8"
+
 # This requires z3 to be installed locally as a shared library.
 z3 = "0.12"
 

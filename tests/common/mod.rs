@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
 use libsla::{Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, Sleigh, VarnodeData};
+use pcode_ops::PcodeOps;
 use sym::SymbolicBitVec;
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
@@ -86,7 +87,7 @@ impl PcodeEmulator for TracingEmulator {
         memory: &mut T,
         instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
-        println!("Executing: {instruction}");
+        //println!("Executing: {instruction}");
         match &instruction.op_code {
             OpCode::Store => (),
             OpCode::Branch
@@ -98,18 +99,38 @@ impl PcodeEmulator for TracingEmulator {
             _ => {
                 for instr_input in instruction.inputs.iter() {
                     let input_result = memory.read(instr_input).unwrap();
-                    let input =
-                        <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(input_result);
-                    if let Ok(input) = input {
-                        println!("Input: {input:0width$x}", width = 2 * instr_input.size);
+                    const U128_BYTES: usize = const { (u128::BITS / u8::BITS) as usize };
+                    let input_result = if input_result.num_bytes() < U128_BYTES {
+                        input_result.zero_extend(U128_BYTES)
                     } else {
-                        println!("Input: Symbolic");
+                        input_result
+                    };
+
+                    let input_bytes = input_result
+                        .into_le_bytes()
+                        .map(|byte| byte.try_into())
+                        .collect::<Result<Vec<u8>, _>>();
+                    if let Ok(input_bytes) = input_bytes {
+                        let byte_array: Result<[u8; U128_BYTES], _> = input_bytes.try_into();
+                        if let Ok(bytes) = byte_array {
+                            let input = u128::from_le_bytes(bytes);
+                            println!(
+                                "Input {instr_input} = {input:0width$x}",
+                                width = 2 * instr_input.size
+                            );
+                        } else {
+                            println!("Input {instr_input} = Large value");
+                        }
+                    } else {
+                        println!("Input {instr_input} = Symbolic value");
                     }
                 }
             }
         };
 
         let result = self.inner.emulate(memory, instruction)?;
+
+        /*
         match &instruction.op_code {
             OpCode::Store => println!("Store"),
             OpCode::Branch
@@ -134,6 +155,7 @@ impl PcodeEmulator for TracingEmulator {
                 }
             }
         };
+        */
 
         *self
             .executed_instructions
@@ -152,12 +174,12 @@ impl TracingEmulator {
         }
     }
 
-    pub fn executed_instructions(&self) -> impl IntoIterator<Item = (OpCode, usize)> {
+    pub fn executed_instructions(&self) -> BTreeMap<OpCode, usize> {
         self.executed_instructions
             .borrow()
             .iter()
             .map(|(&op, &count)| (op, count))
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 

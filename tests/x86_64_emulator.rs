@@ -16,30 +16,66 @@ const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
 
 fn processor_with_image(
     image: impl AsRef<Path>,
-    entry: u64,
 ) -> ProcessorManager<TracingEmulator, Memory, ProcessorHandlerX86> {
+    use elf::abi::PT_LOAD;
+    use elf::endian::AnyEndian;
+    use elf::ElfBytes;
+
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let mut memory = Memory::default();
 
     // Write image into memory
     let data = std::fs::read(image).expect("failed to read image file");
-    let data_location = VarnodeData {
-        address: Address {
-            offset: 0,
-            address_space: sleigh.default_code_space(),
-        },
-        size: data.len(),
-    };
 
-    memory
-        .write(&data_location, data.into_iter().collect())
-        .expect("failed to write image into memory");
+    let elf = ElfBytes::<AnyEndian>::minimal_parse(&data).expect("failed to parse elf");
+    for segment in elf.segments().expect("failed to get segments") {
+        if segment.p_type != PT_LOAD {
+            // Not a loadable segment
+            continue;
+        }
+
+        let data_location = VarnodeData {
+            address: Address {
+                offset: segment.p_vaddr,
+                address_space: sleigh.default_code_space(),
+            },
+
+            // The initial set of data is from the file
+            size: segment.p_filesz as usize,
+        };
+
+        // Write the segment from the file into memory
+        let offset = segment.p_offset as usize;
+        let file_size = segment.p_filesz as usize;
+        memory
+            .write(
+                &data_location,
+                data[offset..offset + file_size].iter().copied().collect(),
+            )
+            .expect("failed to write image section into memory");
+
+        // If the virtual size is larger than the file size then zero out the remainder
+        let zero_size = (segment.p_memsz - segment.p_filesz) as usize;
+        if zero_size > 0 {
+            let zeros = vec![0u8; zero_size];
+            let zeros_location = VarnodeData {
+                address: Address {
+                    offset: segment.p_vaddr + segment.p_filesz,
+                    address_space: sleigh.default_code_space(),
+                },
+                size: zero_size,
+            };
+            memory
+                .write(&zeros_location, zeros.into_iter().collect())
+                .expect("failed to write zeros into memory");
+        }
+    }
 
     // Init RIP to entry
 
     let rip = sleigh.register_from_name("RIP").expect("invalid register");
     memory
-        .write(&rip, entry.into())
+        .write(&rip, elf.ehdr.e_entry.into())
         .expect("failed to initialize RIP");
 
     // Init RBP to magic EXIT_RIP value
@@ -329,18 +365,12 @@ fn doubler_32b() -> processor::Result<()> {
     Ok(())
 }
 
-// This test requires the coverage file to be compiled ahead of time.
-// The coverage file can be compiled with gcc like the following:
-//
-// gcc -fno-stack-protector -fPIC -mpopcnt -o tests/data/coverage/coverage tests/data/coverage/coverage.c
-//
-// Then check the resulting binary for the main function
-//
-// objdump -t tests/data/coverage/coverage | grep main
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
-    // Use address of the main function for the entry point
-    let mut manager = processor_with_image("data/coverage/coverage", 0x1675);
+    // TODO Must first ensure target is built. Currently must be done manually
+    let mut manager = processor_with_image(
+        "./test-fixtures/pcode-coverage/target/x86_64-unknown-none/debug/pcode-coverage",
+    );
 
     let rip = manager
         .sleigh()
@@ -360,7 +390,14 @@ fn pcode_coverage() -> processor::Result<()> {
 
         let processor = processors[0];
         if matches!(processor.state(), ProcessorState::Decode(_)) {
-            println!("Executing: {}", processor.disassemble(manager.sleigh())?);
+            let disassembly = processor.disassemble(manager.sleigh())?;
+            println!("Decoded: {disassembly}");
+            println!(
+                "Memory: {}",
+                u64::try_from(processor.memory().read(&disassembly.origin)?)
+                    .map(|val| format!("{val:016x}"))
+                    .unwrap_or("symbolic".to_string())
+            );
         }
 
         let instruction_pointer: u64 = processor
@@ -401,14 +438,12 @@ fn pcode_coverage() -> processor::Result<()> {
     // Bool(Xor)
     // Int(LessThanOrEqual(Signed))
     // Int(LessThanOrEqual(Unsigned))
-    assert_eq!(
-        processor
-            .emulator()
-            .executed_instructions()
-            .into_iter()
-            .count(),
-        38
-    );
+    // Int(GreaterThan(Signed))
+    // Int(GreaterThan(Unsigned))
+    // Int(GreaterThanOrEqual(Signed))
+    // Int(GreaterThanOrEqual(Unsigned))
+    // BranchIndirect -- though technically this is covered via Return
+    assert_eq!(processor.emulator().executed_instructions().len(), 36);
     Ok(())
 }
 
