@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
 use libsla::{Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, Sleigh, VarnodeData};
+use pcode_ops::PcodeOps;
 use sym::SymbolicBitVec;
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
@@ -86,7 +87,7 @@ impl PcodeEmulator for TracingEmulator {
         memory: &mut T,
         instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
-        println!("Executing: {instruction}");
+        //println!("Executing: {instruction}");
         match &instruction.op_code {
             OpCode::Store => (),
             OpCode::Branch
@@ -98,18 +99,26 @@ impl PcodeEmulator for TracingEmulator {
             _ => {
                 for instr_input in instruction.inputs.iter() {
                     let input_result = memory.read(instr_input).unwrap();
+                    let num_bytes = input_result.num_bytes();
                     let input =
-                        <<T as VarnodeDataStore>::Value as TryInto<u64>>::try_into(input_result);
-                    if let Ok(input) = input {
-                        println!("Input: {input:0width$x}", width = 2 * instr_input.size);
+                        <<T as VarnodeDataStore>::Value as TryInto<u128>>::try_into(input_result);
+                    /*if let Ok(input) = input {
+                        println!(
+                            "Input {instr_input} = {input:0width$x}",
+                            width = 2 * instr_input.size
+                        );
+                    } else if num_bytes > 16 {
+                        println!("Input {instr_input} = Large value");
                     } else {
-                        println!("Input: Symbolic");
-                    }
+                        println!("Input {instr_input} = Symbolic value");
+                    }*/
                 }
             }
         };
 
         let result = self.inner.emulate(memory, instruction)?;
+
+        /*
         match &instruction.op_code {
             OpCode::Store => println!("Store"),
             OpCode::Branch
@@ -134,6 +143,7 @@ impl PcodeEmulator for TracingEmulator {
                 }
             }
         };
+        */
 
         *self
             .executed_instructions
@@ -152,12 +162,12 @@ impl TracingEmulator {
         }
     }
 
-    pub fn executed_instructions(&self) -> impl IntoIterator<Item = (OpCode, usize)> {
+    pub fn executed_instructions(&self) -> BTreeMap<OpCode, usize> {
         self.executed_instructions
             .borrow()
             .iter()
             .map(|(&op, &count)| (op, count))
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 
