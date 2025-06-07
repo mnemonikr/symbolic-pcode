@@ -99,8 +99,6 @@ impl PcodeEmulator for TracingEmulator {
             _ => {
                 for instr_input in instruction.inputs.iter() {
                     let input_result = memory.read(instr_input).unwrap();
-                    let num_bytes = input_result.num_bytes();
-
                     const U128_BYTES: usize = const { (u128::BITS / u8::BITS) as usize };
                     let input_result = if input_result.num_bytes() < U128_BYTES {
                         input_result.zero_extend(U128_BYTES)
@@ -126,17 +124,6 @@ impl PcodeEmulator for TracingEmulator {
                     } else {
                         println!("Input {instr_input} = Symbolic value");
                     }
-                    //<<T as VarnodeDataStore>::Value as TryInto<u128>>::try_into(input_result);
-                    /*if let Ok(input) = input {
-                        println!(
-                            "Input {instr_input} = {input:0width$x}",
-                            width = 2 * instr_input.size
-                        );
-                    } else if num_bytes > 16 {
-                        println!("Input {instr_input} = Large value");
-                    } else {
-                        println!("Input {instr_input} = Symbolic value");
-                    }*/
                 }
             }
         };
