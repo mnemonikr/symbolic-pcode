@@ -21,7 +21,9 @@ jobs:
     - name: Build
       run: cargo build --verbose --all-targets
     - name: Build Test Fixtures
-      run: cargo build --manifest-path tests/test-fixtures/pcode-coverage/Cargo.toml --target x86_64-unknown-none
+      run: |
+        rustup target add x86_64-unknown-none
+        cargo build --manifest-path tests/test-fixtures/pcode-coverage/Cargo.toml --target x86_64-unknown-none
     - name: Unit Tests
       run: cargo test --workspace --verbose
     - name: Coverage Report
