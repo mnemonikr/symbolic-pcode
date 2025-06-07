@@ -365,14 +365,6 @@ fn doubler_32b() -> processor::Result<()> {
     Ok(())
 }
 
-// This test requires the coverage file to be compiled ahead of time.
-// The coverage file can be compiled with gcc like the following:
-//
-// gcc -fno-stack-protector -fPIC -mpopcnt -o tests/data/coverage/coverage tests/data/coverage/coverage.c
-//
-// Then check the resulting binary for the main function
-//
-// objdump -t tests/data/coverage/coverage | grep main
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
     // TODO Must first ensure target is built. Currently must be done manually
@@ -399,13 +391,13 @@ fn pcode_coverage() -> processor::Result<()> {
         let processor = processors[0];
         if matches!(processor.state(), ProcessorState::Decode(_)) {
             let disassembly = processor.disassemble(manager.sleigh())?;
-            //println!("Decoded: {disassembly}");
-            /*println!(
+            println!("Decoded: {disassembly}");
+            println!(
                 "Memory: {}",
                 u64::try_from(processor.memory().read(&disassembly.origin)?)
                     .map(|val| format!("{val:016x}"))
                     .unwrap_or("symbolic".to_string())
-            );*/
+            );
         }
 
         let instruction_pointer: u64 = processor
