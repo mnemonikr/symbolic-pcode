@@ -100,8 +100,33 @@ impl PcodeEmulator for TracingEmulator {
                 for instr_input in instruction.inputs.iter() {
                     let input_result = memory.read(instr_input).unwrap();
                     let num_bytes = input_result.num_bytes();
-                    let input =
-                        <<T as VarnodeDataStore>::Value as TryInto<u128>>::try_into(input_result);
+
+                    const U128_BYTES: usize = const { (u128::BITS / u8::BITS) as usize };
+                    let input_result = if input_result.num_bytes() < U128_BYTES {
+                        input_result.zero_extend(U128_BYTES)
+                    } else {
+                        input_result
+                    };
+
+                    let input_bytes = input_result
+                        .into_le_bytes()
+                        .map(|byte| byte.try_into())
+                        .collect::<Result<Vec<u8>, _>>();
+                    if let Ok(input_bytes) = input_bytes {
+                        let byte_array: Result<[u8; U128_BYTES], _> = input_bytes.try_into();
+                        if let Ok(bytes) = byte_array {
+                            let input = u128::from_le_bytes(bytes);
+                            println!(
+                                "Input {instr_input} = {input:0width$x}",
+                                width = 2 * instr_input.size
+                            );
+                        } else {
+                            println!("Input {instr_input} = Large value");
+                        }
+                    } else {
+                        println!("Input {instr_input} = Symbolic value");
+                    }
+                    //<<T as VarnodeDataStore>::Value as TryInto<u128>>::try_into(input_result);
                     /*if let Ok(input) = input {
                         println!(
                             "Input {instr_input} = {input:0width$x}",
