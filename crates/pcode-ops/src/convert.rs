@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
 use std::ops::Deref;
 
 use crate::PcodeOps;
 
+/// Error while converting from [PcodeValue]
 #[derive(thiserror::Error, Debug)]
 pub enum TryFromPcodeValueError {
     #[error("pcode value exceeds size of target type")]
@@ -21,6 +23,7 @@ pub trait LittleEndian<const N: usize, T = u8> {
     fn into_words(self) -> [T; N];
 }
 
+/// Wrapper around a value that implements [PcodeOps].
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PcodeValue<T: PcodeOps> {
@@ -28,6 +31,7 @@ pub struct PcodeValue<T: PcodeOps> {
 }
 
 impl<T: PcodeOps> PcodeValue<T> {
+    /// Consumes the object and returns the inner value
     pub fn into_inner(self) -> T {
         self.inner
     }
@@ -60,17 +64,15 @@ macro_rules! impl_tryfrom_pcodevalue {
             fn try_from(pcode_value: PcodeValue<T>) -> Result<Self, Self::Error> {
                 const BYTES: usize = (<$target>::BITS / u8::BITS) as usize;
                 let pcode_value = match usize::cmp(&pcode_value.num_bytes(), &BYTES) {
-                    std::cmp::Ordering::Less => {
+                    Ordering::Less => {
                         if $signed {
                             pcode_value.inner.sign_extend(BYTES).into()
                         } else {
                             pcode_value.inner.zero_extend(BYTES).into()
                         }
                     }
-                    std::cmp::Ordering::Equal => pcode_value,
-                    std::cmp::Ordering::Greater => {
-                        return Err(TryFromPcodeValueError::SizeExceeded)
-                    }
+                    Ordering::Equal => pcode_value,
+                    Ordering::Greater => return Err(TryFromPcodeValueError::SizeExceeded),
                 };
 
                 let bytes = pcode_value
@@ -92,6 +94,19 @@ macro_rules! impl_tryfrom_pcodevalue {
     };
 }
 
+impl_tryfrom_pcodevalue!(usize);
+impl_tryfrom_pcodevalue!(u128);
+impl_tryfrom_pcodevalue!(u64);
+impl_tryfrom_pcodevalue!(u32);
+impl_tryfrom_pcodevalue!(u16);
+impl_tryfrom_pcodevalue!(u8);
+impl_tryfrom_pcodevalue!(isize);
+impl_tryfrom_pcodevalue!(i128);
+impl_tryfrom_pcodevalue!(i64);
+impl_tryfrom_pcodevalue!(i32);
+impl_tryfrom_pcodevalue!(i16);
+impl_tryfrom_pcodevalue!(i8);
+
 macro_rules! impl_little_endian {
     ($target:ty) => {
         impl_little_endian!($target, { std::mem::size_of::<$target>() });
@@ -108,19 +123,6 @@ macro_rules! impl_little_endian {
         }
     };
 }
-
-impl_tryfrom_pcodevalue!(usize);
-impl_tryfrom_pcodevalue!(u128);
-impl_tryfrom_pcodevalue!(u64);
-impl_tryfrom_pcodevalue!(u32);
-impl_tryfrom_pcodevalue!(u16);
-impl_tryfrom_pcodevalue!(u8);
-impl_tryfrom_pcodevalue!(isize);
-impl_tryfrom_pcodevalue!(i128);
-impl_tryfrom_pcodevalue!(i64);
-impl_tryfrom_pcodevalue!(i32);
-impl_tryfrom_pcodevalue!(i16);
-impl_tryfrom_pcodevalue!(i8);
 
 impl_little_endian!(usize);
 impl_little_endian!(u128);
