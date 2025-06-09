@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use crate::PcodeOps;
+
 #[derive(thiserror::Error, Debug)]
 pub enum TryFromPcodeValueError {
     #[error("pcode value exceeds size of target type")]
@@ -21,17 +23,23 @@ pub trait LittleEndian<const N: usize, T = u8> {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct PcodeValue<T: crate::PcodeOps> {
+pub struct PcodeValue<T: PcodeOps> {
     inner: T,
 }
 
-impl<T: crate::PcodeOps> From<T> for PcodeValue<T> {
+impl<T: PcodeOps> PcodeValue<T> {
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}
+
+impl<T: PcodeOps> From<T> for PcodeValue<T> {
     fn from(value: T) -> Self {
         Self { inner: value }
     }
 }
 
-impl<T: crate::PcodeOps> Deref for PcodeValue<T> {
+impl<T: PcodeOps> Deref for PcodeValue<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -46,7 +54,7 @@ macro_rules! impl_tryfrom_pcodevalue {
         });
     };
     ($target:ty, $size:expr, $signed:expr) => {
-        impl<T: crate::PcodeOps> TryFrom<PcodeValue<T>> for $target {
+        impl<T: PcodeOps> TryFrom<PcodeValue<T>> for $target {
             type Error = TryFromPcodeValueError;
 
             fn try_from(pcode_value: PcodeValue<T>) -> Result<Self, Self::Error> {
