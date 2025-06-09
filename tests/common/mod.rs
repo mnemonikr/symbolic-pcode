@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
 use libsla::{Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, Sleigh, VarnodeData};
-use pcode_ops::PcodeOps;
+use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
 use sym::SymbolicBitVec;
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
@@ -98,31 +98,20 @@ impl PcodeEmulator for TracingEmulator {
             | OpCode::Return => (),
             _ => {
                 for instr_input in instruction.inputs.iter() {
-                    let input_result = memory.read(instr_input).unwrap();
-                    const U128_BYTES: usize = const { (u128::BITS / u8::BITS) as usize };
-                    let input_result = if input_result.num_bytes() < U128_BYTES {
-                        input_result.zero_extend(U128_BYTES)
-                    } else {
-                        input_result
-                    };
-
-                    let input_bytes = input_result
-                        .into_le_bytes()
-                        .map(|byte| byte.try_into())
-                        .collect::<Result<Vec<u8>, _>>();
-                    if let Ok(input_bytes) = input_bytes {
-                        let byte_array: Result<[u8; U128_BYTES], _> = input_bytes.try_into();
-                        if let Ok(bytes) = byte_array {
-                            let input = u128::from_le_bytes(bytes);
+                    let input_result = PcodeValue::from(memory.read(instr_input).unwrap());
+                    match u128::try_from(input_result) {
+                        Ok(value) => {
                             println!(
-                                "Input {instr_input} = {input:0width$x}",
+                                "Input {instr_input} = {value:0width$x}",
                                 width = 2 * instr_input.size
                             );
-                        } else {
-                            println!("Input {instr_input} = Large value");
                         }
-                    } else {
-                        println!("Input {instr_input} = Symbolic value");
+                        Err(TryFromPcodeValueError::SizeExceeded) => {
+                            println!("Input {instr_input} = Large value")
+                        }
+                        Err(TryFromPcodeValueError::InvalidByte { index }) => {
+                            println!("Input {instr_input} = Symbolic value @ {index}")
+                        }
                     }
                 }
             }

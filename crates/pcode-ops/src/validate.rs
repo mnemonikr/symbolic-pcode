@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use crate::convert::PcodeValue;
 use crate::PcodeOps;
 
 /// Error returned when validation fails
@@ -151,7 +152,6 @@ pub struct Validator<T: PcodeOps> {
 
 impl<T: PcodeOps + std::fmt::Debug> Validator<T>
 where
-    <T as TryInto<u64>>::Error: Debug,
     <<T as PcodeOps>::Bit as TryInto<bool>>::Error: Debug,
 {
     /// Validate all of the [PcodeOps] operations.
@@ -700,19 +700,16 @@ where
     }
 }
 
-fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result
-where
-    <T as TryInto<u64>>::Error: Debug,
-{
+fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result {
     let actual = op.evaluate::<T>();
     let actual_str = format!("{actual:?}");
-    let actual = actual
-        .try_into()
-        .map_err(|err| ValidationError::ValueConversionFailure {
+    let actual = PcodeValue::from(actual).try_into().map_err(|err| {
+        ValidationError::ValueConversionFailure {
             op,
             expected,
             err: format!("Failed to convert {actual_str}: {err:?}"),
-        })?;
+        }
+    })?;
     if actual == expected {
         Ok(())
     } else {
