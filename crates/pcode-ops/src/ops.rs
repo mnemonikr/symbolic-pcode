@@ -2,7 +2,7 @@
 /// is not prescribed, several of the operations assume the ability to reason about the bytes of
 /// the value. In some cases the value may be interpreted as a boolean value as the result of a
 /// condition evaluation.
-pub trait PcodeOps: BitwisePcodeOps + TryInto<u64> + FromIterator<Self::Byte> {
+pub trait PcodeOps: BitwisePcodeOps + FromIterator<Self::Byte> {
     /// A representation of a byte (8-bit) value.
     type Byte: From<u8> + TryInto<u8> + Clone + From<Self::Bit>;
 

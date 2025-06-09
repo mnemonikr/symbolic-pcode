@@ -2,7 +2,7 @@ use libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use pcode_ops::{BitwisePcodeOps, PcodeOps};
+use pcode_ops::{convert::PcodeValue, BitwisePcodeOps, PcodeOps};
 use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};
@@ -670,8 +670,9 @@ impl StandardPcodeEmulator {
         require_input_size_equals(instruction, input_index, target_space.address_size)?;
 
         // Get concrete bytes. Can return an error if byte is symbolic
-        memory
-            .read(&instruction.inputs[input_index])?
+        let value = memory.read(&instruction.inputs[input_index])?;
+        let value = PcodeValue::from(value);
+        value
             .try_into()
             .map_err(|_err| Error::IndirectAddressOffset {
                 instruction: Box::new(instruction.clone()),
