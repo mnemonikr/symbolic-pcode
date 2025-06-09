@@ -23,7 +23,18 @@ pub trait LittleEndian<const N: usize, T = u8> {
     fn into_words(self) -> [T; N];
 }
 
-/// Wrapper around a value that implements [PcodeOps].
+/// Wrapper around a value that implements [PcodeOps]. This wrapper supports conversions of pcode
+/// values to primitive types.
+///
+/// ## Example type conversion
+///
+/// ```
+/// # use pcode_ops::{convert::PcodeValue, Pcode128};
+/// let pcode128 = Pcode128::from(u64::MAX);
+/// let pcode_value = PcodeValue::from(pcode128);
+/// let value: u64 = pcode_value.try_into().unwrap();
+/// assert_eq!(value, u64::MAX);
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PcodeValue<T: PcodeOps> {
