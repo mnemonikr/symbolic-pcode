@@ -333,7 +333,7 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
 }
 
 pub fn standard_emulator(c: &mut Criterion) {
-    let emulator = StandardPcodeEmulator::new([internal_space(), processor_space()]);
+    let mut emulator = StandardPcodeEmulator::new([internal_space(), processor_space()]);
 
     let mut bench_arithmetic = |op_code| {
         let mut group = c.benchmark_group("Emulate");
