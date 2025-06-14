@@ -106,7 +106,7 @@ impl PcodeEmulator for TracingEmulator {
                                 width = 2 * instr_input.size
                             );
                         }
-                        Err(TryFromPcodeValueError::SizeExceeded) => {
+                        Err(TryFromPcodeValueError::InvalidSize) => {
                             println!("Input {instr_input} = Large value")
                         }
                         Err(TryFromPcodeValueError::InvalidByte { index }) => {

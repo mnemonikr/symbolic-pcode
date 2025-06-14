@@ -6,8 +6,8 @@ use crate::PcodeOps;
 /// Error while converting from [PcodeValue]
 #[derive(thiserror::Error, Debug)]
 pub enum TryFromPcodeValueError {
-    #[error("pcode value exceeds size of target type")]
-    SizeExceeded,
+    #[error("pcode value does not match size expectations of target type")]
+    InvalidSize,
 
     #[error("failed to convert byte at index {index}")]
     InvalidByte { index: usize },
@@ -48,6 +48,33 @@ impl<T: PcodeOps> PcodeValue<T> {
     }
 }
 
+impl<T: PcodeOps> TryFrom<PcodeValue<T>> for Vec<u8> {
+    type Error = TryFromPcodeValueError;
+
+    fn try_from(pcode_value: PcodeValue<T>) -> Result<Self, Self::Error> {
+        pcode_value
+            .inner
+            .into_le_bytes()
+            .enumerate()
+            .map(|(index, byte)| {
+                byte.try_into()
+                    .map_err(|_| TryFromPcodeValueError::InvalidByte { index })
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
+}
+
+impl<const N: usize, T: PcodeOps> TryFrom<PcodeValue<T>> for [u8; N] {
+    type Error = TryFromPcodeValueError;
+
+    fn try_from(pcode_value: PcodeValue<T>) -> Result<Self, Self::Error> {
+        let bytes: Vec<u8> = pcode_value.try_into()?;
+        bytes
+            .try_into()
+            .map_err(|_| TryFromPcodeValueError::InvalidSize)
+    }
+}
+
 impl<T: PcodeOps> From<T> for PcodeValue<T> {
     fn from(value: T) -> Self {
         Self { inner: value }
@@ -83,7 +110,7 @@ macro_rules! impl_tryfrom_pcodevalue {
                         }
                     }
                     Ordering::Equal => pcode_value,
-                    Ordering::Greater => return Err(TryFromPcodeValueError::SizeExceeded),
+                    Ordering::Greater => return Err(TryFromPcodeValueError::InvalidSize),
                 };
 
                 let bytes = pcode_value
@@ -98,7 +125,7 @@ macro_rules! impl_tryfrom_pcodevalue {
 
                 let bytes = bytes
                     .try_into()
-                    .map_err(|_| TryFromPcodeValueError::SizeExceeded)?;
+                    .map_err(|_| TryFromPcodeValueError::InvalidSize)?;
                 Ok(<$target>::from_le_bytes(bytes))
             }
         }
