@@ -43,23 +43,25 @@ fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
     }
 }
 
+fn x86_64_sleigh() -> Result<GhidraSleigh> {
+    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
+        .expect("Failed to read processor spec file");
+    let processor_spec =
+        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+            .expect("Failed to read processor spec file");
+    let sleigh = GhidraSleigh::builder()
+        .sleigh_spec(&sleigh_spec)?
+        .processor_spec(&processor_spec)?
+        .build()?;
+    Ok(sleigh)
+}
+
 #[test]
 fn test_pcode() -> Result<()> {
     const NUM_INSTRUCTIONS: usize = 7;
     let load_image =
         LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x0f\xaf\xc0\x5d\xc3".to_vec());
-    let sleigh_spec =
-        fs::read_to_string("../../tests/data/x86-64.sla").expect("Failed to read sleigh spec file");
-
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
-
+    let sleigh = x86_64_sleigh()?;
     let mut offset = 0;
     for _ in 0..NUM_INSTRUCTIONS {
         let address = Address {
@@ -81,17 +83,7 @@ fn test_pcode() -> Result<()> {
 fn test_assembly() -> Result<()> {
     let load_image =
         LoadImageImpl(b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3".to_vec());
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
-
+    let sleigh = x86_64_sleigh()?;
     let mut offset = 0;
     let expected = vec![
         ("ram".to_string(), 0, "PUSH".to_string(), "RBP".to_string()),
@@ -149,21 +141,46 @@ fn test_assembly() -> Result<()> {
 
 #[test]
 pub fn register_from_name() -> Result<()> {
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
-
+    let sleigh = x86_64_sleigh()?;
     let rax = sleigh.register_from_name("RAX").expect("invalid register");
     assert_eq!(rax.address.address_space.name, "register");
     assert_eq!(rax.address.offset, 0);
     assert_eq!(rax.size, 8);
+    assert_eq!(sleigh.register_name(&rax), Some("RAX".to_string()));
+    Ok(())
+}
+
+#[test]
+pub fn register_name_of_non_register() -> Result<()> {
+    let sleigh = x86_64_sleigh()?;
+    let mut register = sleigh
+        .register_from_name("RAX")
+        .expect("RAX should be a valid register");
+
+    // Change offset to something absurd. Make sure not to trigger the overflow check
+    // so that this request will actually go to Ghidra
+    register.address.offset = u64::MAX - register.size as u64;
+
+    let result = sleigh.register_name(&register);
+    assert!(result.is_none(), "{result:?} should be None");
+    Ok(())
+}
+
+#[test]
+pub fn register_name_of_overflowing_non_register() -> Result<()> {
+    let sleigh = x86_64_sleigh()?;
+    let mut register = sleigh
+        .register_from_name("RAX")
+        .expect("RAX should be a valid register");
+
+    // Note that the lookup will perform offset + size without overflow checks
+    // There is a guard in our impl against this before calling Ghidra.
+    //
+    // See ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/sleighbase.cc
+    register.address.offset = u64::MAX;
+
+    let result = sleigh.register_name(&register);
+    assert!(result.is_none(), "{result:?} should be None");
     Ok(())
 }
 
@@ -203,16 +220,7 @@ pub fn addr_space_type() -> Result<()> {
 
 #[test]
 pub fn invalid_register_name() -> Result<()> {
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
-
+    let sleigh = x86_64_sleigh()?;
     let invalid_register_name = "invalid_register";
     let err = sleigh
         .register_from_name(invalid_register_name)
@@ -235,15 +243,7 @@ pub fn invalid_register_name() -> Result<()> {
 #[test]
 pub fn insufficient_data() -> Result<()> {
     let load_image = LoadImageImpl(b"\x00".to_vec());
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
+    let sleigh = x86_64_sleigh()?;
     let offset = 0;
     let address = Address {
         offset,
@@ -263,15 +263,7 @@ pub fn insufficient_data() -> Result<()> {
 #[test]
 pub fn invalid_instruction() -> Result<()> {
     let load_image = LoadImageImpl(std::iter::repeat_n(0xFF, 16).collect());
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
-    let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(&sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
+    let sleigh = x86_64_sleigh()?;
     let offset = 0;
     let address = Address {
         offset,

@@ -304,6 +304,7 @@ mod default {
         #[rust_name = "register_from_name"]
         fn getRegister<'a>(self: &'a SleighProxy, name: &CxxString) -> Result<&'a VarnodeData>;
 
+        // This will return an empty string on failure
         #[rust_name = "register_name"]
         unsafe fn getRegisterNameProxy(
             self: &SleighProxy,
