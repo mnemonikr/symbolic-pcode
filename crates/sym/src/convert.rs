@@ -179,6 +179,12 @@ concrete_type!(u32);
 concrete_type!(u64);
 concrete_type!(u128);
 concrete_type!(usize);
+concrete_type!(i8);
+concrete_type!(i16);
+concrete_type!(i32);
+concrete_type!(i64);
+concrete_type!(i128);
+concrete_type!(isize);
 
 impl FromIterator<SymbolicBitVec> for SymbolicBitVec {
     fn from_iter<T: IntoIterator<Item = SymbolicBitVec>>(iter: T) -> Self {
@@ -330,3 +336,9 @@ impl_little_endian!(u64);
 impl_little_endian!(u32);
 impl_little_endian!(u16);
 impl_little_endian!(u8);
+impl_little_endian!(isize);
+impl_little_endian!(i128);
+impl_little_endian!(i64);
+impl_little_endian!(i32);
+impl_little_endian!(i16);
+impl_little_endian!(i8);
