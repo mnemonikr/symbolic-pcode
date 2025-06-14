@@ -83,7 +83,7 @@ pub struct TracingEmulator {
 
 impl PcodeEmulator for TracingEmulator {
     fn emulate<T: VarnodeDataStore>(
-        &self,
+        &mut self,
         memory: &mut T,
         instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
