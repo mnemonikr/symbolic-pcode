@@ -22,7 +22,7 @@ pub enum Error {
     #[error("dependency error: {message} caused by {source}")]
     DependencyError {
         message: Cow<'static, str>,
-        source: Box<dyn std::error::Error>,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[error("internal error: {0}")]
