@@ -1,12 +1,14 @@
 mod common;
 
-use std::path::Path;
+use std::{path::Path, rc::Rc};
 
-use common::{x86_64_sleigh, Memory, ProcessorHandlerX86, TracingEmulator};
-use libsla::{Address, Sleigh, VarnodeData};
+use common::{x86_64_sleigh, LinuxEmulator, Memory, ProcessorHandlerX86, TracingEmulator};
+use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
+use pcode_ops::PcodeOps;
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
-    emulator::StandardPcodeEmulator,
+    emulator::{self, StandardPcodeEmulator},
+    kernel::linux,
     mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
     processor::{self, Processor, ProcessorManager, ProcessorState},
 };
@@ -14,14 +16,83 @@ use symbolic_pcode::{
 const INITIAL_STACK: u64 = 0x8000000000;
 const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
 
-fn processor_with_image(
-    image: impl AsRef<Path>,
-) -> ProcessorManager<TracingEmulator, Memory, ProcessorHandlerX86> {
+enum CallOtherOps {
+    Segment = 0x00,
+    In = 0x01,
+    Out = 0x02,
+    SysEnter = 0x03,
+    SysExit = 0x04,
+    SysCall = 0x05,
+}
+
+fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
+    // The stack for libc programs:
+    // * argc
+    // * argv - list must be terminated by NULL pointer
+    // * envp - list must be terminated by NULL pointer
+    // * auxv - list must be terminated by NULL pointer
+    //
+    // argc = 1
+    // argv[0] = "hello"
+    // envp = (argv + 1) + 1 ??? argv = 0x8000, argv + 2 = 0x8010
+    let ram = sleigh
+        .address_space_by_name("ram")
+        .expect("failed to find ram");
+    let argc = VarnodeData {
+        address: Address {
+            offset: INITIAL_STACK,
+            address_space: ram.clone(),
+        },
+        size: 8,
+    };
+    memory
+        .write(&argc, SymbolicBitVec::constant(1, u64::BITS as usize))
+        .expect("failed to initialize argc on stack");
+
+    // The argv list must be terminated by null pointer. Setting program name to null AND
+    // terminating the list with NULL, whence 16 bytes
+    //
+    // MUSL has support for null program name:
+    // https://git.musl-libc.org/cgit/musl/tree/src/env/__libc_start_main.c
+    let argv = VarnodeData {
+        address: Address {
+            offset: argc.address.offset + argc.size as u64,
+            address_space: ram.clone(),
+        },
+        size: 16,
+    };
+    memory
+        .write(&argv, SymbolicBitVec::constant(0, (2 * u64::BITS) as usize))
+        .expect("failed to initialize argv");
+
+    let envp = VarnodeData {
+        address: Address {
+            offset: argv.address.offset + argv.size as u64,
+            address_space: ram.clone(),
+        },
+        size: 8,
+    };
+    memory
+        .write(&envp, SymbolicBitVec::constant(0, u64::BITS as usize))
+        .expect("failed to initialize envp");
+
+    let auxv = VarnodeData {
+        address: Address {
+            offset: envp.address.offset + envp.size as u64,
+            address_space: ram.clone(),
+        },
+        size: 8,
+    };
+    memory
+        .write(&auxv, SymbolicBitVec::constant(0, u64::BITS as usize))
+        .expect("failed to initialize envp");
+}
+
+fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
     use elf::abi::PT_LOAD;
     use elf::endian::AnyEndian;
     use elf::ElfBytes;
 
-    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let mut memory = Memory::default();
 
     // Write image into memory
@@ -72,47 +143,12 @@ fn processor_with_image(
     }
 
     // Init RIP to entry
-
     let rip = sleigh.register_from_name("RIP").expect("invalid register");
     memory
         .write(&rip, elf.ehdr.e_entry.into())
         .expect("failed to initialize RIP");
 
-    // Init RBP to magic EXIT_RIP value
-    let rbp = sleigh.register_from_name("RBP").expect("invalid register");
     memory
-        .write(&rbp, EXIT_RIP.into())
-        .expect("failed to initialize RBP");
-
-    // Init stack address in memory to magic EXIT_RIP value
-    let stack_addr = VarnodeData {
-        address: Address {
-            offset: INITIAL_STACK,
-            address_space: sleigh
-                .address_space_by_name("ram")
-                .expect("failed to find ram"),
-        },
-        size: EXIT_RIP.to_le_bytes().len(),
-    };
-    memory
-        .write(&stack_addr, EXIT_RIP.into())
-        .expect("failed to initialize stack");
-
-    // Init RSP to stack address
-    let rsp = sleigh.register_from_name("RSP").expect("invalid register");
-    memory
-        .write(&rsp, INITIAL_STACK.into())
-        .expect("failed to initialize RSP");
-
-    init_registers(&sleigh, &mut memory);
-
-    let handler = ProcessorHandlerX86::new(&sleigh);
-    let processor = Processor::new(
-        memory,
-        TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces())),
-        handler,
-    );
-    ProcessorManager::new(sleigh, processor)
 }
 
 fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
@@ -148,6 +184,39 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
             .write(&register, bytes.into_iter().collect())
             .unwrap_or_else(|err| panic!("failed to write register {register_name}: {err}"));
     }
+
+    // Init RSP to stack address
+    let rsp = sleigh.register_from_name("RSP").expect("invalid register");
+    memory
+        .write(&rsp, INITIAL_STACK.into())
+        .expect("failed to initialize RSP");
+
+    // Init RBP to magic EXIT_RIP value
+    // TODO Is this necessary?
+    let rbp = sleigh.register_from_name("RBP").expect("invalid register");
+    memory
+        .write(&rbp, EXIT_RIP.into())
+        .expect("failed to initialize RBP");
+
+    // Initialize the DF register to 0. It appears to be a convention that whenever STD is called
+    // CLD is called thereafter to reset it. There is a bug (?) in MUSL where REP STOS is used
+    // without ensuring the flag is cleared
+
+    // 0000000000449f4d <__init_libc>:
+    //   449f4d:       53                      push   rbx
+    //   449f4e:       48 89 fa                mov    rdx,rdi
+    //   449f51:       31 c0                   xor    eax,eax
+    //   449f53:       b9 4c 00 00 00          mov    ecx,0x4c
+    //   449f58:       48 81 ec 50 01 00 00    sub    rsp,0x150
+    //   449f5f:       48 8d 7c 24 20          lea    rdi,[rsp+0x20]
+    //   449f64:       f3 ab                   rep stos DWORD PTR es:[rdi],eax
+
+    let df_register = sleigh
+        .register_from_name("DF")
+        .expect("failed to get DF register");
+    memory
+        .write(&df_register, 0u8.into())
+        .expect("failed to init DF register");
 }
 
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
@@ -366,11 +435,80 @@ fn doubler_32b() -> processor::Result<()> {
 }
 
 #[test]
+fn hello_world_linux() -> processor::Result<()> {
+    let image =
+        "./test-fixtures/linux-syscalls/target/x86_64-unknown-linux-musl/debug/linux-syscalls";
+    let sleigh = Rc::new(x86_64_sleigh().expect("failed to build sleigh"));
+    let mut memory = memory_with_image(&sleigh, image);
+    init_registers(sleigh.as_ref(), &mut memory);
+    initialize_libc_stack(&mut memory, sleigh.as_ref());
+
+    let handler = ProcessorHandlerX86::new(sleigh.as_ref());
+    let emulator = LinuxEmulator::new(sleigh.clone());
+    let mut processor = Processor::new(memory, emulator, handler);
+
+    loop {
+        match processor.step(sleigh.as_ref()) {
+            Ok(None) => {
+                // Debug
+                if matches!(processor.state(), ProcessorState::Decode(_)) {
+                    let disassembly = processor.disassemble(sleigh.as_ref())?;
+                    let encoded_instr = processor
+                        .memory()
+                        .read(&disassembly.origin)?
+                        .into_le_bytes()
+                        .map(|byte| {
+                            u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}"))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+
+                    println!("Encoded instruction from memory: {encoded_instr}");
+                    println!("Decoded: {disassembly}");
+                }
+            }
+            Ok(Some(_)) => {
+                panic!("Symbolic branch encountered");
+            }
+            Err(processor::Error::Emulation(emulator::Error::DependencyError(e))) => {
+                if let Some(linux::Error::Exit(status)) = e.downcast_ref::<linux::Error>() {
+                    assert_eq!(*status, 0, "exit status should be 0");
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+}
+
+#[test]
 fn pcode_coverage() -> processor::Result<()> {
     // TODO Must first ensure target is built. Currently must be done manually
-    let mut manager = processor_with_image(
-        "./test-fixtures/pcode-coverage/target/x86_64-unknown-none/debug/pcode-coverage",
-    );
+    let sleigh = x86_64_sleigh().expect("failed to build sleigh");
+    let image = "./test-fixtures/pcode-coverage/target/x86_64-unknown-none/debug/pcode-coverage";
+    let mut memory = memory_with_image(&sleigh, image);
+    init_registers(&sleigh, &mut memory);
+
+    // Init stack address in memory to magic EXIT_RIP value
+    let stack_addr = VarnodeData {
+        address: Address {
+            offset: INITIAL_STACK,
+            address_space: sleigh
+                .address_space_by_name("ram")
+                .expect("failed to find ram"),
+        },
+        size: EXIT_RIP.to_le_bytes().len(),
+    };
+    memory
+        .write(&stack_addr, EXIT_RIP.into())
+        .expect("failed to initialize stack");
+
+    let handler = ProcessorHandlerX86::new(&sleigh);
+    let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
+    let processor = Processor::new(memory, emulator, handler);
+    let mut manager = ProcessorManager::new(sleigh, processor);
 
     let rip = manager
         .sleigh()
@@ -391,13 +529,16 @@ fn pcode_coverage() -> processor::Result<()> {
         let processor = processors[0];
         if matches!(processor.state(), ProcessorState::Decode(_)) {
             let disassembly = processor.disassemble(manager.sleigh())?;
+            let encoded_instr = processor
+                .memory()
+                .read(&disassembly.origin)?
+                .into_le_bytes()
+                .map(|byte| u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}")))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("Encoded instruction from memory: {encoded_instr}");
             println!("Decoded: {disassembly}");
-            println!(
-                "Memory: {}",
-                u64::try_from(processor.memory().read(&disassembly.origin)?)
-                    .map(|val| format!("{val:016x}"))
-                    .unwrap_or("symbolic".to_string())
-            );
         }
 
         let instruction_pointer: u64 = processor
