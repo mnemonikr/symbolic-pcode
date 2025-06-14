@@ -45,6 +45,9 @@ pub enum Error {
         space_id: AddressSpaceId,
     },
 
+    #[error("dependency error: {0}")]
+    DependencyError(Box<dyn std::error::Error + Send + Sync>),
+
     /// An internal error occurred. This is a fatal error that cannot be safely handled.
     #[error("internal error: {0}")]
     InternalError(String),
@@ -110,7 +113,7 @@ pub trait PcodeEmulator {
     /// It is strongly encouraged for alternative implementations of this trait to call the emulate
     /// function in [StandardPcodeEmulator] for the core emulation logic.
     fn emulate<M: VarnodeDataStore>(
-        &self,
+        &mut self,
         memory: &mut M,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow>;
@@ -190,7 +193,7 @@ macro_rules! bool_binary_op {
 
 impl PcodeEmulator for StandardPcodeEmulator {
     fn emulate<M: VarnodeDataStore>(
-        &self,
+        &mut self,
         memory: &mut M,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
