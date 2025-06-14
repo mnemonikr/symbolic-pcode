@@ -22,7 +22,7 @@ pub enum Error {
     #[error("dependency error: {message} caused by {source}")]
     DependencyError {
         message: Cow<'static, str>,
-        source: Box<dyn std::error::Error>,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[error("internal error: {0}")]
@@ -67,6 +67,9 @@ pub trait Sleigh {
         loader: &dyn LoadImage,
         address: Address,
     ) -> Result<Disassembly<AssemblyInstruction>>;
+
+    /// Get the register name for a varnode targeting a register
+    fn register_name(&self, target: &VarnodeData) -> Option<String>;
 }
 
 /// An address is represented by an offset into an address space
@@ -660,6 +663,21 @@ impl Sleigh for GhidraSleigh {
             addr_spaces.push(raw_addr_space.into());
         }
         addr_spaces
+    }
+
+    fn register_name(&self, target: &VarnodeData) -> Option<String> {
+        let base = self.sys_address_space(target.address.address_space.id)?;
+        let register_name = unsafe {
+            self.sleigh
+                .register_name(base, target.address.offset, target.size as i32)
+        };
+        let register_name = register_name.to_string();
+
+        if register_name.is_empty() {
+            None
+        } else {
+            Some(register_name)
+        }
     }
 
     fn register_from_name(&self, name: impl AsRef<str>) -> Result<VarnodeData> {
