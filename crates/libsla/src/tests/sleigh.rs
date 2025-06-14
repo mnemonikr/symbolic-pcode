@@ -157,12 +157,27 @@ pub fn register_name_of_non_register() -> Result<()> {
         .register_from_name("RAX")
         .expect("RAX should be a valid register");
 
-    // Change offset to something absurd
+    // Change offset to something absurd. Make sure not to trigger the overflow check
+    // so that this request will actually go to Ghidra
+    register.address.offset = u64::MAX - register.size as u64;
+
+    let result = sleigh.register_name(&register);
+    assert!(result.is_none(), "{result:?} should be None");
+    Ok(())
+}
+
+#[test]
+pub fn register_name_of_overflowing_non_register() -> Result<()> {
+    let sleigh = x86_64_sleigh()?;
+    let mut register = sleigh
+        .register_from_name("RAX")
+        .expect("RAX should be a valid register");
+
     // Note that the lookup will perform offset + size without overflow checks
-    // so this value cannot be TOO absurd or else it will overflow into a normal value
+    // There is a guard in our impl against this before calling Ghidra.
     //
     // See ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/sleighbase.cc
-    register.address.offset = u64::MAX - register.size as u64;
+    register.address.offset = u64::MAX;
 
     let result = sleigh.register_name(&register);
     assert!(result.is_none(), "{result:?} should be None");
