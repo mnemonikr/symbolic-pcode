@@ -12,8 +12,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// There is no data defined at a particular address
-    #[error("no data defined at address {0}")]
-    UndefinedData(Address),
+    #[error("data not defined at {target} + {relative_offset}")]
+    UndefinedData {
+        target: VarnodeData,
+        relative_offset: usize,
+    },
 
     /// The arguments provided for a given request are invalid
     #[error("arguments provided are not valid: {0}")]
@@ -87,10 +90,10 @@ impl<T: PcodeOps> GenericMemory<T> {
         }
 
         let space_id = source.address.address_space.id;
-        let memory = self
-            .data
-            .get(&space_id)
-            .ok_or(Error::UndefinedData(source.address.clone()))?;
+        let memory = self.data.get(&space_id).ok_or(Error::UndefinedData {
+            target: source.clone(),
+            relative_offset: 0,
+        })?;
 
         // Collect into a Vec or return the first undefined offset
         let result = memory
@@ -102,25 +105,23 @@ impl<T: PcodeOps> GenericMemory<T> {
                     Ok(v.clone())
                 } else {
                     // Undefined offset
-                    Err(i + source.address.offset)
+                    Err(i)
                 }
             })
             .collect::<std::result::Result<Vec<_>, _>>();
 
-        let bytes = result.map_err(|offset| {
-            Error::UndefinedData(Address {
-                offset,
-                address_space: source.address.address_space.clone(),
-            })
+        let bytes = result.map_err(|relative_offset| Error::UndefinedData {
+            target: source.clone(),
+            relative_offset: relative_offset as usize,
         })?;
 
         if bytes.len() == source.size {
             Ok(bytes)
         } else {
-            Err(Error::UndefinedData(Address {
-                offset: source.address.offset + bytes.len() as u64,
-                address_space: source.address.address_space.clone(),
-            }))
+            Err(Error::UndefinedData {
+                target: source.clone(),
+                relative_offset: bytes.len(),
+            })
         }
     }
 
@@ -289,9 +290,11 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
         let result = self.memory.read(varnode);
 
         if let Some(parent) = &self.parent {
-            if let Err(Error::UndefinedData(address)) = result {
-                let num_valid_bytes = (address.offset - varnode.address.offset) as usize;
-
+            if let Err(Error::UndefinedData {
+                target,
+                relative_offset: num_valid_bytes,
+            }) = result
+            {
                 // Special case to defer to the parent if the data is entirely undefined
                 if num_valid_bytes == 0 {
                     return parent.read(varnode);
@@ -308,8 +311,11 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
                 let data = self.memory.read(&valid_input)?;
 
                 // Read the missing data from parent
+                let mut parent_address = target.address.clone();
+                parent_address.offset += num_valid_bytes as u64;
+
                 let parent_varnode = VarnodeData {
-                    address,
+                    address: parent_address,
                     size: varnode.size - num_valid_bytes,
                 };
                 let parent_data = parent.read(&parent_varnode)?;
@@ -441,15 +447,14 @@ impl<M: VarnodeDataStore> LoadImage for ExecutableMemory<'_, M> {
         // The number of bytes requested may exceed valid data in memory.
         // In that case only read and return the defined bytes.
         let value = match value {
-            Err(Error::UndefinedData(addr)) => {
+            Err(Error::UndefinedData {
+                target,
+                relative_offset,
+            }) if relative_offset > 0 => {
                 let input = VarnodeData {
-                    // SAFETY: This new size MUST be less than the existing input size
-                    size: unsafe {
-                        (addr.offset - input.address.offset)
-                            .try_into()
-                            .unwrap_unchecked()
-                    },
-                    address: input.address.clone(),
+                    // The relative offset is effectively the number of valid bytes
+                    size: relative_offset,
+                    address: target.address.clone(),
                 };
                 self.0.read(&input)
             }

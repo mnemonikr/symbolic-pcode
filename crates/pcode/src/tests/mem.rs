@@ -299,9 +299,26 @@ fn memory_branch_partial_read_failure() -> Result<()> {
     // Increase varnode size such that will now read undefined data
     varnode.size = 2;
     let result = branch.read(&varnode);
-    let mut expected_failure_address = varnode.address.clone();
-    expected_failure_address.offset += 1;
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == expected_failure_address));
+
+    // The failure varnode will occur due to reading from the parent branch.
+    let mut expected_failure_varnode = varnode.clone();
+    expected_failure_varnode.address.offset += 1;
+    expected_failure_varnode.size -= 1;
+
+    if let Err(Error::UndefinedData {
+        target,
+        relative_offset,
+    }) = result
+    {
+        assert_eq!(
+            target, expected_failure_varnode,
+            "undefined data target should match varnode used to read"
+        );
+        assert_eq!(
+            relative_offset, 0,
+            "relative offset of failed parent read should be 0"
+        );
+    }
     Ok(())
 }
 
@@ -311,7 +328,7 @@ fn memory_branch_predicated_read() -> Result<()> {
     let _child = branch.new_branch(true);
     let varnode = VarnodeData::new(Address::new(address_space(0), u64::MAX), 1);
     let result = branch.read(&varnode);
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+    assert!(matches!(result, Err(Error::UndefinedData { target, .. }) if target == varnode));
     Ok(())
 }
 
@@ -326,11 +343,11 @@ fn memory_tree_branches_with_undefined_data() -> Result<()> {
     let live_branches = [true_branch, false_branch];
     let tree = MemoryTree::new(live_branches.iter(), std::iter::empty());
     let result = tree.read(&varnode);
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+    assert!(matches!(result, Err(Error::UndefinedData { target, .. }) if target == varnode));
 
     let tree = MemoryTree::new(live_branches.iter().rev(), std::iter::empty());
     let result = tree.read(&varnode);
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+    assert!(matches!(result, Err(Error::UndefinedData { target, .. }) if target == varnode));
     Ok(())
 }
 
@@ -372,10 +389,11 @@ fn executable_memory_undefined_data() -> Result<()> {
     let exec_mem = ExecutableMemory(&memory);
 
     let result = exec_mem.instruction_bytes(&varnode);
-    assert!(
-        matches!(result, Err(msg) if msg == format!("no data defined at address {address}", address = varnode.address))
+    let msg = result.expect_err("result should be undefined data error");
+    assert_eq!(
+        msg,
+        format!("data not defined at {varnode} + {offset}", offset = 0)
     );
-
     Ok(())
 }
 
@@ -450,8 +468,9 @@ fn read_data_gap() -> Result<()> {
     let varnode = VarnodeData::new(Address::new(address_space(0), 0), 4);
     let result = memory.read(&varnode);
 
-    let undefined_addr = Address::new(address_space(0), 1);
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == undefined_addr));
+    assert!(
+        matches!(result, Err(Error::UndefinedData { target, relative_offset }) if target == varnode && relative_offset == 1)
+    );
     Ok(())
 }
 
@@ -482,6 +501,6 @@ fn read_bit_undefined() -> Result<()> {
     let memory = GenericMemory::<Pcode128>::default();
     let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
     let result = memory.read_bit(&varnode);
-    assert!(matches!(result, Err(Error::UndefinedData(addr)) if addr == varnode.address));
+    assert!(matches!(result, Err(Error::UndefinedData { target, .. }) if target == varnode));
     Ok(())
 }
