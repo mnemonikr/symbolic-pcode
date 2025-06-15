@@ -1,10 +1,16 @@
-use std::{collections::BTreeMap, fs};
+use std::{collections::BTreeMap, fs, rc::Rc};
 
-use libsla::{Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, Sleigh, VarnodeData};
-use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
+use libsla::{
+    Address, AddressSpace, GhidraSleigh, OpCode, PcodeInstruction, PseudoOp, Sleigh, VarnodeData,
+};
+use pcode_ops::{
+    convert::{PcodeValue, TryFromPcodeValueError},
+    PcodeOps,
+};
 use sym::SymbolicBitVec;
 use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator};
-use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
+use symbolic_pcode::kernel::linux::LinuxModel;
+use symbolic_pcode::mem::{self, GenericMemory, MemoryBranch, VarnodeDataStore};
 use symbolic_pcode::processor::{self, PcodeExecution, ProcessorResponseHandler};
 
 pub type Memory = GenericMemory<SymbolicBitVec>;
@@ -75,6 +81,75 @@ impl ProcessorResponseHandler<Memory> for ProcessorHandlerX86 {
     }
 }
 
+#[derive(Debug)]
+pub struct LinuxEmulator<S> {
+    sleigh: Rc<S>,
+    linux: LinuxModel,
+    emulator: StandardPcodeEmulator,
+}
+
+impl<S> Clone for LinuxEmulator<S> {
+    fn clone(&self) -> Self {
+        Self {
+            sleigh: self.sleigh.clone(),
+            linux: self.linux.clone(),
+            emulator: self.emulator.clone(),
+        }
+    }
+}
+
+impl<S: Sleigh> LinuxEmulator<S> {
+    pub fn new(sleigh: Rc<S>) -> Self {
+        Self {
+            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
+            linux: Default::default(),
+            sleigh,
+        }
+    }
+}
+
+impl<S: Sleigh> PcodeEmulator for LinuxEmulator<S> {
+    fn emulate<M: VarnodeDataStore>(
+        &mut self,
+        memory: &mut M,
+        instruction: &PcodeInstruction,
+    ) -> emulator::Result<ControlFlow> {
+        let result = self.emulator.emulate(memory, instruction);
+
+        if let Err(emulator::Error::UnsupportedInstruction { instruction }) = &result {
+            // Try to handle the unsupported instruction
+            match instruction.op_code {
+                OpCode::Pseudo(PseudoOp::CallOther) => {
+                    let arg = instruction.inputs.first().and_then(|input| {
+                        if input.address.address_space.is_constant() {
+                            Some(input.address.offset)
+                        } else {
+                            None
+                        }
+                    });
+
+                    match arg {
+                        Some(5) => {
+                            return self
+                                .linux
+                                .syscall(self.sleigh.as_ref(), memory)
+                                .map_err(|err| emulator::Error::DependencyError(Box::new(err)));
+                        }
+                        Some(17) => {
+                            // Lock instruction. Multithreading not supported so just ignore
+                            return Ok(ControlFlow::NextInstruction);
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        result
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TracingEmulator {
     inner: StandardPcodeEmulator,
@@ -98,7 +173,16 @@ impl PcodeEmulator for TracingEmulator {
             | OpCode::Return => (),
             _ => {
                 for instr_input in instruction.inputs.iter() {
-                    let input_result = PcodeValue::from(memory.read(instr_input).unwrap());
+                    let input_result = memory.read(instr_input);
+                    let input_result = match input_result {
+                        Ok(x) => PcodeValue::from(x),
+                        Err(err) => {
+                            println!("Failed to read input {instr_input}: {err}");
+                            break;
+                        }
+                    };
+
+                    /*
                     match u128::try_from(input_result) {
                         Ok(value) => {
                             println!(
@@ -113,6 +197,7 @@ impl PcodeEmulator for TracingEmulator {
                             println!("Input {instr_input} = Symbolic value @ {index}")
                         }
                     }
+                    */
                 }
             }
         };

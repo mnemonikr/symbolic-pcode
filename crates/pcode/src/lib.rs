@@ -23,5 +23,7 @@ pub mod mem;
 /// branching predicate cannot be evaluted to a boolean value.
 pub mod processor;
 
+pub mod kernel;
+
 #[cfg(test)]
 mod tests;
