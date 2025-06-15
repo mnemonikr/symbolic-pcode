@@ -23,6 +23,13 @@ pub mod mem;
 /// branching predicate cannot be evaluted to a boolean value.
 pub mod processor;
 
+/// Module for architecture specific code. Pcode models the logical instructions but does not
+/// attempt to model instructions that interface with kernel or hardware. This module contains code
+/// that assists with emulating instructions that are not translated into standard pcode
+/// instructions.
+pub mod arch;
+
+/// Module for kernel specific code, such as modeling syscalls for a kernel.
 pub mod kernel;
 
 #[cfg(test)]

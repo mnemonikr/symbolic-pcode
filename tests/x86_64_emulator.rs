@@ -2,28 +2,20 @@ mod common;
 
 use std::{path::Path, rc::Rc};
 
-use common::{x86_64_sleigh, LinuxEmulator, Memory, ProcessorHandlerX86, TracingEmulator};
+use common::{x86_64_sleigh, Memory, TracingEmulator};
 use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
 use pcode_ops::PcodeOps;
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
+    arch::x86::ProcessorHandlerX86,
     emulator::{self, StandardPcodeEmulator},
-    kernel::linux,
+    kernel::linux::{self, emulator::LinuxEmulator},
     mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
     processor::{self, Processor, ProcessorManager, ProcessorState},
 };
 
 const INITIAL_STACK: u64 = 0x8000000000;
 const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
-
-enum CallOtherOps {
-    Segment = 0x00,
-    In = 0x01,
-    Out = 0x02,
-    SysEnter = 0x03,
-    SysExit = 0x04,
-    SysCall = 0x05,
-}
 
 fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
     // The stack for libc programs:
@@ -467,7 +459,9 @@ fn hello_world_linux() -> processor::Result<()> {
                 panic!("Symbolic branch encountered");
             }
             Err(processor::Error::Emulation(emulator::Error::DependencyError(e))) => {
-                if let Some(linux::Error::Exit(status)) = e.downcast_ref::<linux::Error>() {
+                if let Some(linux::model::Error::Exit(status)) =
+                    e.downcast_ref::<linux::model::Error>()
+                {
                     assert_eq!(*status, 0, "exit status should be 0");
                     return Ok(());
                 }

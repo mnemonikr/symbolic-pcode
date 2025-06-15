@@ -51,13 +51,13 @@ enum BranchingNextExecution {
 pub struct ProcessorManager<
     E: PcodeEmulator + Clone,
     M: VarnodeDataStore + Default,
-    H: ProcessorResponseHandler<M>,
+    H: ProcessorResponseHandler,
 > {
     processors: Vec<Processor<E, M, H>>,
     sleigh: GhidraSleigh,
 }
 
-impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler<M>>
+impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler>
     ProcessorManager<E, M, H>
 {
     pub fn new(sleigh: GhidraSleigh, processor: Processor<E, M, H>) -> Self {
@@ -108,16 +108,20 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
     }
 }
 
-pub trait ProcessorResponseHandler<M: VarnodeDataStore + Default>: Clone {
-    fn fetched(&mut self, memory: &mut MemoryBranch<M>) -> Result<Address>;
-    fn decoded(&mut self, memory: &mut MemoryBranch<M>, execution: &PcodeExecution) -> Result<()>;
-    fn jumped(&mut self, memory: &mut MemoryBranch<M>, address: &Address) -> Result<()>;
+pub trait ProcessorResponseHandler: Clone {
+    fn fetched<M: VarnodeDataStore>(&mut self, memory: &mut M) -> Result<Address>;
+    fn decoded<M: VarnodeDataStore>(
+        &mut self,
+        memory: &mut M,
+        execution: &PcodeExecution,
+    ) -> Result<()>;
+    fn jumped<M: VarnodeDataStore>(&mut self, memory: &mut M, address: &Address) -> Result<()>;
 }
 
 pub struct Processor<
     E: PcodeEmulator + Clone,
     M: VarnodeDataStore + Default,
-    H: ProcessorResponseHandler<M> + Clone,
+    H: ProcessorResponseHandler + Clone,
 > {
     memory: MemoryBranch<M>,
     state: ProcessorState,
@@ -128,7 +132,7 @@ pub struct Processor<
 impl<
         E: PcodeEmulator + Clone,
         M: VarnodeDataStore + Default,
-        H: ProcessorResponseHandler<M> + Clone,
+        H: ProcessorResponseHandler + Clone,
     > Processor<E, M, H>
 {
     pub fn new(memory: M, emulator: E, handler: H) -> Self {
