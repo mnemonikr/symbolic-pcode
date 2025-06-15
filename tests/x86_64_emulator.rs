@@ -31,10 +31,6 @@ fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
     // * argv - list must be terminated by NULL pointer
     // * envp - list must be terminated by NULL pointer
     // * auxv - list must be terminated by NULL pointer
-    //
-    // argc = 1
-    // argv[0] = "hello"
-    // envp = (argv + 1) + 1 ??? argv = 0x8000, argv + 2 = 0x8010
     let ram = sleigh
         .address_space_by_name("ram")
         .expect("failed to find ram");
