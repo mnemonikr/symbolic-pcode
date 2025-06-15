@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::emulator::{self, ControlFlow};
-use crate::kernel::model::KernelModel;
+use crate::kernel::Kernel;
 use crate::mem::VarnodeDataStore;
 use libsla::{Address, Sleigh, VarnodeData};
 use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
@@ -115,7 +115,7 @@ enum MmapFlags {
     Stack = 0x020000,
 }
 
-impl KernelModel for LinuxKernel {
+impl Kernel for LinuxKernel {
     fn syscall(
         &mut self,
         sleigh: &impl Sleigh,

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use libsla::{OpCode, PcodeInstruction, PseudoOp, Sleigh};
 
 use crate::emulator::{ControlFlow, Error, PcodeEmulator, Result, StandardPcodeEmulator};
-use crate::kernel::model::{KernelModel, NoKernel};
+use crate::kernel::{Kernel, NoKernel};
 use crate::mem::VarnodeDataStore;
 
 #[repr(u64)]
@@ -21,14 +21,14 @@ enum CallOtherOps {
 pub struct EmulatorX86<S, K = NoKernel>
 where
     S: Sleigh,
-    K: KernelModel,
+    K: Kernel,
 {
     sleigh: Rc<S>,
     kernel: K,
     emulator: StandardPcodeEmulator,
 }
 
-impl<S: Sleigh, K: KernelModel + Clone> Clone for EmulatorX86<S, K> {
+impl<S: Sleigh, K: Kernel + Clone> Clone for EmulatorX86<S, K> {
     fn clone(&self) -> Self {
         Self {
             sleigh: self.sleigh.clone(),
@@ -38,8 +38,8 @@ impl<S: Sleigh, K: KernelModel + Clone> Clone for EmulatorX86<S, K> {
     }
 }
 
-impl<S: Sleigh, K: KernelModel + Default> EmulatorX86<S, K> {
-    pub fn new(sleigh: Rc<S>) -> Self {
+impl<S: Sleigh> EmulatorX86<S, NoKernel> {
+    pub fn without_kernel(sleigh: Rc<S>) -> Self {
         Self {
             emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
             kernel: Default::default(),
@@ -48,7 +48,7 @@ impl<S: Sleigh, K: KernelModel + Default> EmulatorX86<S, K> {
     }
 }
 
-impl<S: Sleigh, K: KernelModel> EmulatorX86<S, K> {
+impl<S: Sleigh, K: Kernel> EmulatorX86<S, K> {
     pub fn with_kernel(sleigh: Rc<S>, kernel: K) -> Self {
         Self {
             emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
@@ -58,7 +58,7 @@ impl<S: Sleigh, K: KernelModel> EmulatorX86<S, K> {
     }
 }
 
-impl<S: Sleigh, K: KernelModel> PcodeEmulator for EmulatorX86<S, K> {
+impl<S: Sleigh, K: Kernel> PcodeEmulator for EmulatorX86<S, K> {
     fn emulate<M: VarnodeDataStore>(
         &mut self,
         memory: &mut M,
