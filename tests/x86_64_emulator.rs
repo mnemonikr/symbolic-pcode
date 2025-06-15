@@ -141,7 +141,7 @@ fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
 
 fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
     let mut bitvar = 0;
-    let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI"]
+    let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP"]
         .into_iter()
         .map(str::to_owned)
         .chain((8..16).map(|n| format!("R{n}")))
@@ -178,13 +178,6 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
     memory
         .write(&rsp, INITIAL_STACK.into())
         .expect("failed to initialize RSP");
-
-    // Init RBP to magic EXIT_RIP value
-    // TODO Is this necessary?
-    let rbp = sleigh.register_from_name("RBP").expect("invalid register");
-    memory
-        .write(&rbp, EXIT_RIP.into())
-        .expect("failed to initialize RBP");
 
     // Initialize the DF register to 0. It appears to be a convention that whenever STD is called
     // CLD is called thereafter to reset it. There is a bug (?) in MUSL where REP STOS is used
