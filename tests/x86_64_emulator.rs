@@ -7,9 +7,9 @@ use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
 use pcode_ops::PcodeOps;
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
-    arch::x86::ProcessorHandlerX86,
+    arch::x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
     emulator::{self, StandardPcodeEmulator},
-    kernel::linux::{self, emulator::LinuxEmulator},
+    kernel::linux::{self, LinuxKernel},
     mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
     processor::{self, Processor, ProcessorManager, ProcessorState},
 };
@@ -432,7 +432,8 @@ fn hello_world_linux() -> processor::Result<()> {
     initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = ProcessorHandlerX86::new(sleigh.as_ref());
-    let emulator = LinuxEmulator::new(sleigh.clone());
+    //let emulator = EmulatorX86::<_, LinuxKernel>::new(sleigh.clone());
+    let emulator = EmulatorX86::<_, LinuxKernel>::new(sleigh.clone());
     let mut processor = Processor::new(memory, emulator, handler);
 
     loop {
@@ -458,16 +459,20 @@ fn hello_world_linux() -> processor::Result<()> {
             Ok(Some(_)) => {
                 panic!("Symbolic branch encountered");
             }
-            Err(processor::Error::Emulation(emulator::Error::DependencyError(e))) => {
-                if let Some(linux::model::Error::Exit(status)) =
-                    e.downcast_ref::<linux::model::Error>()
-                {
-                    assert_eq!(*status, 0, "exit status should be 0");
-                    return Ok(());
-                }
-            }
             Err(e) => {
-                return Err(e);
+                if let processor::Error::Emulation(emulator::Error::DependencyError(inner_err)) = &e
+                {
+                    if let Some(linux::Error::Exit(status)) =
+                        inner_err.downcast_ref::<linux::Error>()
+                    {
+                        assert_eq!(*status, 0, "exit status should be 0");
+                        return Ok(());
+                    } else {
+                        return Err(e);
+                    }
+                } else {
+                    return Err(e);
+                }
             }
         }
     }
