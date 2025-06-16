@@ -39,6 +39,7 @@ impl<S: Sleigh, K: Kernel + Clone> Clone for EmulatorX86<S, K> {
 }
 
 impl<S: Sleigh> EmulatorX86<S, NoKernel> {
+    /// Create an emulator without a kernel. Syscalls will trigger [Error::UnsupportedInstruction].
     pub fn without_kernel(sleigh: Rc<S>) -> Self {
         Self {
             emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
@@ -49,12 +50,18 @@ impl<S: Sleigh> EmulatorX86<S, NoKernel> {
 }
 
 impl<S: Sleigh, K: Kernel> EmulatorX86<S, K> {
+    /// Create an emulator with syscalls implemented by the given kernel
     pub fn with_kernel(sleigh: Rc<S>, kernel: K) -> Self {
         Self {
             emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
             kernel,
             sleigh,
         }
+    }
+
+    /// Get a reference to the kernel
+    pub fn kernel(&self) -> &K {
+        &self.kernel
     }
 }
 

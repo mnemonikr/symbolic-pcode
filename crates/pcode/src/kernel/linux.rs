@@ -66,6 +66,8 @@ pub struct LinuxKernel {
     // https://github.com/torvalds/linux/blob/master/mm/nommu.c#L379
     brk_range: Range<u64>,
     brk: u64,
+
+    exit_status: Option<i32>,
 }
 
 impl Default for LinuxKernel {
@@ -133,7 +135,12 @@ impl LinuxKernel {
             brk: brk_range.start,
             brk_range,
             mmap_pages: Default::default(),
+            exit_status: None,
         }
+    }
+
+    pub fn exit_status(&self) -> Option<i32> {
+        self.exit_status
     }
 
     pub fn syscall_internal<M: VarnodeDataStore>(
@@ -519,12 +526,13 @@ impl LinuxKernel {
     }
 
     fn exit_group<M: VarnodeDataStore>(
-        &self,
+        &mut self,
         sleigh: &impl Sleigh,
         memory: &M,
     ) -> Result<ControlFlow> {
         let status: i32 = self.syscall_arg(sleigh, memory, 0)?;
-        Err(Error::Exit(status))
+        self.exit_status = Some(status);
+        Ok(ControlFlow::Halt)
     }
 
     fn syscall_num<M: VarnodeDataStore>(&self, sleigh: &impl Sleigh, memory: &M) -> Result<u32> {

@@ -4,7 +4,7 @@ use std::{path::Path, rc::Rc};
 
 use common::{x86_64_sleigh, Memory, TracingEmulator};
 use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
-use pcode_ops::PcodeOps;
+use pcode_ops::{convert::PcodeValue, PcodeOps};
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
     arch::x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
@@ -432,8 +432,7 @@ fn hello_world_linux() -> processor::Result<()> {
     initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = ProcessorHandlerX86::new(sleigh.as_ref());
-    //let emulator = EmulatorX86::<_, LinuxKernel>::new(sleigh.clone());
-    let emulator = EmulatorX86::<_, LinuxKernel>::new(sleigh.clone());
+    let emulator = EmulatorX86::with_kernel(sleigh.clone(), LinuxKernel::default());
     let mut processor = Processor::new(memory, emulator, handler);
 
     loop {
@@ -455,24 +454,20 @@ fn hello_world_linux() -> processor::Result<()> {
                     println!("Encoded instruction from memory: {encoded_instr}");
                     println!("Decoded: {disassembly}");
                 }
+                if matches!(processor.state(), ProcessorState::Halt) {
+                    assert_eq!(
+                        processor.emulator().kernel().exit_status(),
+                        Some(0),
+                        "exit code should be 0"
+                    );
+                    return Ok(());
+                }
             }
             Ok(Some(_)) => {
                 panic!("Symbolic branch encountered");
             }
             Err(e) => {
-                if let processor::Error::Emulation(emulator::Error::DependencyError(inner_err)) = &e
-                {
-                    if let Some(linux::Error::Exit(status)) =
-                        inner_err.downcast_ref::<linux::Error>()
-                    {
-                        assert_eq!(*status, 0, "exit status should be 0");
-                        return Ok(());
-                    } else {
-                        return Err(e);
-                    }
-                } else {
-                    return Err(e);
-                }
+                return Err(e);
             }
         }
     }
