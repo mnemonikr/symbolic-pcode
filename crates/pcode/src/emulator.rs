@@ -102,6 +102,11 @@ pub enum ControlFlow {
         condition: Option<bool>,
         destination: Destination,
     },
+
+    /// Execution should halt. It may be permitted for execution to continue again once some
+    /// external state has changed. It may also represent the conclusion of the execution. This
+    /// will never be returned by the core emulator but may be returned by emulator extensions.
+    Halt,
 }
 
 /// Interface for Pcode emulator

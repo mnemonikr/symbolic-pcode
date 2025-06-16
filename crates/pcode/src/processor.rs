@@ -33,6 +33,9 @@ pub enum Error {
 
     #[error("internal error: {0}")]
     InternalError(String),
+
+    #[error("operation not permitted for state {0:?}")]
+    InvalidState(ProcessorState),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -41,6 +44,7 @@ enum NextExecution {
     NextInstruction,
     Jump(Address),
     PcodeOffset(i64),
+    Halt,
 }
 
 enum BranchingNextExecution {
@@ -200,6 +204,7 @@ impl<
                     }
                 }
             }
+            state => return Err(Error::InvalidState(state.clone())),
         }
 
         Ok(None)
@@ -214,6 +219,7 @@ impl<
                 }
                 NextExecution::NextInstruction => self.state = ProcessorState::Fetch,
                 NextExecution::PcodeOffset(offset) => execution.update_index(offset)?,
+                NextExecution::Halt => self.state = ProcessorState::Halt,
             }
 
             Ok(())
@@ -242,9 +248,10 @@ pub enum ProcessorState {
     Fetch,
     Decode(DecodeInstruction),
     Execute(PcodeExecution),
+    Halt,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodeInstruction {
     address: Address,
 }
@@ -419,6 +426,7 @@ impl PcodeExecution {
                 destination,
                 ..
             } => self.branch(condition_origin, &destination)?,
+            ControlFlow::Halt => BranchingNextExecution::Flow(NextExecution::Halt),
         };
 
         Ok(result)
