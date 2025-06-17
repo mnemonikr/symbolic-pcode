@@ -276,6 +276,13 @@ mod default {
         #[rust_name = "register_tag"]
         unsafe fn registerTag(self: Pin<&mut DocumentStorage>, element: *const Element);
 
+        // Register varnode
+        type RegisterVarnodeName;
+        #[rust_name = "register"]
+        fn getVarnode(self: &RegisterVarnodeName) -> &VarnodeData;
+        #[rust_name = "name"]
+        fn getName(self: &RegisterVarnodeName) -> &CxxString;
+
         // The Sleigh
         type SleighProxy;
         #[rust_name = "new_sleigh"]
@@ -312,9 +319,13 @@ mod default {
             offset: u64,
             size: i32,
         ) -> UniquePtr<CxxString>;
-        //virtual string getRegisterName(AddrSpace *base,uintb off,int4 size) const=0;
 
-        //virtual void getAllRegisters(map<VarnodeData,string> &reglist) const=0;
+        // Need to proxy this because the C++ API interfaces with std::map. However as of now the
+        // cxx crate does not expose std::map. So the FFI layer builds a vector of the map
+        // key-value pairs instead in a custom class. The custom layer is necessary since the pair
+        // API cannot be easily exposed through FFI either.
+        #[rust_name = "registers"]
+        fn getAllRegistersProxy(self: &SleighProxy) -> UniquePtr<CxxVector<RegisterVarnodeName>>;
 
         #[rust_name = "parse_processor_config"]
         fn parseProcessorConfig(self: Pin<&mut SleighProxy>, store: &DocumentStorage)

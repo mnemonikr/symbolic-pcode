@@ -53,6 +53,14 @@ void RustLoadImageProxy::adjustVma(long adjust) {
     // TODO
 }
 
+RegisterVarnodeName::RegisterVarnodeName(std::pair<VarnodeData, std::string> pair) : pair(pair) {}
+const VarnodeData& RegisterVarnodeName::getVarnode() const {
+    return std::get<0>(pair);
+}
+const std::string& RegisterVarnodeName::getName() const {
+    return std::get<1>(pair);
+}
+
 SleighProxy::SleighProxy(unique_ptr<RustLoadImageProxy> loader, unique_ptr<ContextDatabase> context)
     : Sleigh(loader.get(), context.get()), loader(move(loader)), context(move(context)) {
 }
@@ -132,6 +140,19 @@ void SleighProxy::parseProcessorConfig(const DocumentStorage &store) {
 
 std::unique_ptr<std::string> SleighProxy::getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const {
     return std::make_unique<std::string>(getRegisterName(base, off, size));
+}
+
+
+std::unique_ptr<std::vector<RegisterVarnodeName>> SleighProxy::getAllRegistersProxy() const {
+    std::map<VarnodeData, std::string> regmap;
+    getAllRegisters(regmap);
+
+    auto reglist = std::make_unique<std::vector<RegisterVarnodeName>>();
+    for (auto &regmapEntry : regmap) {
+        reglist->push_back(RegisterVarnodeName(regmapEntry));
+    }
+
+    return reglist;
 }
 
 int4 SleighProxy::disassemblePcode(const RustLoadImage &loadImage, RustPcodeEmit &emit, const Address &baseaddr) const {
