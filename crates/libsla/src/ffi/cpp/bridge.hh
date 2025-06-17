@@ -55,6 +55,15 @@ class RustPcodeEmitProxy : public PcodeEmit {
         void dump(const Address &addr,OpCode opc,VarnodeData *outvar,VarnodeData *vars,int4 isize) override;
 };
 
+class RegisterVarnodeName {
+    std::pair<VarnodeData, std::string> pair;
+
+    public:
+        RegisterVarnodeName(std::pair<VarnodeData, std::string> pair);
+        const VarnodeData& getVarnode() const;
+        const std::string& getName() const;
+};
+
 class SleighProxy : public Sleigh {
     unique_ptr<RustLoadImageProxy> loader;
     unique_ptr<ContextDatabase> context;
@@ -65,6 +74,7 @@ class SleighProxy : public Sleigh {
         int4 disassemblePcode(const RustLoadImage &loadImage, RustPcodeEmit &emit, const Address &baseaddr) const;
         int4 disassembleNative(const RustLoadImage &loadImage, RustAssemblyEmit &emit, const Address &baseaddr) const;
         std::unique_ptr<std::string> getRegisterNameProxy(AddrSpace *base, uintb off, int4 size) const;
+        unique_ptr<vector<RegisterVarnodeName>> getAllRegistersProxy() const;
 };
 
 unique_ptr<SleighProxy> construct_new_sleigh(unique_ptr<ContextDatabase> context);

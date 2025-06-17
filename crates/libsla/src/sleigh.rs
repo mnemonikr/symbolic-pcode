@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::sync::Once;
 
 use cxx::{let_cxx_string, UniquePtr};
@@ -71,10 +72,12 @@ pub trait Sleigh {
     /// Get the register name for a varnode targeting a register. This will return `None` if the
     /// target is not a valid register.
     fn register_name(&self, target: &VarnodeData) -> Option<String>;
+
+    fn registers(&self) -> BTreeMap<VarnodeData, String>;
 }
 
 /// An address is represented by an offset into an address space
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Ord, PartialOrd, PartialEq, Eq, Clone)]
 pub struct Address {
     /// The standard interpretation of the offset is an index into the associated address space.
     /// However, when used in conjunction with the constant address space, the offset is the actual
@@ -129,6 +132,24 @@ impl From<&sys::Address> for Address {
 pub struct VarnodeData {
     pub address: Address,
     pub size: usize,
+}
+
+impl Ord for VarnodeData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.address.cmp(&other.address) {
+            std::cmp::Ordering::Equal => (),
+            ord => return ord,
+        }
+
+        // Larger size should come first
+        other.size.cmp(&self.size)
+    }
+}
+
+impl PartialOrd for VarnodeData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl std::fmt::Display for VarnodeData {
@@ -207,7 +228,7 @@ impl AddressSpaceId {
 }
 
 /// Information about an address space
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AddressSpace {
     pub id: AddressSpaceId,
     pub name: Cow<'static, str>,
@@ -257,7 +278,7 @@ impl From<&sys::AddrSpace> for AddressSpaceId {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AddressSpaceType {
     /// Special space to represent constants
     Constant,
@@ -720,5 +741,13 @@ impl Sleigh for GhidraSleigh {
         let origin =
             self.disassemble(loader, address, DisassemblyKind::Native(&mut instructions))?;
         Ok(Disassembly::new(instructions, origin))
+    }
+
+    fn registers(&self) -> BTreeMap<VarnodeData, String> {
+        self.sleigh
+            .registers()
+            .into_iter()
+            .map(|data| (data.register().into(), data.name().to_string()))
+            .collect()
     }
 }

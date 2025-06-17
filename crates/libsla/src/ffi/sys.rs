@@ -276,6 +276,13 @@ mod default {
         #[rust_name = "register_tag"]
         unsafe fn registerTag(self: Pin<&mut DocumentStorage>, element: *const Element);
 
+        // Register varnode
+        type RegisterVarnodeName;
+        #[rust_name = "register"]
+        fn getVarnode(self: &RegisterVarnodeName) -> &VarnodeData;
+        #[rust_name = "name"]
+        fn getName(self: &RegisterVarnodeName) -> &CxxString;
+
         // The Sleigh
         type SleighProxy;
         #[rust_name = "new_sleigh"]
@@ -314,6 +321,14 @@ mod default {
         ) -> UniquePtr<CxxString>;
         //virtual string getRegisterName(AddrSpace *base,uintb off,int4 size) const=0;
 
+        #[rust_name = "registers"]
+        fn getAllRegistersProxy(self: &SleighProxy) -> UniquePtr<CxxVector<RegisterVarnodeName>>;
+
+        //#[rust_name = "pair_register"]
+        //fn getFirstFromRegisterNamePair(pair: &RegisterNamePair) -> &VarnodeData;
+
+        //#[rust_name = "pair_register_name"]
+        //fn getSecondFromRegisterNamePair(pair: &RegisterNamePair) -> &CxxString;
         //virtual void getAllRegisters(map<VarnodeData,string> &reglist) const=0;
 
         #[rust_name = "parse_processor_config"]
