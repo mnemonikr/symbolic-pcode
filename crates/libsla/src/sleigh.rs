@@ -73,6 +73,7 @@ pub trait Sleigh {
     /// target is not a valid register.
     fn register_name(&self, target: &VarnodeData) -> Option<String>;
 
+    /// Get a sorted map of registers to register names.
     fn registers(&self) -> BTreeMap<VarnodeData, String>;
 }
 
