@@ -20,16 +20,10 @@ jobs:
         submodules: recursive
     - name: Build
       run: cargo build --verbose --all-targets
-    - name: Build Pcode Coverage Test Fixture
+    - name: Add test fixture targets
       run: |
         rustup target add x86_64-unknown-none
-        cargo build
-      working-directory: ./tests/test-fixtures/pcode-coverage
-    - name: Build Linux Syscalls Test Fixture
-      run: |
         rustup target add x86_64-unknown-linux-musl
-        cargo build
-      working-directory: ./tests/test-fixtures/linux-syscalls
     - name: Unit Tests
       run: cargo test --workspace --verbose
     - name: Coverage Report
