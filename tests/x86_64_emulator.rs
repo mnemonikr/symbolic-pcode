@@ -417,6 +417,18 @@ fn doubler_32b() -> processor::Result<()> {
 
 #[test]
 fn hello_world_linux() -> processor::Result<()> {
+    // Build test fixture first
+    escargot::CargoBuild::new()
+        .bin("linux-syscalls")
+        .manifest_path("./test-fixtures/linux-syscalls/Cargo.toml")
+        .target("x86_64-unknown-linux-musl")
+        .env(
+            "RUSTFLAGS",
+            "-Ctarget-feature=+crt-static -Crelocation-model=static",
+        )
+        .exec()
+        .unwrap();
+
     let image =
         "./test-fixtures/linux-syscalls/target/x86_64-unknown-linux-musl/debug/linux-syscalls";
     let sleigh = Rc::new(x86_64_sleigh().expect("failed to build sleigh"));
@@ -468,7 +480,14 @@ fn hello_world_linux() -> processor::Result<()> {
 
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
-    // TODO Must first ensure target is built. Currently must be done manually
+    // Build test fixture first
+    escargot::CargoBuild::new()
+        .bin("pcode-coverage")
+        .manifest_path("./test-fixtures/pcode-coverage/Cargo.toml")
+        .target("x86_64-unknown-none")
+        .exec()
+        .unwrap();
+
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
     let image = "./test-fixtures/pcode-coverage/target/x86_64-unknown-none/debug/pcode-coverage";
     let mut memory = memory_with_image(&sleigh, image);

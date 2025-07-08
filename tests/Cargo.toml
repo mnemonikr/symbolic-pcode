@@ -17,6 +17,9 @@ sym = { path = "../crates/sym" }
 [dev-dependencies]
 elf = "0.8"
 
+# For building test fixtures
+escargot = "0.5"
+
 # This requires z3 to be installed locally as a shared library.
 z3 = "0.12"
 
