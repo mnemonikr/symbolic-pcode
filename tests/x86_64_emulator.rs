@@ -200,6 +200,33 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
         .expect("failed to init DF register");
 }
 
+fn find_test_fixture(
+    messages: escargot::CommandMessages,
+) -> Result<std::path::PathBuf, Vec<escargot::error::CargoResult<escargot::Message>>> {
+    let messages: Vec<_> = messages.into_iter().collect();
+    let executable_path = messages.iter().find_map(|result| {
+        result
+            .as_ref()
+            .ok()
+            .into_iter()
+            .filter_map(|msg| {
+                msg.decode()
+                    .ok()
+                    .into_iter()
+                    .filter_map(|msg| match msg {
+                        escargot::format::Message::CompilerArtifact(artifact) => {
+                            artifact.executable.map(|p| p.into_owned())
+                        }
+                        _ => None,
+                    })
+                    .next()
+            })
+            .next()
+    });
+
+    executable_path.ok_or(messages)
+}
+
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
 #[test]
 fn x86_64_registers() {
@@ -418,7 +445,7 @@ fn doubler_32b() -> processor::Result<()> {
 #[test]
 fn hello_world_linux() -> processor::Result<()> {
     // Build test fixture first
-    escargot::CargoBuild::new()
+    let messages = escargot::CargoBuild::new()
         .bin("linux-syscalls")
         .manifest_path("./test-fixtures/linux-syscalls/Cargo.toml")
         .target("x86_64-unknown-linux-musl")
@@ -429,8 +456,13 @@ fn hello_world_linux() -> processor::Result<()> {
         .exec()
         .unwrap();
 
-    let image =
-        "./test-fixtures/linux-syscalls/target/x86_64-unknown-linux-musl/debug/linux-syscalls";
+    let image = match find_test_fixture(messages) {
+        Ok(image) => image,
+        Err(messages) => {
+            panic!("Failed to find test fixture: {messages:?}");
+        }
+    };
+
     let sleigh = Rc::new(x86_64_sleigh().expect("failed to build sleigh"));
     let mut memory = memory_with_image(&sleigh, image);
     init_registers(sleigh.as_ref(), &mut memory);
@@ -481,15 +513,21 @@ fn hello_world_linux() -> processor::Result<()> {
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
     // Build test fixture first
-    escargot::CargoBuild::new()
+    let messages = escargot::CargoBuild::new()
         .bin("pcode-coverage")
         .manifest_path("./test-fixtures/pcode-coverage/Cargo.toml")
         .target("x86_64-unknown-none")
         .exec()
         .unwrap();
 
+    let image = match find_test_fixture(messages) {
+        Ok(image) => image,
+        Err(messages) => {
+            panic!("Failed to find test fixture: {messages:?}");
+        }
+    };
+
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
-    let image = "./test-fixtures/pcode-coverage/target/x86_64-unknown-none/debug/pcode-coverage";
     let mut memory = memory_with_image(&sleigh, image);
     init_registers(&sleigh, &mut memory);
 
