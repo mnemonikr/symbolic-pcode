@@ -20,6 +20,10 @@ jobs:
         submodules: recursive
     - name: Build
       run: cargo build --verbose --all-targets
+    - name: Add test fixture targets
+      run: |
+        rustup target add x86_64-unknown-none
+        rustup target add x86_64-unknown-linux-musl
     - name: Unit Tests
       run: cargo test --workspace --verbose
     - name: Coverage Report
