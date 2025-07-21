@@ -74,7 +74,7 @@ pub trait Sleigh {
     fn register_name(&self, target: &VarnodeData) -> Option<String>;
 
     /// Get a sorted map of registers to register names.
-    fn all_register_names(&self) -> BTreeMap<VarnodeData, String>;
+    fn register_name_map(&self) -> BTreeMap<VarnodeData, String>;
 }
 
 /// An address is represented by an offset into an address space
@@ -744,7 +744,7 @@ impl Sleigh for GhidraSleigh {
         Ok(Disassembly::new(instructions, origin))
     }
 
-    fn all_register_names(&self) -> BTreeMap<VarnodeData, String> {
+    fn register_name_map(&self) -> BTreeMap<VarnodeData, String> {
         self.sleigh
             .all_register_names()
             .into_iter()

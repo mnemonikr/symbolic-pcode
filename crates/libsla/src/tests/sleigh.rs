@@ -290,7 +290,7 @@ pub fn invalid_instruction() -> Result<()> {
 fn all_register_names() -> Result<()> {
     let sleigh = x86_64_sleigh()?;
     let expected_name = ["RAX", "EAX", "AX", "AL"];
-    for (i, (reg, name)) in sleigh.all_register_names().iter().take(4).enumerate() {
+    for (i, (reg, name)) in sleigh.register_name_map().iter().take(4).enumerate() {
         assert_eq!(
             reg.address.offset, 0,
             "address offset should be 0 for {name}: {reg:?}"
