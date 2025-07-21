@@ -324,7 +324,7 @@ mod default {
         // cxx crate does not expose std::map. So the FFI layer builds a vector of the map
         // key-value pairs instead in a custom class. The custom layer is necessary since the pair
         // API cannot be easily exposed through FFI either.
-        #[rust_name = "registers"]
+        #[rust_name = "all_register_names"]
         fn getAllRegistersProxy(self: &SleighProxy) -> UniquePtr<CxxVector<RegisterVarnodeName>>;
 
         #[rust_name = "parse_processor_config"]
