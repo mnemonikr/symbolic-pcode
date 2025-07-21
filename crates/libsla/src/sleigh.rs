@@ -313,7 +313,7 @@ impl From<sys::spacetype> for AddressSpaceType {
 }
 
 /// A pcode instruction
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PcodeInstruction {
     /// The originating address for this instruction. This information is necessary to include for
     /// the [OpCode::BranchIndirect] operation, which determines the destination address space from
