@@ -41,7 +41,7 @@ A _compiled_ Sleigh specification (.sla file) is required to translate native co
 
 ## Sleigh Compiler
 
-The sleigh compiler must be built from the [Ghidra decompiler source](https://github.com/NationalSecurityAgency/ghidra/blob/stable/Ghidra/Features/Decompiler/src/decompile/cpp) using `make sleigh_opt`.
+The [sleigh-compiler](https://crates.io/crates/sleigh-compiler) crate can be used to compile files from Rust code. Alternatively the original sleigh compiler can be built from the [Ghidra decompiler source](https://github.com/NationalSecurityAgency/ghidra/blob/stable/Ghidra/Features/Decompiler/src/decompile/cpp) using `make sleigh_opt`.
 
 ## Compile Sleigh Processor Specification (.slaspec)
 
