@@ -5,11 +5,17 @@
 #include "sleigh-compiler/src/ffi/sys.rs.h"
 
 void SleighCompileProxy::setAllOptionsProxy(
-        std::unique_ptr<DefineOptions> defines, bool unnecessaryPcodeWarning,
+        const std::vector<PreprocessorDefine> &defines, bool unnecessaryPcodeWarning,
         bool lenientConflict, bool allCollisionWarning,
         bool allNopWarning,bool deadTempWarning,bool enforceLocalKeyWord,
         bool largeTemporaryWarning, bool caseSensitiveRegisterNames) {
-    setAllOptions(defines->options(), unnecessaryPcodeWarning,
+
+    std::map<std::string, std::string> definesMap;
+    for (auto &d : defines) {
+        definesMap.emplace(d.name, d.value);
+    }
+
+    setAllOptions(definesMap, unnecessaryPcodeWarning,
         lenientConflict, allCollisionWarning,
         allNopWarning, deadTempWarning, enforceLocalKeyWord,
         largeTemporaryWarning, caseSensitiveRegisterNames);
@@ -20,10 +26,6 @@ int4 SleighCompileProxy::run_compilation_proxy(const std::string &filein, const 
     static std::mutex mutex;
     const std::lock_guard<std::mutex> lock(mutex);
     return run_compilation(filein, fileout);
-}
-
-std::unique_ptr<DefineOptions> construct_new_define_options() {
-    return std::make_unique<DefineOptions>();
 }
 
 std::unique_ptr<SleighCompileProxy> construct_new_sleigh_compile() {

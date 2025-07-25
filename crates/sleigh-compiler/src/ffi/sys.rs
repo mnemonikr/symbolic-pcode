@@ -2,6 +2,11 @@ pub use bridge::*;
 
 #[cxx::bridge]
 mod bridge {
+    struct PreprocessorDefine {
+        pub name: String,
+        pub value: String,
+    }
+
     unsafe extern "C++" {
         include!("sleigh-compiler/src/ffi/cpp/bridge.hh");
 
@@ -15,7 +20,7 @@ mod bridge {
         #[allow(clippy::too_many_arguments)]
         fn setAllOptionsProxy(
             self: Pin<&mut SleighCompileProxy>,
-            defines: UniquePtr<DefineOptions>,
+            defines: &CxxVector<PreprocessorDefine>,
             unnecessaryPcodeWarning: bool,
             lenientConflict: bool,
             allCollisionWarning: bool,
@@ -32,17 +37,5 @@ mod bridge {
             filein: Pin<&CxxString>,
             fileout: Pin<&CxxString>,
         ) -> Result<i32>;
-
-        type DefineOptions;
-
-        #[rust_name = "new_define_options"]
-        fn construct_new_define_options() -> UniquePtr<DefineOptions>;
-
-        #[rust_name = "define_option"]
-        fn defineOption(
-            self: Pin<&mut DefineOptions>,
-            name: Pin<&mut CxxString>,
-            value: Pin<&mut CxxString>,
-        );
     }
 }

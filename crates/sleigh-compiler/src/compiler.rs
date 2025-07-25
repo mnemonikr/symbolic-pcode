@@ -1,7 +1,18 @@
 use std::{collections::BTreeMap, path::Path};
 
-use crate::ffi::sys;
+use crate::ffi::sys::{self, PreprocessorDefine};
 use cxx::UniquePtr;
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("non-zero exit code: {0}")]
+    NonZeroExitCode(i32),
+
+    #[error("compiler error: {0}")]
+    CompilerError(Box<dyn std::error::Error + Send + Sync>),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// The primary interface for interacting with the Sleigh compiler
 pub struct SleighCompiler {
@@ -61,15 +72,13 @@ impl SleighCompiler {
     pub fn new(options: SleighCompilerOptions) -> Self {
         let mut compiler = sys::new_sleigh_compiler();
 
-        let mut defines = sys::new_define_options();
+        let mut defines = cxx::CxxVector::new();
         for (name, value) in options.defines {
-            cxx::let_cxx_string!(cxx_name = name);
-            cxx::let_cxx_string!(cxx_value = value);
-            defines.pin_mut().define_option(cxx_name, cxx_value);
+            defines.pin_mut().push(PreprocessorDefine { name, value });
         }
 
         compiler.pin_mut().set_all_options(
-            defines,
+            defines.as_ref().unwrap(),
             options.unnecessary_pcode_warnings,
             options.lenient_conflict,
             options.all_collision_warning,
@@ -83,19 +92,31 @@ impl SleighCompiler {
         Self { compiler }
     }
 
+    /// Invoke the compiler on the provided `.slaspec` input file. The output `.sla` file will be
+    /// written to the given output path.
+    ///
+    /// ### Return value
+    ///
+    /// The return value for this function
     pub fn compile(
         &mut self,
         input_slaspec_path: impl AsRef<Path>,
         output_sla_path: impl AsRef<Path>,
-    ) -> Result<i32, Box<dyn std::error::Error>> {
+    ) -> Result<()> {
         cxx::let_cxx_string!(filein = input_slaspec_path.as_ref().as_os_str().as_encoded_bytes());
         cxx::let_cxx_string!(fileout = output_sla_path.as_ref().as_os_str().as_encoded_bytes());
 
         let exit_code = self
             .compiler
             .pin_mut()
-            .run_compilation(filein.as_ref(), fileout.as_ref())?;
-        Ok(exit_code)
+            .run_compilation(filein.as_ref(), fileout.as_ref())
+            .map_err(|err| Error::CompilerError(Box::new(err)))?;
+
+        if exit_code == 0 {
+            Ok(())
+        } else {
+            Err(Error::NonZeroExitCode(exit_code))
+        }
     }
 }
 

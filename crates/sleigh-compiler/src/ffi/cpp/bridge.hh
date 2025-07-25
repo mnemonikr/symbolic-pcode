@@ -5,21 +5,12 @@
 #include "error_handling.hh"
 #include "slgh_compile.hh"
 
-class DefineOptions {
-    std::map<std::string, std::string> opts;
-
-    public:
-        void defineOption(std::string &name, std::string &value) {
-            this->opts[std::move(name)] = std::move(value);
-        }
-        const std::map<std::string, std::string>& options() const { return opts; }
-};
-
-std::unique_ptr<DefineOptions> construct_new_define_options();
+// Defined in cxx bridge in sys.rs
+struct PreprocessorDefine;
 
 class SleighCompileProxy : public SleighCompile {
     public:
-        void setAllOptionsProxy(std::unique_ptr<DefineOptions> defines, bool unnecessaryPcodeWarning,
+        void setAllOptionsProxy(const std::vector<PreprocessorDefine> &defines, bool unnecessaryPcodeWarning,
                 bool lenientConflict, bool allCollisionWarning,
                 bool allNopWarning, bool deadTempWarning, bool enforceLocalKeyWord,
                 bool largeTemporaryWarning, bool caseSensitiveRegisterNames);

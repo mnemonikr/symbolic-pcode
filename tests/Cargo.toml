@@ -13,6 +13,7 @@ libsla = { path = "../crates/libsla" }
 symbolic-pcode = { path = "../crates/pcode" }
 pcode-ops = { path = "../crates/pcode-ops" }
 sym = { path = "../crates/sym" }
+sleigh-compiler = { path = "../crates/sleigh-compiler" }
 
 [dev-dependencies]
 elf = "0.8"
@@ -31,3 +32,6 @@ z3 = "0.12"
 name = "x86_64_emulator"
 path = "x86_64_emulator.rs"
 
+[[test]]
+name = "sleigh-compiler"
+path = "sleigh-compiler.rs"
