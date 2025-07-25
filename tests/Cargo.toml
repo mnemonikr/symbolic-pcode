@@ -13,7 +13,6 @@ libsla = { path = "../crates/libsla" }
 symbolic-pcode = { path = "../crates/pcode" }
 pcode-ops = { path = "../crates/pcode-ops" }
 sym = { path = "../crates/sym" }
-sleigh-processors = { path = "../crates/sleigh-processors", features = ["x86"] }
 
 [dev-dependencies]
 elf = "0.8"
