@@ -7,6 +7,7 @@ Nothing here yet.
 ### Changed
 
 * Updated documentation regarding compilation of `.sla` files. Can now build `.sla` files from Rust using [sleigh-compiler](https://crates.io/crates/sleigh-compiler) crate.
+* Upgraded `thiserror` from `1` to `2`
 
 ## libsla-0.3.0
 
