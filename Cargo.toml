@@ -9,4 +9,4 @@ license = "Apache-2.0"
 repository = "https://github.com/mnemonikr/symbolic-pcode"
 
 [workspace.dependencies]
-thiserror = "1.0"
+thiserror = "2.0"
