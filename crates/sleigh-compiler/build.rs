@@ -34,7 +34,7 @@ fn main() {
         "slghscan.cc",
     ];
 
-    cxx_build::bridge("src/ffi/ffi.rs")
+    cxx_build::bridge("src/ffi/sys.rs")
         .flag_if_supported("-std=c++14")
         .files(SLACOMP_SOURCE_FILES.iter().map(|s| source_path.join(s)))
         .file("src/ffi/cpp/bridge.cc")

@@ -2,7 +2,7 @@
 
 #include "bridge.hh"
 #include "rust/cxx.h"
-#include "sleigh-compiler/src/ffi/ffi.rs.h"
+#include "sleigh-compiler/src/ffi/sys.rs.h"
 
 void SleighCompileProxy::setAllOptionsProxy(
         std::unique_ptr<DefineOptions> defines, bool unnecessaryPcodeWarning,
