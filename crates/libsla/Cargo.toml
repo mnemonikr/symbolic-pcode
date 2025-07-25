@@ -25,6 +25,10 @@ include = [
 cxx = "1.0"
 thiserror.workspace = true
 
+[dev-dependencies]
+assert_fs = "1.1"
+sleigh-compiler = { path = "../sleigh-compiler" }
+
 [build-dependencies]
 cxx-build = "1.0"
 
