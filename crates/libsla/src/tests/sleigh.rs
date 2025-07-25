@@ -1,7 +1,10 @@
+use std::sync::OnceLock;
 use std::{borrow::Cow, fs};
 
 use crate::ffi::sys;
 use crate::*;
+
+static X86_64_SLA: OnceLock<String> = OnceLock::new();
 
 struct LoadImageImpl(Vec<u8>);
 
@@ -43,9 +46,23 @@ fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
     }
 }
 
+fn compile_x86_64_slaspec() -> sleigh_compiler::Result<String> {
+    use assert_fs::fixture::PathChild;
+    let temp = assert_fs::TempDir::new().unwrap();
+    let sla_path = temp.child("x86-64.sla");
+
+    let mut compiler = sleigh_compiler::SleighCompiler::default();
+    let slaspec_path =
+        std::path::Path::new("../../ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    compiler.compile(slaspec_path, &sla_path)?;
+    let output = fs::read_to_string(sla_path).expect("failed to read sla file");
+    temp.close().unwrap();
+    Ok(output)
+}
+
 fn x86_64_sleigh() -> Result<GhidraSleigh> {
-    let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
-        .expect("Failed to read processor spec file");
+    let sleigh_spec = X86_64_SLA
+        .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
     let processor_spec =
         fs::read_to_string("../../ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
             .expect("Failed to read processor spec file");
