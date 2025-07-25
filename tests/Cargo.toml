@@ -16,6 +16,7 @@ sym = { path = "../crates/sym" }
 
 [dev-dependencies]
 elf = "0.8"
+sleigh-compiler = "1.0"
 
 # For building test fixtures
 escargot = "0.5"
@@ -30,4 +31,3 @@ z3 = "0.12"
 [[test]]
 name = "x86_64_emulator"
 path = "x86_64_emulator.rs"
-

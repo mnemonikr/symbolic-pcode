@@ -38,7 +38,7 @@ fn main() {
         .flag_if_supported("-std=c++14")
         .files(LIBSLA_SOURCE_FILES.iter().map(|s| source_path.join(s)))
         .file("src/ffi/cpp/bridge.cc")
-        .include(&source_path) // Header files coexist with cpp files
+        .include(source_path) // Header files coexist with cpp files
         .warnings(false) // Not interested in the warnings for Ghidra code
         .compile("libsla.a");
 
