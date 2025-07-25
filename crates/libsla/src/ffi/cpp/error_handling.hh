@@ -5,6 +5,29 @@
 #include "translate.hh"
 #include "xml.hh"
 
+// The following are errors thrown from the decompiler codebase.
+// Almost all of the errors are children of LowlevelError
+//
+// BadDataError : LowlevelError
+// DataUnavailError : LowlevelError
+// DuplicateFunctionError : RecovError
+// EvaluationError : LowlevelError
+// JavaError : LowlevelError
+// JumptableNotReachableError : LowlevelError
+// JumptableThunkError : LowlevelError
+// LowlevelError (error.hh)
+// ParamUnassignedError : LowlevelError
+// ParseError : LowlevelError
+// RecovError : LowlevelError
+// SleighError : LowlevelError
+// UnimplError : LowlevelError
+//
+// IfaceError (interface.hh)
+// IfaceExecutionError : IfaceError
+// IfaceParseError : IfaceError
+//
+// DecoderError (xml.hh)
+
 namespace rust {
     namespace behavior {
         template <typename Try, typename Fail>

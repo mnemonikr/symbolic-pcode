@@ -2,6 +2,12 @@
 
 Nothing here yet.
 
+## libsla-0.3.1
+
+### Changed
+
+* Updated documentation regarding compilation of `.sla` files. Can now build `.sla` files from Rust using [sleigh-compiler](https://crates.io/crates/sleigh-compiler) crate.
+
 ## libsla-0.3.0
 
 ### Added

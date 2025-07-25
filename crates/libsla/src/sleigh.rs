@@ -7,7 +7,6 @@ use cxx::{let_cxx_string, UniquePtr};
 use crate::ffi::api;
 use crate::ffi::rust;
 use crate::ffi::sys;
-use crate::ffi::sys::AddrSpace;
 use crate::opcodes::OpCode;
 
 /// Tracks whether the one-time initialization required for libsla has been performed
@@ -593,7 +592,7 @@ impl GhidraSleigh {
         Default::default()
     }
 
-    fn sys_address_space(&self, space_id: AddressSpaceId) -> Option<*mut AddrSpace> {
+    fn sys_address_space(&self, space_id: AddressSpaceId) -> Option<*mut sys::AddrSpace> {
         let num_spaces = self.sleigh.num_spaces();
         for i in 0..num_spaces {
             let addr_space = self.sleigh.address_space(i);
