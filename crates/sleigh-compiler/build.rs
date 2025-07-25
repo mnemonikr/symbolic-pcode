@@ -1,7 +1,6 @@
 use std::path::Path;
 
 fn main() {
-    // TODO
     let source_path = Path::new("../../ghidra/Ghidra/Features/Decompiler/src/decompile/cpp");
 
     // The following sources were pulled from the Makefile
