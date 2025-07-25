@@ -14,11 +14,11 @@ include = [
     "/README.md",
     "/build.rs",
     "/src/*",
-    "../../ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
-    "../../ghidra/DISCLAIMER.md",
-    "../../ghidra/NOTICE",
-    "../../ghidra/LICENSE",
-    "../../ghidra/licenses/*",
+    "/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
+    "/ghidra/DISCLAIMER.md",
+    "/ghidra/NOTICE",
+    "/ghidra/LICENSE",
+    "/ghidra/licenses/*",
 ]
 
 [dependencies]
@@ -27,7 +27,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 assert_fs = "1.1"
-sleigh-compiler = { path = "../sleigh-compiler" }
+sleigh-compiler = "1.0"
 
 [build-dependencies]
 cxx-build = "1.0"

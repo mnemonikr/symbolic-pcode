@@ -122,8 +122,9 @@ impl TracingEmulator {
 fn compile_x86_64_slaspec() -> sleigh_compiler::Result<String> {
     let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("x86-64.sla");
     let mut compiler = sleigh_compiler::SleighCompiler::default();
-    let slaspec_path =
-        std::path::Path::new("../ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    let slaspec_path = std::path::Path::new(
+        "../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec",
+    );
     compiler.compile(slaspec_path, &sla_path)?;
     Ok(fs::read_to_string(sla_path).expect("failed to read sla file"))
 }
@@ -131,9 +132,10 @@ fn compile_x86_64_slaspec() -> sleigh_compiler::Result<String> {
 pub fn x86_64_sleigh() -> libsla::Result<GhidraSleigh> {
     let sleigh_spec = X86_64_SLA
         .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
-    let processor_spec =
-        fs::read_to_string("../ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("failed to read processor spec file");
+    let processor_spec = fs::read_to_string(
+        "../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
+    )
+    .expect("failed to read processor spec file");
 
     GhidraSleigh::builder()
         .sleigh_spec(sleigh_spec)?
