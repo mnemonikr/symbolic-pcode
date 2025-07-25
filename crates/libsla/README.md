@@ -17,7 +17,8 @@ The relevant .slaspec file must be compiled using the Sleigh compiler to generat
 
 ## Sleigh Compiler
 
-The sleigh compiler must be built from the
+The sleigh compiler can be invoked from Rust code using the [sleigh-compiler](https://crates.io/crates/sleigh-compiler) crate.
+Alternatively the original compiler can be built from the
 [Ghidra decompiler source](https://github.com/NationalSecurityAgency/ghidra/blob/stable/Ghidra/Features/Decompiler/src/decompile/cpp)
 using `make sleigh_opt`.
 
