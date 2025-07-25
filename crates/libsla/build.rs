@@ -1,7 +1,7 @@
 use std::path::Path;
 
 fn main() {
-    let source_path = Path::new("ghidra/Ghidra/Features/Decompiler/src/decompile/cpp");
+    let source_path = Path::new("../../ghidra/Ghidra/Features/Decompiler/src/decompile/cpp");
 
     // The following sources were pulled from the Makefile
     const LIBSLA_SOURCE_FILES: &[&str] = &[
@@ -38,7 +38,7 @@ fn main() {
         .flag_if_supported("-std=c++14")
         .files(LIBSLA_SOURCE_FILES.iter().map(|s| source_path.join(s)))
         .file("src/ffi/cpp/bridge.cc")
-        .include(&source_path) // Header files coexist with cpp files
+        .include(source_path) // Header files coexist with cpp files
         .warnings(false) // Not interested in the warnings for Ghidra code
         .compile("libsla.a");
 

@@ -1,6 +1,6 @@
 ## Overview
 
-This crate is a small wrapper around the Ghidra SLEIGH compiler for compiling `.slaspec` files into `.sla` files.
+This crate is a thin wrapper around the Ghidra SLEIGH compiler for compiling `.slaspec` files into `.sla` files.
 
 ## Usage
 
@@ -13,6 +13,8 @@ compiler.compile(&input_file, &output_file)?;
 // Success! Can now use compiled x86-64.sla file
 ```
 
+The SLEIGH compiler may report warnings on stderr. For details on any reported switches, refer to [SLEIGH compiler usage](../../ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/slgh_compile.cc#L3687-L3701).
+
 ## Related Work
 
-See [libsla](https://crates.io/crates/libsla) for using Ghidra libsla to using `.sla` files to perform native and pcode disassembly.
+The [libsla](https://crates.io/crates/libsla) crate wraps the Ghidra SLEIGH library to disassemble native instructions into pcode.

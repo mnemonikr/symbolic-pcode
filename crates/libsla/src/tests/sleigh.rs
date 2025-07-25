@@ -47,7 +47,7 @@ fn x86_64_sleigh() -> Result<GhidraSleigh> {
     let sleigh_spec = fs::read_to_string("../../tests/data/x86-64.sla")
         .expect("Failed to read processor spec file");
     let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+        fs::read_to_string("../../ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
             .expect("Failed to read processor spec file");
     let sleigh = GhidraSleigh::builder()
         .sleigh_spec(&sleigh_spec)?

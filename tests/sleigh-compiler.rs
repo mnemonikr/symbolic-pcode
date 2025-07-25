@@ -4,7 +4,7 @@ use sleigh_compiler::SleighCompiler;
 fn compile_x86_x64() -> Result<(), Box<dyn std::error::Error>> {
     let mut compiler = SleighCompiler::default();
     let mut input_file = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    input_file.push("../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    input_file.push("../ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
     assert!(input_file.exists(), "input slaspec file should exist");
 
     let mut output_file = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
