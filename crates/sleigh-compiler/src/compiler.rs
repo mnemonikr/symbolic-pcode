@@ -94,10 +94,6 @@ impl SleighCompiler {
 
     /// Invoke the compiler on the provided `.slaspec` input file. The output `.sla` file will be
     /// written to the given output path.
-    ///
-    /// ### Return value
-    ///
-    /// The return value for this function
     pub fn compile(
         &mut self,
         input_slaspec_path: impl AsRef<Path>,
