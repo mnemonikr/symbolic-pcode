@@ -558,11 +558,8 @@ impl<S> GhidraSleighBuilder<S, MissingSpec> {
 impl<P> GhidraSleighBuilder<MissingSpec, P> {
     /// Use this sleigh specification for this sleigh instance.
     ///
-    // TODO In Ghidra 11.1+ the sleigh_spec is just <sleigh>path/to/file.sla</sleigh>
-    // This means two things
-    //
-    // 1. The SLA file _must exist on disk_
-    // 2. The "sleigh spec" can be constructed once the path to the file is known
+    // In Ghidra 11.1+ the sleigh_spec is just <sleigh>path/to/file.sla</sleigh>.
+    // This function creates this string using the provided path.
     pub fn sleigh_spec(
         mut self,
         path: impl AsRef<std::path::Path>,
