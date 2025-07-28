@@ -3,7 +3,7 @@
 
 #include "bridge.hh"
 #include "rust/cxx.h"
-#include "libsla/src/ffi/sys.rs.h"
+#include "libsla-sys/src/sys.rs.h"
 
 // Copied from architecture.cc
 ElementId ELEM_PROCESSOR_SPEC = ElementId("processor_spec",147);

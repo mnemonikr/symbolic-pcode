@@ -16,7 +16,7 @@ fn main() {
         "opcodes.cc",
         "globalcontext.cc",
         // SLEIGH=	sleigh pcodeparse pcodecompile sleighbase slghsymbol \
-        // slghpatexpress slghpattern semantics context filemanage
+        // slghpatexpress slghpattern semantics context slaformat compression filemanage
         "sleigh.cc",
         "pcodeparse.cc",
         "pcodecompile.cc",
@@ -26,28 +26,45 @@ fn main() {
         "slghpattern.cc",
         "semantics.cc",
         "context.cc",
+        "slaformat.cc",
+        "compression.cc",
         "filemanage.cc",
         // LIBSLA_NAMES
         "loadimage.cc",
         "memstate.cc",
         "emulate.cc",
         "opbehavior.cc",
+        // SLACOMP=slgh_compile slghparse slghscan
+        // Omitting slgh_compile since it defines main function
+        "slghparse.cc",
+        "slghscan.cc",
     ];
 
-    cxx_build::bridge("src/ffi/sys.rs")
+    let zlib_path = Path::new("ghidra/Ghidra/Features/Decompiler/src/decompile/zlib");
+    const ZLIB_SOURCE_FILES: &[&str] = &[
+        "adler32.c",
+        "deflate.c",
+        "inffast.c",
+        "inflate.c",
+        "inftrees.c",
+        "trees.c",
+        "zutil.c",
+    ];
+
+    cxx_build::bridge("src/sys.rs")
+        .define("LOCAL_ZLIB", "1")
+        .define("NO_GZIP", "1")
         .flag_if_supported("-std=c++14")
         .files(LIBSLA_SOURCE_FILES.iter().map(|s| source_path.join(s)))
-        .file("src/ffi/cpp/bridge.cc")
+        .files(ZLIB_SOURCE_FILES.iter().map(|s| zlib_path.join(s)))
+        .file("src/cpp/bridge.cc")
         .include(source_path) // Header files coexist with cpp files
         .warnings(false) // Not interested in the warnings for Ghidra code
-        .compile("libsla.a");
+        .compile("sla");
 
     // Rerun if any of the C++ to Rust bindings have changed
-    println!("cargo:rerun-if-changed=src/ffi/sys.rs");
+    println!("cargo:rerun-if-changed=src/sys.rs");
 
     // Rerun if any of the C++ bridge code has changed
-    println!("cargo:rerun-if-changed=src/ffi/cpp");
-
-    // Rerun if any of the Rust to C++ bindings have changed
-    println!("cargo:rerun-if-changed=src/ffi/rust.rs");
+    println!("cargo:rerun-if-changed=src/cpp");
 }

@@ -34,16 +34,16 @@ namespace rust {
         static void trycatch(Try &&func, Fail &&fail) noexcept {
             try {
                 func();
-            } catch (const UnimplError &e) {
+            } catch (const ghidra::UnimplError &e) {
                 // Defined in translate.hh, type of LowLevelError
                 fail("UnimplError: " + e.explain);
-            } catch (const DataUnavailError &e) {
+            } catch (const ghidra::DataUnavailError &e) {
                 // Defined in loadimage.hh, type of LowLevelError
                 fail("DataUnavailError: " + e.explain);
-            } catch (const LowlevelError &e) {
+            } catch (const ghidra::LowlevelError &e) {
                 // Top-level error
                 fail("LowlevelError: " + e.explain);
-            } catch (const DecoderError &e) {
+            } catch (const ghidra::DecoderError &e) {
                 // Top-level error thrown by XML parser
                 fail("DecoderError: " + e.explain);
             } catch (const std::exception &e) {

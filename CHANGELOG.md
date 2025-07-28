@@ -2,6 +2,13 @@
 
 Nothing here yet.
 
+## libsla-0.4.0
+
+### Changed
+
+* Upgraded to Ghidra 11.4.
+* Extracted internal `sys` module to its own `libsla-sys` crate.
+
 ## libsla-0.3.1
 
 ### Changed

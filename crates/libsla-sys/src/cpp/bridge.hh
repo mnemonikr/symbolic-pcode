@@ -11,6 +11,8 @@ using namespace std;
 #include "translate.hh"
 #include "marshal.hh"
 
+using namespace ghidra;
+
 class RustAssemblyEmit;
 
 class RustAssemblyEmitProxy : public AssemblyEmit {

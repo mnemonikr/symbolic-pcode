@@ -2,12 +2,12 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Once;
 
-use cxx::{let_cxx_string, UniquePtr};
+use libsla_sys::cxx::{let_cxx_string, CxxVector, UniquePtr};
 
-use crate::ffi::api;
-use crate::ffi::rust;
-use crate::ffi::sys;
 use crate::opcodes::OpCode;
+use libsla_sys::api;
+use libsla_sys::rust;
+use libsla_sys::sys;
 
 /// Tracks whether the one-time initialization required for libsla has been performed
 static LIBSLA_INIT: Once = Once::new();
@@ -16,6 +16,9 @@ static LIBSLA_INIT: Once = Once::new();
 /// [String] since those errors are ultimately serialized anyway.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("input invalid: {message}")]
+    InvalidInput { message: Cow<'static, str> },
+
     #[error("insufficient data at varnode {0}")]
     InsufficientData(VarnodeData),
 
@@ -371,6 +374,16 @@ impl std::fmt::Display for AssemblyInstruction {
     }
 }
 
+#[derive(Default)]
+pub struct PcodeDisassemblyOutput {
+    instructions: Vec<PcodeInstruction>,
+}
+
+#[derive(Default)]
+pub struct NativeDisassemblyOutput {
+    instruction: Option<AssemblyInstruction>,
+}
+
 /// A disassembly of instructions originating from a [VarnodeData].
 #[derive(Debug, Clone)]
 pub struct Disassembly<T> {
@@ -408,9 +421,14 @@ impl<T: std::fmt::Display> std::fmt::Display for Disassembly<T> {
     }
 }
 
-impl api::AssemblyEmit for Vec<AssemblyInstruction> {
-    fn dump(&mut self, address: &sys::Address, mnemonic: &cxx::CxxString, body: &cxx::CxxString) {
-        self.push(AssemblyInstruction {
+impl api::AssemblyEmit for NativeDisassemblyOutput {
+    fn dump(
+        &mut self,
+        address: &sys::Address,
+        mnemonic: &libsla_sys::cxx::CxxString,
+        body: &libsla_sys::cxx::CxxString,
+    ) {
+        self.instruction = Some(AssemblyInstruction {
             address: address.into(),
             mnemonic: mnemonic.to_string(),
             body: body.to_string(),
@@ -418,15 +436,15 @@ impl api::AssemblyEmit for Vec<AssemblyInstruction> {
     }
 }
 
-impl api::PcodeEmit for Vec<PcodeInstruction> {
+impl api::PcodeEmit for PcodeDisassemblyOutput {
     fn dump(
         &mut self,
         address: &sys::Address,
         op_code: sys::OpCode,
         output_variable: Option<&sys::VarnodeData>,
-        input_variables: &cxx::CxxVector<sys::VarnodeData>,
+        input_variables: &CxxVector<sys::VarnodeData>,
     ) {
-        self.push(PcodeInstruction {
+        self.instructions.push(PcodeInstruction {
             address: address.into(),
             op_code: op_code.into(),
             inputs: input_variables
@@ -476,8 +494,8 @@ pub trait LoadImage {
 }
 
 enum DisassemblyKind<'a> {
-    Native(&'a mut Vec<AssemblyInstruction>),
-    Pcode(&'a mut Vec<PcodeInstruction>),
+    Native(&'a mut NativeDisassemblyOutput),
+    Pcode(&'a mut PcodeDisassemblyOutput),
 }
 
 /// The sleigh or processor specification has not yet been provided
@@ -539,8 +557,21 @@ impl<S> GhidraSleighBuilder<S, MissingSpec> {
 
 impl<P> GhidraSleighBuilder<MissingSpec, P> {
     /// Use this sleigh specification for this sleigh instance.
-    pub fn sleigh_spec(mut self, sleigh_spec: &str) -> Result<GhidraSleighBuilder<HasSpec, P>> {
-        let_cxx_string!(sleigh_spec = sleigh_spec);
+    ///
+    // In Ghidra 11.1+ the sleigh_spec is just <sleigh>path/to/file.sla</sleigh>.
+    // This function creates this string using the provided path.
+    pub fn sleigh_spec(
+        mut self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<GhidraSleighBuilder<HasSpec, P>> {
+        let path = path
+            .as_ref()
+            .as_os_str()
+            .to_str()
+            .ok_or_else(|| Error::InvalidInput {
+                message: Cow::Borrowed("path should be a valid UTF-8"),
+            })?;
+        let_cxx_string!(sleigh_spec = format!("<sleigh>{path}</sleigh>"));
         sys::parse_document_and_register_root(self.store.pin_mut(), &sleigh_spec).map_err(
             |err| Error::DependencyError {
                 message: Cow::Borrowed("failed to parse sleigh specification"),
@@ -624,13 +655,13 @@ impl GhidraSleigh {
         let rust_loader = rust::RustLoadImage(&loader);
 
         let response = match kind {
-            DisassemblyKind::Pcode(instructions) => {
-                let mut emitter = rust::RustPcodeEmit(instructions);
+            DisassemblyKind::Pcode(output) => {
+                let mut emitter = rust::RustPcodeEmit(output);
                 self.sleigh
                     .disassemble_pcode(&rust_loader, &mut emitter, address.as_ref().unwrap())
             }
-            DisassemblyKind::Native(instructions) => {
-                let mut emitter = rust::RustAssemblyEmit(instructions);
+            DisassemblyKind::Native(output) => {
+                let mut emitter = rust::RustAssemblyEmit(output);
                 self.sleigh.disassemble_native(
                     &rust_loader,
                     &mut emitter,
@@ -726,10 +757,9 @@ impl Sleigh for GhidraSleigh {
         loader: &dyn LoadImage,
         address: Address,
     ) -> Result<Disassembly<PcodeInstruction>> {
-        let mut instructions = Vec::new();
-        let origin =
-            self.disassemble(loader, address, DisassemblyKind::Pcode(&mut instructions))?;
-        Ok(Disassembly::new(instructions, origin))
+        let mut output = Default::default();
+        let origin = self.disassemble(loader, address, DisassemblyKind::Pcode(&mut output))?;
+        Ok(Disassembly::new(output.instructions, origin))
     }
 
     fn disassemble_native(
@@ -737,10 +767,11 @@ impl Sleigh for GhidraSleigh {
         loader: &dyn LoadImage,
         address: Address,
     ) -> Result<Disassembly<AssemblyInstruction>> {
-        let mut instructions = Vec::new();
-        let origin =
-            self.disassemble(loader, address, DisassemblyKind::Native(&mut instructions))?;
-        Ok(Disassembly::new(instructions, origin))
+        let mut output = Default::default();
+        let origin = self.disassemble(loader, address, DisassemblyKind::Native(&mut output))?;
+
+        // TODO Convert this into an object that holds just one instruction
+        Ok(Disassembly::new(vec![output.instruction.unwrap()], origin))
     }
 
     fn register_name_map(&self) -> BTreeMap<VarnodeData, String> {

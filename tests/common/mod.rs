@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{collections::BTreeMap, fs};
 
@@ -8,7 +9,7 @@ use symbolic_pcode::emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEm
 use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
 use symbolic_pcode::processor::{self, PcodeExecution, ProcessorResponseHandler};
 
-static X86_64_SLA: OnceLock<String> = OnceLock::new();
+static X86_64_SLA: OnceLock<PathBuf> = OnceLock::new();
 
 pub type Memory = GenericMemory<SymbolicBitVec>;
 
@@ -119,26 +120,27 @@ impl TracingEmulator {
     }
 }
 
-fn compile_x86_64_slaspec() -> sleigh_compiler::Result<String> {
+fn compile_x86_64_slaspec() -> sleigh_compiler::Result<PathBuf> {
     let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("x86-64.sla");
+
     let mut compiler = sleigh_compiler::SleighCompiler::default();
     let slaspec_path = std::path::Path::new(
-        "../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec",
+        "../crates/libsla-sys/ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec",
     );
     compiler.compile(slaspec_path, &sla_path)?;
-    Ok(fs::read_to_string(sla_path).expect("failed to read sla file"))
+    Ok(sla_path)
 }
 
 pub fn x86_64_sleigh() -> libsla::Result<GhidraSleigh> {
     let sleigh_spec = X86_64_SLA
         .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
     let processor_spec = fs::read_to_string(
-        "../crates/libsla/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
+        "../crates/libsla-sys/ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec",
     )
-    .expect("failed to read processor spec file");
-
-    GhidraSleigh::builder()
+    .expect("Failed to read processor spec file");
+    let sleigh = GhidraSleigh::builder()
         .sleigh_spec(sleigh_spec)?
         .processor_spec(&processor_spec)?
-        .build()
+        .build()?;
+    Ok(sleigh)
 }

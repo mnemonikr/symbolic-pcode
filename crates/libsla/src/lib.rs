@@ -8,7 +8,6 @@
 //! semantics independent of the specific processor. The details on how to perform this translation
 //! are captured by the compiled Sleigh specification for the processor.
 
-mod ffi;
 mod opcodes;
 mod sleigh;
 

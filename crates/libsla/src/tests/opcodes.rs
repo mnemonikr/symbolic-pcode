@@ -1,5 +1,5 @@
-use crate::ffi::sys;
 use crate::OpCode;
+use libsla_sys::sys;
 
 #[test]
 fn type_conversion() {

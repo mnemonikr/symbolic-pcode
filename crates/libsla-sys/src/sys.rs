@@ -6,6 +6,7 @@ use super::rust::*;
 mod default {
     #[repr(i32)]
     #[derive(Debug)]
+    #[namespace = "ghidra"]
     enum spacetype {
         /// Special space to represent constants
         IPTR_CONSTANT = 0,
@@ -25,6 +26,7 @@ mod default {
 
     #[repr(i32)]
     #[derive(Debug)]
+    #[namespace = "ghidra"]
     enum OpCode {
         /// Copy one operand to another
         CPUI_COPY = 1,
@@ -185,8 +187,10 @@ mod default {
         CPUI_EXTRACT = 71,
         /// Count the 1-bits
         CPUI_POPCOUNT = 72,
+        /// Count the leading 0-bits
+        CPUI_LZCOUNT = 73,
         /// Value indicating the end of the op-code values
-        CPUI_MAX = 73,
+        CPUI_MAX = 74,
     }
 
     extern "Rust" {
@@ -217,19 +221,26 @@ mod default {
     }
 
     unsafe extern "C++" {
-        include!("libsla/src/ffi/cpp/bridge.hh");
+        include!("libsla-sys/src/cpp/bridge.hh");
 
+        #[namespace = "ghidra"]
         type OpCode;
+
+        #[namespace = "ghidra"]
         type spacetype;
 
+        #[namespace = "ghidra"]
         type Address;
+
         #[rust_name = "new_address"]
         unsafe fn construct_new(address_space: *mut AddrSpace, offset: u64) -> UniquePtr<Address>;
+
         #[rust_name = "offset"]
         fn getOffset(self: &Address) -> u64;
         #[rust_name = "address_space"]
         fn getSpace(self: &Address) -> *mut AddrSpace;
 
+        #[namespace = "ghidra"]
         type AddrSpace;
         #[rust_name = "name"]
         fn getName(self: &AddrSpace) -> &CxxString;
@@ -242,29 +253,41 @@ mod default {
         #[rust_name = "big_endian"]
         fn isBigEndian(self: &AddrSpace) -> bool;
 
+        #[namespace = "ghidra"]
         type LoadImage;
+
+        #[namespace = "ghidra"]
         type ContextInternal;
+
+        #[namespace = "ghidra"]
         type PcodeEmit;
+
+        #[namespace = "ghidra"]
         type VarnodeData;
+
         #[rust_name = "varnode_address"]
         fn getAddress(data: &VarnodeData) -> UniquePtr<Address>;
         #[rust_name = "varnode_size"]
         fn getSize(data: &VarnodeData) -> u32;
 
+        #[namespace = "ghidra"]
         type ContextDatabase;
         #[rust_name = "new_context_internal"]
         fn construct_new_context() -> UniquePtr<ContextDatabase>;
 
+        #[namespace = "ghidra"]
         type Element;
         fn initialize_element_id();
         fn initialize_attribute_id();
 
+        #[namespace = "ghidra"]
         type Document;
         #[rust_name = "root"]
         fn getRoot(self: &Document) -> *mut Element;
         #[rust_name = "document_root"]
         fn getDocumentRoot(doc: &Document) -> &Element;
 
+        #[namespace = "ghidra"]
         type DocumentStorage;
         #[rust_name = "new_document_storage"]
         fn construct_new() -> UniquePtr<DocumentStorage>;
@@ -273,6 +296,10 @@ mod default {
             store: Pin<&'a mut DocumentStorage>,
             data: &CxxString,
         ) -> Result<&'a Document>;
+
+        /// # Safety
+        ///
+        /// `element` must be a valid pointer.
         #[rust_name = "register_tag"]
         unsafe fn registerTag(self: Pin<&mut DocumentStorage>, element: *const Element);
 
@@ -307,7 +334,6 @@ mod default {
             data: &CxxString,
         ) -> Result<()>;
 
-        // TODO Change this to return Result<..> since exception thrown on invalid name
         #[rust_name = "register_from_name"]
         fn getRegister<'a>(self: &'a SleighProxy, name: &CxxString) -> Result<&'a VarnodeData>;
 
@@ -339,6 +365,7 @@ mod default {
             emit: &mut RustPcodeEmit,
             address: &Address,
         ) -> Result<i32>;
+
         #[rust_name = "disassemble_native"]
         fn disassembleNative(
             self: &SleighProxy,
