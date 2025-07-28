@@ -1,4 +1,4 @@
 [submodule "ghidra"]
-	path = crates/libsla/ghidra
+	path = crates/libsla-sys/ghidra
 	url = https://github.com/NationalSecurityAgency/ghidra.git
 	branch = stable

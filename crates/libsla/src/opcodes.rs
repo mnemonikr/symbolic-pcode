@@ -2,7 +2,7 @@
 //! enum contains the full list of possible opcodes. However, the [AnalysisOp] opcodes are only
 //! ever emitted by analysis programs; they are not permitted in Sleigh processor specifications.
 //! The [PseudoOp] opcodes may be emitted but do not have fully defined semantics.
-use crate::ffi::sys;
+use libsla_sys::sys;
 
 /// A representation of opcodes for p-code instructions.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -44,6 +44,9 @@ pub enum OpCode {
 
     /// Counts the number of bits set in an input.
     Popcount,
+
+    /// Count the number of leading 0-bits
+    LzCount,
 
     /// Operations which operate on boolean (single bit) inputs.
     Bool(BoolOp),
@@ -335,6 +338,7 @@ impl From<sys::OpCode> for OpCode {
             sys::OpCode::CPUI_INSERT => OpCode::Analysis(AnalysisOp::Insert),
             sys::OpCode::CPUI_EXTRACT => OpCode::Analysis(AnalysisOp::Extract),
             sys::OpCode::CPUI_POPCOUNT => OpCode::Popcount,
+            sys::OpCode::CPUI_LZCOUNT => OpCode::LzCount,
             sys::OpCode { repr } => OpCode::Unknown(repr),
         }
     }
@@ -355,6 +359,7 @@ impl From<OpCode> for sys::OpCode {
             OpCode::Subpiece => sys::OpCode::CPUI_SUBPIECE,
             OpCode::Piece => sys::OpCode::CPUI_PIECE,
             OpCode::Popcount => sys::OpCode::CPUI_POPCOUNT,
+            OpCode::LzCount => sys::OpCode::CPUI_LZCOUNT,
             OpCode::Bool(BoolOp::Negate) => sys::OpCode::CPUI_BOOL_NEGATE,
             OpCode::Bool(BoolOp::Xor) => sys::OpCode::CPUI_BOOL_XOR,
             OpCode::Bool(BoolOp::And) => sys::OpCode::CPUI_BOOL_AND,

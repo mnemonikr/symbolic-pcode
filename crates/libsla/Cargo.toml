@@ -1,32 +1,17 @@
 [package]
 name = "libsla"
 description = "Rust bindings to Ghidra Sleigh library libsla"
-version = "0.3.1"
+version = "0.4.0"
 
 authors.workspace = true
 edition.workspace = true 
 license.workspace = true
 repository.workspace = true
 
-# List includes to avoid including entire Ghidra submodule
-include = [
-    "/build.rs",
-    "/src/*",
-    "/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
-    "/ghidra/DISCLAIMER.md",
-    "/ghidra/NOTICE",
-    "/ghidra/LICENSE",
-    "/ghidra/licenses/*",
-]
-
 [dependencies]
-cxx = "1.0"
 thiserror.workspace = true
+libsla-sys = { path = "../libsla-sys" }
 
 [dev-dependencies]
 assert_fs = "1.1"
-sleigh-compiler = "1.0"
-
-[build-dependencies]
-cxx-build = "1.0"
-
+sleigh-compiler = "2.0"

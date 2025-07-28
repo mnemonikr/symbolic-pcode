@@ -15,6 +15,7 @@ enum CallOtherOps {
     _SysExit = 0x04,
     SysCall = 0x05,
     Lock = 0x11,
+    Unlock = 0x12,
 }
 
 #[derive(Debug)]
@@ -92,6 +93,10 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for EmulatorX86<S, K> {
                     }
                     Some(x) if x == CallOtherOps::Lock as u64 => {
                         // Lock instruction. Multithreading not supported so just ignore
+                        return Ok(ControlFlow::NextInstruction);
+                    }
+                    Some(x) if x == CallOtherOps::Unlock as u64 => {
+                        // Unlock instruction. Multithreading not supported so just ignore
                         return Ok(ControlFlow::NextInstruction);
                     }
                     _ => (),

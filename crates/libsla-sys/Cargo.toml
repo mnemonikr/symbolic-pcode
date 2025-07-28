@@ -1,0 +1,28 @@
+[package]
+name = "libsla-sys"
+version = "0.1.0"
+edition = "2024"
+description = "System crate for Ghidra Sleigh library libsla"
+categories = ["security", "external-ffi-bindings"]
+links = "sla"
+
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# List includes to avoid including entire Ghidra submodule
+include = [
+    "/build.rs",
+    "/src/*",
+    "/ghidra/Ghidra/Features/Decompiler/src/decompile/cpp/*",
+    "/ghidra/DISCLAIMER.md",
+    "/ghidra/NOTICE",
+    "/ghidra/LICENSE",
+    "/ghidra/licenses/*",
+]
+
+[dependencies]
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"

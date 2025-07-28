@@ -221,7 +221,7 @@ mod default {
     }
 
     unsafe extern "C++" {
-        include!("libsla/src/ffi/cpp/bridge.hh");
+        include!("libsla-sys/src/cpp/bridge.hh");
 
         #[namespace = "ghidra"]
         type OpCode;
@@ -234,6 +234,7 @@ mod default {
 
         #[rust_name = "new_address"]
         unsafe fn construct_new(address_space: *mut AddrSpace, offset: u64) -> UniquePtr<Address>;
+
         #[rust_name = "offset"]
         fn getOffset(self: &Address) -> u64;
         #[rust_name = "address_space"]
@@ -295,6 +296,10 @@ mod default {
             store: Pin<&'a mut DocumentStorage>,
             data: &CxxString,
         ) -> Result<&'a Document>;
+
+        /// # Safety
+        ///
+        /// `element` must be a valid pointer.
         #[rust_name = "register_tag"]
         unsafe fn registerTag(self: Pin<&mut DocumentStorage>, element: *const Element);
 
