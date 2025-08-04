@@ -10,4 +10,4 @@ repository.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-libsla-sys = { path = "../libsla-sys" }
+libsla-sys = { version = "0.1" }
