@@ -20,6 +20,8 @@ jobs:
         submodules: recursive
     - name: Build
       run: cargo build --verbose --all-targets
+    - name: Format
+      run: cargo fmt --all -- --check
     - name: Add test fixture targets
       run: |
         rustup target add x86_64-unknown-none

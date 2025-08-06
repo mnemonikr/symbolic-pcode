@@ -38,7 +38,9 @@ pub enum Error {
     /// No address space with the given identifier is associated with this emulator. This can occur
     /// if the instruction was decoded with a different set of address spaces than the ones
     /// registered with this emulator.
-    #[error("unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}")]
+    #[error(
+        "unknown address space id {space_id} referenced by {varnode} in instruction: {instruction:?}"
+    )]
     UnknownAddressSpace {
         instruction: Box<PcodeInstruction>,
         varnode: VarnodeData,
@@ -274,7 +276,7 @@ impl PcodeEmulator for StandardPcodeEmulator {
             _ => {
                 return Err(Error::UnsupportedInstruction {
                     instruction: Box::new(instruction.clone()),
-                })
+                });
             }
         }
 

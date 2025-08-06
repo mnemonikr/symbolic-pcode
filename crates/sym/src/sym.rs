@@ -76,7 +76,7 @@ impl std::ops::BitAnd for SymbolicBit {
             SymbolicBit::Literal(true) => return rhs,
             SymbolicBit::Variable(x) => match rhs {
                 SymbolicBit::Not(y) if *y == SymbolicBit::Variable(x) => {
-                    return SymbolicBit::Literal(false)
+                    return SymbolicBit::Literal(false);
                 }
                 _ => (),
             },
@@ -88,7 +88,7 @@ impl std::ops::BitAnd for SymbolicBit {
             SymbolicBit::Literal(true) => return self,
             SymbolicBit::Variable(x) => match self {
                 SymbolicBit::Not(y) if *y == SymbolicBit::Variable(x) => {
-                    return SymbolicBit::Literal(false)
+                    return SymbolicBit::Literal(false);
                 }
                 _ => (),
             },
