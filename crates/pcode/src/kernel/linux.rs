@@ -341,7 +341,7 @@ impl LinuxKernel {
             _ => {
                 return Err(Error::UnhandledSyscall {
                     syscall_num: Syscall::ArchPrctl as u32,
-                })
+                });
             }
         }
 

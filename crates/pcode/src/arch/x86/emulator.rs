@@ -89,7 +89,7 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for EmulatorX86<S, K> {
                     // This should be made more generic around x86 and then support supplying
                     // different kernels instead of treating this as a Linux emulator specifically
                     Some(x) if x == CallOtherOps::SysCall as u64 => {
-                        return self.kernel.syscall(self.sleigh.as_ref(), memory)
+                        return self.kernel.syscall(self.sleigh.as_ref(), memory);
                     }
                     Some(x) if x == CallOtherOps::Lock as u64 => {
                         // Lock instruction. Multithreading not supported so just ignore

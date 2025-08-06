@@ -261,7 +261,7 @@ where
             _ => {
                 return Err(ConcretizationError::NonLiteralBit {
                     bit_index: 8 * byte_index + bit_index,
-                })
+                });
             }
         };
 
