@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use crate::aiger::*;
 use crate::SymbolicBit;
+use crate::aiger::*;
 
 #[test]
 fn true_and_false_are_const() {

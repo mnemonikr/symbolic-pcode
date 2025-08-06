@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Once;
 
-use libsla_sys::cxx::{let_cxx_string, CxxVector, UniquePtr};
+use libsla_sys::cxx::{CxxVector, UniquePtr, let_cxx_string};
 
 use crate::opcodes::OpCode;
 use libsla_sys::api;

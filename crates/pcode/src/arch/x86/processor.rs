@@ -2,7 +2,7 @@ use libsla::{Address, AddressSpace, Sleigh, VarnodeData};
 
 use crate::mem::VarnodeDataStore;
 use crate::processor::{Error, PcodeExecution, ProcessorResponseHandler, Result};
-use pcode_ops::{convert::PcodeValue, PcodeOps};
+use pcode_ops::{PcodeOps, convert::PcodeValue};
 
 #[derive(Debug, Clone)]
 pub struct ProcessorHandlerX86 {

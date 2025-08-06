@@ -403,11 +403,7 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
                 // Must check first argument first since it is the accumulator
                 // If an error is propagating it will propagate here.
                 if let Ok(x) = x {
-                    if let Ok(y) = y {
-                        Ok(x.and(y))
-                    } else {
-                        y
-                    }
+                    if let Ok(y) = y { Ok(x.and(y)) } else { y }
                 } else {
                     x
                 }

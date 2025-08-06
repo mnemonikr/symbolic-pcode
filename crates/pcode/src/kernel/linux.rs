@@ -4,8 +4,8 @@ use crate::emulator::{self, ControlFlow};
 use crate::kernel::Kernel;
 use crate::mem::VarnodeDataStore;
 use libsla::{Address, Sleigh, VarnodeData};
-use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
 use pcode_ops::PcodeOps;
+use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
