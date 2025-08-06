@@ -203,7 +203,7 @@ impl AigerGate {
     /// `rhs.0 - rhs.1` are LEB128 encoded. Note that `rhs` literals may be internally swapped to
     /// ensure that `rhs.0 > rhs.1`
     pub fn serialize_binary(&self) -> Vec<u8> {
-        let deltas = (self.lhs.0 - self.rhs.0 .0, self.rhs.0 .0 - self.rhs.1 .0);
+        let deltas = (self.lhs.0 - self.rhs.0.0, self.rhs.0.0 - self.rhs.1.0);
         let mut encodings = ([0u8; Self::max_leb_size()], [0u8; Self::max_leb_size()]);
         let lens = (
             Self::leb128_encode(deltas.0, &mut encodings.0),

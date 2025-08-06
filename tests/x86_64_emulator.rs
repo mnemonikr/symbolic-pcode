@@ -2,9 +2,9 @@ mod common;
 
 use std::{path::Path, rc::Rc};
 
-use common::{x86_64_sleigh, Memory, TracingEmulator};
+use common::{Memory, TracingEmulator, x86_64_sleigh};
 use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
-use pcode_ops::{convert::PcodeValue, PcodeOps};
+use pcode_ops::{PcodeOps, convert::PcodeValue};
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
     arch::x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
@@ -77,9 +77,9 @@ fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
 }
 
 fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
+    use elf::ElfBytes;
     use elf::abi::PT_LOAD;
     use elf::endian::AnyEndian;
-    use elf::ElfBytes;
 
     let mut memory = Memory::default();
 

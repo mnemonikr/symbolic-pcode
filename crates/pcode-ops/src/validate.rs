@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use crate::convert::PcodeValue;
 use crate::PcodeOps;
+use crate::convert::PcodeValue;
 
 /// Error returned when validation fails
 #[derive(Debug)]

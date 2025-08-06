@@ -2,7 +2,7 @@ use libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
-use pcode_ops::{convert::PcodeValue, BitwisePcodeOps, PcodeOps};
+use pcode_ops::{BitwisePcodeOps, PcodeOps, convert::PcodeValue};
 use thiserror;
 
 use crate::mem::{self, VarnodeDataStore};

@@ -76,11 +76,8 @@ pub struct Processor<
     emulator: E,
 }
 
-impl<
-        E: PcodeEmulator + Clone,
-        M: VarnodeDataStore + Default,
-        H: ProcessorResponseHandler + Clone,
-    > Processor<E, M, H>
+impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
+    Processor<E, M, H>
 {
     pub fn new(memory: M, emulator: E, handler: H) -> Self {
         Self {
@@ -204,11 +201,8 @@ pub struct BranchingProcessor<
     processor: Processor<E, MemoryBranch<M>, H>,
 }
 
-impl<
-        E: PcodeEmulator + Clone,
-        M: VarnodeDataStore + Default,
-        H: ProcessorResponseHandler + Clone,
-    > BranchingProcessor<E, M, H>
+impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
+    BranchingProcessor<E, M, H>
 {
     pub fn new(memory: M, emulator: E, handler: H) -> Self {
         Self {

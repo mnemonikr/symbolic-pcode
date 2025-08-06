@@ -1,4 +1,4 @@
-use crate::{SymbolicBitBuf, FALSE, TRUE};
+use crate::{FALSE, SymbolicBitBuf, TRUE};
 
 #[test]
 fn ops_not() {
