@@ -3,8 +3,7 @@ use thiserror;
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
 use libsla::{
-    Address, AddressSpace, AssemblyInstruction, Disassembly, GhidraSleigh, PcodeInstruction,
-    Sleigh, VarnodeData,
+    Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
 };
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -31,6 +30,9 @@ pub enum Error {
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
 
+    #[error("symbolic branch condition at {condition_origin}")]
+    SymbolicBranch { condition_origin: VarnodeData },
+
     #[error("internal error: {0}")]
     InternalError(String),
 
@@ -52,66 +54,6 @@ enum BranchingNextExecution {
     Flow(NextExecution),
 }
 
-pub struct ProcessorManager<
-    E: PcodeEmulator + Clone,
-    M: VarnodeDataStore + Default,
-    H: ProcessorResponseHandler,
-> {
-    processors: Vec<Processor<E, M, H>>,
-    sleigh: GhidraSleigh,
-}
-
-impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler>
-    ProcessorManager<E, M, H>
-{
-    pub fn new(sleigh: GhidraSleigh, processor: Processor<E, M, H>) -> Self {
-        Self {
-            sleigh,
-            processors: vec![processor],
-        }
-    }
-
-    pub fn sleigh(&self) -> &GhidraSleigh {
-        &self.sleigh
-    }
-
-    pub fn step_all(&mut self) -> Result<()> {
-        for i in 0..self.processors.len() {
-            if let Some(new_processor) = self.processors[i].step(&self.sleigh)? {
-                self.processors.push(new_processor);
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.processors.is_empty()
-    }
-
-    pub fn remove_all(
-        &mut self,
-        filter: impl Fn(&Processor<E, M, H>) -> bool,
-    ) -> Vec<Processor<E, M, H>> {
-        let mut removed = Vec::new();
-        for i in (0..self.processors.len()).rev() {
-            if filter(&self.processors[i]) {
-                removed.push(self.processors.swap_remove(i));
-            }
-        }
-
-        removed
-    }
-
-    pub fn processors(&self) -> impl Iterator<Item = &Processor<E, M, H>> {
-        self.processors.iter()
-    }
-
-    pub fn processors_mut(&mut self) -> impl Iterator<Item = &mut Processor<E, M, H>> {
-        self.processors.iter_mut()
-    }
-}
-
 pub trait ProcessorResponseHandler: Clone {
     fn fetched<M: VarnodeDataStore>(&mut self, memory: &mut M) -> Result<Address>;
     fn decoded<M: VarnodeDataStore>(
@@ -127,7 +69,7 @@ pub struct Processor<
     M: VarnodeDataStore + Default,
     H: ProcessorResponseHandler + Clone,
 > {
-    memory: MemoryBranch<M>,
+    memory: M,
     state: ProcessorState,
     handler: H,
     emulator: E,
@@ -141,18 +83,18 @@ impl<
 {
     pub fn new(memory: M, emulator: E, handler: H) -> Self {
         Self {
-            memory: MemoryBranch::new(memory),
+            memory,
             emulator,
             handler,
             state: ProcessorState::Fetch,
         }
     }
 
-    pub fn memory(&self) -> &MemoryBranch<M> {
+    pub fn memory(&self) -> &M {
         &self.memory
     }
 
-    pub fn memory_mut(&mut self) -> &mut MemoryBranch<M> {
+    pub fn memory_mut(&mut self) -> &mut M {
         &mut self.memory
     }
 
@@ -175,7 +117,23 @@ impl<
         }
     }
 
-    pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
+    pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<()> {
+        self.step_internal(sleigh, None)
+    }
+
+    pub fn step_branch(
+        &mut self,
+        sleigh: &impl Sleigh,
+        branch_condition_evaluation: bool,
+    ) -> Result<()> {
+        self.step_internal(sleigh, Some(branch_condition_evaluation))
+    }
+
+    fn step_internal(
+        &mut self,
+        sleigh: &impl Sleigh,
+        branch_condition_evaluation: Option<bool>,
+    ) -> Result<()> {
         match &mut self.state {
             ProcessorState::Fetch => {
                 let fetched_instruction = self.handler.fetched(&mut self.memory)?;
@@ -194,20 +152,25 @@ impl<
                 let control_flow = self
                     .emulator
                     .emulate(&mut self.memory, x.current_instruction())?;
-                match x.next_execution(control_flow)? {
+                match x.next_execution(control_flow) {
                     BranchingNextExecution::Flow(e1) => self.update_execution(e1)?,
                     BranchingNextExecution::Branch(condition, e1, e2) => {
-                        let mut branched_processor = self.branch(condition);
-                        self.update_execution(e1)?;
-                        branched_processor.update_execution(e2)?;
-                        return Ok(Some(branched_processor));
+                        match branch_condition_evaluation {
+                            Some(true) => self.update_execution(e1)?,
+                            Some(false) => self.update_execution(e2)?,
+                            _ => {
+                                return Err(Error::SymbolicBranch {
+                                    condition_origin: condition,
+                                });
+                            }
+                        }
                     }
                 }
             }
             state => return Err(Error::InvalidState(state.clone())),
         }
 
-        Ok(None)
+        Ok(())
     }
 
     fn update_execution(&mut self, next_execution: NextExecution) -> Result<()> {
@@ -230,15 +193,63 @@ impl<
             )))
         }
     }
+}
 
-    fn branch(&mut self, condition_origin: VarnodeData) -> Self {
-        Processor {
-            memory: self
-                .memory
-                .new_branch(self.memory.read_bit(&condition_origin).unwrap()),
-            state: self.state.clone(),
-            handler: self.handler.clone(),
-            emulator: self.emulator.clone(),
+pub struct BranchingProcessor<
+    E: PcodeEmulator + Clone,
+    M: VarnodeDataStore + Default,
+    H: ProcessorResponseHandler + Clone,
+> {
+    processor: Processor<E, MemoryBranch<M>, H>,
+}
+
+impl<
+        E: PcodeEmulator + Clone,
+        M: VarnodeDataStore + Default,
+        H: ProcessorResponseHandler + Clone,
+    > BranchingProcessor<E, M, H>
+{
+    pub fn new(memory: M, emulator: E, handler: H) -> Self {
+        Self {
+            processor: Processor::new(MemoryBranch::new(memory), emulator, handler),
+        }
+    }
+
+    pub fn processor(&self) -> &Processor<E, MemoryBranch<M>, H> {
+        &self.processor
+    }
+
+    pub fn processor_mut(&mut self) -> &mut Processor<E, MemoryBranch<M>, H> {
+        &mut self.processor
+    }
+
+    pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
+        match self.processor.step(sleigh) {
+            Err(e) => {
+                if let Error::SymbolicBranch { condition_origin } = &e {
+                    let mut branched_processor = self.branch(condition_origin);
+                    self.processor.step_branch(sleigh, true)?;
+                    branched_processor.processor.step_branch(sleigh, false)?;
+                    Ok(Some(branched_processor))
+                } else {
+                    Err(e)
+                }
+            }
+            result => result.map(|_| None),
+        }
+    }
+
+    fn branch(&mut self, condition_origin: &VarnodeData) -> Self {
+        Self {
+            processor: Processor {
+                memory: self
+                    .processor
+                    .memory
+                    .new_branch(self.processor.memory.read_bit(condition_origin).unwrap()),
+                state: self.processor.state.clone(),
+                handler: self.processor.handler.clone(),
+                emulator: self.processor.emulator.clone(),
+            },
         }
     }
 }
@@ -249,6 +260,31 @@ pub enum ProcessorState {
     Decode(DecodeInstruction),
     Execute(PcodeExecution),
     Halt,
+}
+
+impl std::fmt::Display for ProcessorState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Fetch => {
+                write!(f, "Fetch")?;
+            }
+            Self::Halt => {
+                write!(f, "Halt")?;
+            }
+            Self::Decode(decode_instr) => {
+                write!(f, "Decode {address}", address = decode_instr.address())?;
+            }
+            Self::Execute(execution) => {
+                write!(
+                    f,
+                    "Execute {pcode_instr}",
+                    pcode_instr = execution.current_instruction()
+                )?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,6 +339,10 @@ impl PcodeExecution {
 
     pub fn origin(&self) -> &VarnodeData {
         &self.pcode.origin
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn current_instruction(&self) -> &PcodeInstruction {
@@ -381,54 +421,44 @@ impl PcodeExecution {
         }
     }
 
-    fn next_instruction(&self) -> Result<NextExecution> {
+    fn next_instruction(&self) -> NextExecution {
         if self.is_final_instruction() {
-            Ok(NextExecution::NextInstruction)
+            NextExecution::NextInstruction
         } else {
-            Ok(NextExecution::PcodeOffset(1))
+            NextExecution::PcodeOffset(1)
         }
     }
 
-    fn jump(&self, destination: &Destination) -> Result<NextExecution> {
+    fn jump(&self, destination: &Destination) -> NextExecution {
         match destination {
-            Destination::MachineAddress(address) => Ok(NextExecution::Jump(address.clone())),
-            Destination::PcodeAddress(offset) => Ok(NextExecution::PcodeOffset(*offset)),
+            Destination::MachineAddress(address) => NextExecution::Jump(address.clone()),
+            Destination::PcodeAddress(offset) => NextExecution::PcodeOffset(*offset),
         }
     }
 
-    fn branch(
-        &self,
-        condition_origin: VarnodeData,
-        destination: &Destination,
-    ) -> Result<BranchingNextExecution> {
-        Ok(BranchingNextExecution::Branch(
-            condition_origin,
-            self.jump(destination)?,
-            self.next_instruction()?,
-        ))
-    }
-
-    fn next_execution(&self, flow: ControlFlow) -> Result<BranchingNextExecution> {
-        let result = match flow {
+    fn next_execution(&self, flow: ControlFlow) -> BranchingNextExecution {
+        match flow {
             ControlFlow::NextInstruction
             | ControlFlow::ConditionalBranch {
                 condition: Some(false),
                 ..
-            } => BranchingNextExecution::Flow(self.next_instruction()?),
+            } => BranchingNextExecution::Flow(self.next_instruction()),
             ControlFlow::Jump(destination)
             | ControlFlow::ConditionalBranch {
                 condition: Some(true),
                 destination,
                 ..
-            } => BranchingNextExecution::Flow(self.jump(&destination)?),
+            } => BranchingNextExecution::Flow(self.jump(&destination)),
             ControlFlow::ConditionalBranch {
                 condition_origin,
                 destination,
                 ..
-            } => self.branch(condition_origin, &destination)?,
+            } => BranchingNextExecution::Branch(
+                condition_origin,
+                self.jump(&destination),
+                self.next_instruction(),
+            ),
             ControlFlow::Halt => BranchingNextExecution::Flow(NextExecution::Halt),
-        };
-
-        Ok(result)
+        }
     }
 }

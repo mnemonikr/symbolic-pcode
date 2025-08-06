@@ -8,10 +8,10 @@ use pcode_ops::{convert::PcodeValue, PcodeOps};
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
     arch::x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
-    emulator::{self, StandardPcodeEmulator},
-    kernel::linux::{self, LinuxKernel},
-    mem::{MemoryBranch, MemoryTree, VarnodeDataStore},
-    processor::{self, Processor, ProcessorManager, ProcessorState},
+    emulator::StandardPcodeEmulator,
+    kernel::linux::LinuxKernel,
+    mem::{MemoryTree, VarnodeDataStore},
+    processor::{self, Processor, ProcessorState},
 };
 
 const INITIAL_STACK: u64 = 0x8000000000;
@@ -403,12 +403,8 @@ fn doubler_32b() -> processor::Result<()> {
 
     for _ in 0..num_instructions {
         loop {
-            let step_response = processor.step(&sleigh)?;
-            if step_response.is_some() {
-                panic!("Unexpected branch: {state:?}", state = processor.state());
-            }
-
-            if matches!(processor.state(), processor::ProcessorState::Fetch) {
+            processor.step(&sleigh)?;
+            if matches!(processor.state(), ProcessorState::Fetch) {
                 break;
             }
         }
@@ -473,39 +469,30 @@ fn hello_world_linux() -> processor::Result<()> {
     let mut processor = Processor::new(memory, emulator, handler);
 
     loop {
-        match processor.step(sleigh.as_ref()) {
-            Ok(None) => {
-                // Debug
-                if matches!(processor.state(), ProcessorState::Decode(_)) {
-                    let disassembly = processor.disassemble(sleigh.as_ref())?;
-                    let encoded_instr = processor
-                        .memory()
-                        .read(&disassembly.origin)?
-                        .into_le_bytes()
-                        .map(|byte| {
-                            u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}"))
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
+        processor.step(sleigh.as_ref())?;
 
-                    println!("Encoded instruction from memory: {encoded_instr}");
-                    println!("Decoded: {disassembly}");
-                }
-                if matches!(processor.state(), ProcessorState::Halt) {
-                    assert_eq!(
-                        processor.emulator().kernel().exit_status(),
-                        Some(0),
-                        "exit code should be 0"
-                    );
-                    return Ok(());
-                }
-            }
-            Ok(Some(_)) => {
-                panic!("Symbolic branch encountered");
-            }
-            Err(e) => {
-                return Err(e);
-            }
+        // Debug
+        if matches!(processor.state(), ProcessorState::Decode(_)) {
+            let disassembly = processor.disassemble(sleigh.as_ref())?;
+            let encoded_instr = processor
+                .memory()
+                .read(&disassembly.origin)?
+                .into_le_bytes()
+                .map(|byte| u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}")))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("Encoded instruction from memory: {encoded_instr}");
+            println!("Decoded: {disassembly}");
+        }
+
+        if matches!(processor.state(), ProcessorState::Halt) {
+            assert_eq!(
+                processor.emulator().kernel().exit_status(),
+                Some(0),
+                "exit code should be 0"
+            );
+            return Ok(());
         }
     }
 }
@@ -547,28 +534,17 @@ fn pcode_coverage() -> processor::Result<()> {
 
     let handler = ProcessorHandlerX86::new(&sleigh);
     let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
-    let processor = Processor::new(memory, emulator, handler);
-    let mut manager = ProcessorManager::new(sleigh, processor);
+    let mut processor = Processor::new(memory, emulator, handler);
 
-    let rip = manager
-        .sleigh()
+    let rip = sleigh
         .register_from_name("RIP")
         .expect("failed to get RIP register");
     loop {
-        manager.step_all()?;
+        processor.step(&sleigh)?;
 
         // Check if RIP is the magic value
-        let processors: Vec<_> = manager.processors().collect();
-        if processors.len() != 1 {
-            panic!(
-                "Unexpected number of processors: {len}",
-                len = processors.len()
-            );
-        }
-
-        let processor = processors[0];
         if matches!(processor.state(), ProcessorState::Decode(_)) {
-            let disassembly = processor.disassemble(manager.sleigh())?;
+            let disassembly = processor.disassemble(&sleigh)?;
             let encoded_instr = processor
                 .memory()
                 .read(&disassembly.origin)?
@@ -592,9 +568,7 @@ fn pcode_coverage() -> processor::Result<()> {
         }
     }
 
-    let processor = manager.processors().next().expect("no processors");
-    let rax = manager
-        .sleigh()
+    let rax = sleigh
         .register_from_name("RAX")
         .expect("failed to get RAX register");
     let return_value: u64 = processor
@@ -699,40 +673,52 @@ fn z3_integration() -> processor::Result<()> {
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let processor = Processor::new(memory, emulator, handler);
-    let mut manager = ProcessorManager::new(sleigh, processor);
+    let processor = processor::BranchingProcessor::new(memory, emulator, handler);
+    let mut processors = vec![processor];
 
     let mut finished = Vec::new();
-    let rip = manager
-        .sleigh()
+    let rip = sleigh
         .register_from_name("RIP")
         .expect("failed to find RIP");
 
     loop {
-        finished.append(&mut manager.remove_all(|p| {
-            let rip_value: u64 = p
-                .memory()
-                .read(&rip)
-                .expect("failed to read RIP")
-                .try_into()
-                .expect("failed to concretize RIP");
-            rip_value == EXIT_RIP
-        }));
-
-        if manager.is_empty() {
+        if processors.is_empty() {
             break;
         }
 
-        manager.step_all()?;
+        let mut i = 0;
+        while i < processors.len() {
+            let rip_value: u64 = processors[i]
+                .processor()
+                .memory()
+                .read(&rip)
+                .expect("failed ot read RIP")
+                .try_into()
+                .expect("failed to concretize RIP");
+            if rip_value == EXIT_RIP {
+                finished.push(processors.swap_remove(i));
+
+                // Do not update index since processor from end was moved here
+                continue;
+            }
+
+            if let Some(new_processor) = processors[i].step(&sleigh)? {
+                processors.push(new_processor);
+            }
+
+            i += 1;
+        }
     }
 
     // Output register is EAX
-    let eax = manager
-        .sleigh()
+    let eax = sleigh
         .register_from_name("EAX")
         .unwrap_or_else(|err| panic!("failed to find EAX: {err}"));
 
-    let memory_tree = MemoryTree::new(finished.iter().map(|p| p.memory()), std::iter::empty());
+    let memory_tree = MemoryTree::new(
+        finished.iter().map(|p| p.processor().memory()),
+        std::iter::empty(),
+    );
     let result = memory_tree.read(&eax)?;
     let result: SymbolicBitVec = result.into_iter().collect();
 
@@ -916,16 +902,22 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         .register_from_name("RIP")
         .expect("failed to get RIP register");
 
+    let mut branches = Vec::new();
     loop {
-        if let Some(false_processor) = processor.step(&sleigh)? {
-            // Evaluate the branch using the concrete value instead of the symbolic value
-            let concrete_evaluation = evaluator.evaluate(processor.memory().leaf_predicate());
+        if let Err(e) = processor.step(&sleigh) {
+            if let processor::Error::SymbolicBranch { condition_origin } = &e {
+                let condition = processor.memory().read(condition_origin)?;
+                let evaluation =
+                    evaluator.evaluate(&processor.memory().read_bit(condition_origin)?);
+                if evaluation {
+                    branches.push(condition.not_equals(0u8.into()));
+                } else {
+                    branches.push(condition.equals(0u8.into()));
+                }
 
-            // The processor will step forward using the true branch and will return the false
-            // branch as the other option. If the concrete value indicates we should take the false
-            // branch then change processors
-            if !concrete_evaluation {
-                processor = false_processor;
+                processor.step_branch(&sleigh, evaluation)?;
+            } else {
+                return Err(e);
             }
         }
 
@@ -942,12 +934,12 @@ fn take_the_path_not_taken() -> processor::Result<()> {
 
     // The processor was evaluated with the concrete value for branching. Now lets ask Z3 what
     // concrete input value could have been used to take the other path of the most recent branch.
-    let parent_predicate = processor
-        .memory()
-        .parent()
-        .map(MemoryBranch::branch_predicate)
-        .unwrap_or(&sym::TRUE);
-    let other_branch = parent_predicate.clone() & !processor.memory().leaf_predicate().clone();
+    let last_branch = branches.pop().expect("should have at least one branch");
+    let parent_path = branches
+        .into_iter()
+        .reduce(|x, y| x & y)
+        .unwrap_or(sym::TRUE);
+    let other_branch = parent_path & !last_branch;
 
     // Solve with Z3
     let aiger = sym::aiger::Aiger::from_bits(std::iter::once(other_branch));
