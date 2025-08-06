@@ -11,7 +11,7 @@ use symbolic_pcode::{
     emulator::StandardPcodeEmulator,
     kernel::linux::LinuxKernel,
     mem::{MemoryTree, VarnodeDataStore},
-    processor::{self, Processor, ProcessorState},
+    processor::{self, BranchingProcessor, Processor, ProcessorState},
 };
 
 const INITIAL_STACK: u64 = 0x8000000000;
@@ -673,7 +673,7 @@ fn z3_integration() -> processor::Result<()> {
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let processor = processor::BranchingProcessor::new(memory, emulator, handler);
+    let processor = BranchingProcessor::new(memory, emulator, handler);
     let mut processors = vec![processor];
 
     let mut finished = Vec::new();
@@ -692,7 +692,7 @@ fn z3_integration() -> processor::Result<()> {
                 .processor()
                 .memory()
                 .read(&rip)
-                .expect("failed ot read RIP")
+                .expect("failed to read RIP")
                 .try_into()
                 .expect("failed to concretize RIP");
             if rip_value == EXIT_RIP {

@@ -1,3 +1,4 @@
+use pcode_ops::BitwisePcodeOps;
 use thiserror;
 
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
@@ -223,13 +224,17 @@ impl<
         &mut self.processor
     }
 
+    /// Step the processor. In the event of a symbolic branch a new processor will be returned. The
+    /// new processor will have taken the branch (i.e. evaluated the branch condition to `true`).
+    /// This processor will **not** have taken the branch (i.e. evaluated the branch condition to
+    /// `false`).
     pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
         match self.processor.step(sleigh) {
             Err(e) => {
                 if let Error::SymbolicBranch { condition_origin } = &e {
                     let mut branched_processor = self.branch(condition_origin);
-                    self.processor.step_branch(sleigh, true)?;
-                    branched_processor.processor.step_branch(sleigh, false)?;
+                    self.processor.step_branch(sleigh, false)?;
+                    branched_processor.processor.step_branch(sleigh, true)?;
                     Ok(Some(branched_processor))
                 } else {
                     Err(e)
@@ -239,13 +244,19 @@ impl<
         }
     }
 
+    /// Create a new processor with a branch of memory that takes this branch
     fn branch(&mut self, condition_origin: &VarnodeData) -> Self {
         Self {
             processor: Processor {
-                memory: self
-                    .processor
-                    .memory
-                    .new_branch(self.processor.memory.read_bit(condition_origin).unwrap()),
+                memory: self.processor.memory.new_branch(
+                    self.processor
+                        .memory
+                        .read_bit(condition_origin)
+                        .unwrap()
+                        // Need to negate this condition because the new memory is the one that
+                        // does NOT take the branch
+                        .not(),
+                ),
                 state: self.processor.state.clone(),
                 handler: self.processor.handler.clone(),
                 emulator: self.processor.emulator.clone(),
