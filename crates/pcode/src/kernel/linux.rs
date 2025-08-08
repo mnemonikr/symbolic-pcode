@@ -1,4 +1,7 @@
+use std::collections::BTreeSet;
 use std::ops::Range;
+
+use log::{debug, error, trace, warn};
 
 use crate::emulator::{self, ControlFlow};
 use crate::kernel::Kernel;
@@ -32,6 +35,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // https://github.com/torvalds/linux/blob/master/arch/x86/entry/syscalls/syscall_64.tbl
 #[repr(u32)]
+#[derive(Debug, Copy, Clone)]
 pub enum Syscall {
     Read = 0,
     Write = 1,
@@ -46,6 +50,7 @@ pub enum Syscall {
     ArchPrctl = 158,
     SetTidAddress = 218,
     ExitGroup = 231,
+    Ppoll = 271,
 }
 
 #[repr(i64)]
@@ -59,15 +64,26 @@ pub enum ArchPrctlOp {
     SetFS = 0x1002,
 }
 
+// See https://man7.org/linux/man-pages/man2/syscall.2.html#NOTES
+// for approriate details for various architectures
+#[derive(Debug, Clone)]
+pub struct LinuxArchConfig {
+    pub syscall_num_register: String,
+    pub arg_registers: [String; 6],
+    pub return_register: String,
+    pub syscall_map: std::collections::BTreeMap<u32, Syscall>,
+}
+
 #[derive(Debug, Clone)]
 pub struct LinuxKernel {
-    mmap_pages: Vec<u64>,
+    mmap_pages: BTreeSet<u64>,
 
     // https://github.com/torvalds/linux/blob/master/mm/nommu.c#L379
     brk_range: Range<u64>,
     brk: u64,
 
     exit_status: Option<i32>,
+    arch_config: LinuxArchConfig,
 }
 
 impl Default for LinuxKernel {
@@ -77,6 +93,7 @@ impl Default for LinuxKernel {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 struct PollFd {
     fd: i32,
     events: i16,
@@ -113,6 +130,7 @@ enum StackFlags {
 // https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/mman-common.h
 #[repr(u64)]
 enum MmapFlags {
+    Fixed = 0x10,
     Anonymous = 0x20,
     Stack = 0x020000,
 }
@@ -130,12 +148,29 @@ impl Kernel for LinuxKernel {
 
 impl LinuxKernel {
     pub fn new() -> Self {
+        Self::with_config(LinuxArchConfig {
+            syscall_num_register: "EAX".to_owned(),
+            arg_registers: [
+                "RDI".to_owned(),
+                "RSI".to_owned(),
+                "RDX".to_owned(),
+                "R10".to_owned(),
+                "R8".to_owned(),
+                "R9".to_owned(),
+            ],
+            return_register: "RAX".to_owned(),
+            syscall_map: Default::default(),
+        })
+    }
+
+    pub fn with_config(arch_config: LinuxArchConfig) -> Self {
         let brk_range = 0x9000000000..0xA000000000;
         Self {
             brk: brk_range.start,
             brk_range,
             mmap_pages: Default::default(),
             exit_status: None,
+            arch_config,
         }
     }
 
@@ -149,6 +184,32 @@ impl LinuxKernel {
         memory: &mut M,
     ) -> Result<ControlFlow> {
         let syscall_num = self.syscall_num(sleigh, memory)?;
+        if !self.arch_config.syscall_map.is_empty() {
+            let syscall = self
+                .arch_config
+                .syscall_map
+                .get(&syscall_num)
+                .copied()
+                .ok_or(Error::UnhandledSyscall { syscall_num })?;
+
+            return match syscall {
+                Syscall::Write => self.write(sleigh, memory),
+                Syscall::Mmap => self.mmap(sleigh, memory),
+                Syscall::Mprotect => self.mprotect(sleigh, memory),
+                Syscall::Munmap => self.munmap(sleigh, memory),
+                Syscall::Poll => self.poll(sleigh, memory),
+                Syscall::Brk => self.brk(sleigh, memory),
+                Syscall::RtSigProcMask => self.rt_sigprocmask(sleigh, memory),
+                Syscall::RtSigAction => self.rt_sigaction(sleigh, memory),
+                Syscall::SigAltStack => self.sigaltstack(sleigh, memory),
+                Syscall::ArchPrctl => self.arch_prctl(sleigh, memory),
+                Syscall::SetTidAddress => self.set_tid_address(sleigh, memory),
+                Syscall::ExitGroup => self.exit_group(sleigh, memory),
+                Syscall::Ppoll => self.ppoll(sleigh, memory),
+                _ => Err(Error::UnhandledSyscall { syscall_num }),
+            };
+        }
+
         match syscall_num {
             n if n == Syscall::Write as u32 => self.write(sleigh, memory),
             n if n == Syscall::Mmap as u32 => self.mmap(sleigh, memory),
@@ -166,33 +227,49 @@ impl LinuxKernel {
         }
     }
 
+    fn ppoll<M: VarnodeDataStore>(
+        &self,
+        sleigh: &impl Sleigh,
+        memory: &mut M,
+    ) -> Result<ControlFlow> {
+        // TODO Completely unimplemented and entirely guessing that return 0 is fine
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(0u64))?;
+        trace!("ppoll(...)");
+
+        Ok(ControlFlow::NextInstruction)
+    }
+
     fn poll<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
     ) -> Result<ControlFlow> {
-        let nfds: i32 = self.syscall_arg(sleigh, memory, 0)?;
-        let pfds: u64 = self.syscall_arg(sleigh, memory, 1)?;
+        let pfds: u64 = self.syscall_arg(sleigh, memory, 0)?;
+        let nfds: i32 = self.syscall_arg(sleigh, memory, 1)?;
         let timeout: i32 = self.syscall_arg(sleigh, memory, 2)?;
         let ram = sleigh
             .address_space_by_name("ram")
             .expect("failed to find ram");
+        let mut poll_fds: Vec<PollFd> = vec![];
         for pfds_offset in 0..nfds {
             let fds = VarnodeData::new(
                 Address::new(ram.clone(), pfds + (8 * pfds_offset) as u64),
                 std::mem::size_of::<PollFd>(),
             );
-            let bytes: [u8; std::mem::size_of::<PollFd>()] =
-                PcodeValue::from(memory.read(&fds)?).try_into()?;
+            let bytes = PcodeValue::from(memory.read(&fds)?).try_into()?;
 
             // SAFETY: All byte combinations are valid
-            let poll_fd: PollFd = unsafe { std::mem::transmute(bytes) };
-            //println!("Polling {fd} with timeout {timeout}", fd = poll_fd.fd);
+            poll_fds.push(unsafe {
+                std::mem::transmute::<[u8; std::mem::size_of::<PollFd>()], PollFd>(bytes)
+            });
         }
 
         // Number of fds with events. Say 0 for now
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_value = 0u64;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+        trace!("poll({poll_fds:?}, {nfds}, {timeout}) = {return_value}");
 
         Ok(ControlFlow::NextInstruction)
     }
@@ -203,23 +280,20 @@ impl LinuxKernel {
         memory: &mut M,
     ) -> Result<ControlFlow> {
         // Signals not supported
-        let _signal: u32 = self.syscall_arg(sleigh, memory, 0)?;
+        let signal: u32 = self.syscall_arg(sleigh, memory, 0)?;
         let new_sigaction_ptr: u64 = self.syscall_arg(sleigh, memory, 1)?;
         let old_sigaction_ptr: u64 = self.syscall_arg(sleigh, memory, 2)?;
-        let _size: u64 = self.syscall_arg(sleigh, memory, 3)?;
-        //println!(
-        //    "rt_sigaction({signal}, {new_sigaction_ptr:#08x}, {old_sigaction_ptr:#08x}, {size})"
-        //);
+        let size: u64 = self.syscall_arg(sleigh, memory, 3)?;
 
         if new_sigaction_ptr != 0 {
-            //println!("WARNING: Ignoring sigaction registration");
+            warn!("Ignoring sigaction registration: {new_sigaction_ptr:#x}");
         }
 
         if old_sigaction_ptr != 0 {
             let ram = sleigh
                 .address_space_by_name("ram")
                 .expect("failed to find ram");
-            let old_sigaction_ptr = VarnodeData::new(
+            let old_sigaction_varnode = VarnodeData::new(
                 Address::new(ram.clone(), old_sigaction_ptr),
                 std::mem::size_of::<SigAction>(),
             );
@@ -227,7 +301,7 @@ impl LinuxKernel {
             // All zeros means default handler with no special flags set
             let old_sigaction = [0u8; std::mem::size_of::<SigAction>()];
             memory.write(
-                &old_sigaction_ptr,
+                &old_sigaction_varnode,
                 old_sigaction
                     .into_iter()
                     .map(<M::Value as PcodeOps>::Byte::from)
@@ -235,8 +309,13 @@ impl LinuxKernel {
             )?;
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_value = 0u64;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+
+        trace!(
+            "rt_sigaction({signal}, {new_sigaction_ptr:#x}, {old_sigaction_ptr:#x}, {size}) = {return_value}"
+        );
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -266,8 +345,9 @@ impl LinuxKernel {
             )?;
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(0u64))?;
+        trace!("rt_sigprocmask(...)");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -278,8 +358,9 @@ impl LinuxKernel {
     ) -> Result<ControlFlow> {
         // https://www.man7.org/linux/man-pages/man2/set_tid_address.2.html
         // Multithreading not supported. Ignore this and return TID = 0
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(0u64))?;
+        trace!("set_tid_address(...)");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -292,7 +373,7 @@ impl LinuxKernel {
         let old_ss: u64 = self.syscall_arg(sleigh, memory, 1)?;
 
         if new_ss != 0 {
-            //println!("WARNING: Ignoring new signal alt stack");
+            warn!("WARNING: Ignoring new signal alt stack");
         }
 
         if old_ss != 0 {
@@ -316,6 +397,7 @@ impl LinuxKernel {
             )?;
         }
 
+        trace!("sigaltstack(...)");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -335,17 +417,17 @@ impl LinuxKernel {
                 memory.write(&fs, M::Value::from_le(addr))?;
 
                 // Write 0 on success
-                let rax = sleigh.register_from_name("RAX")?;
-                memory.write(&rax, M::Value::from_le(0u64))?;
+                let return_value = 0u64;
+                let return_register =
+                    sleigh.register_from_name(&self.arch_config.return_register)?;
+                memory.write(&return_register, M::Value::from_le(return_value))?;
+                trace!("arch_prctl(ARCH_SET_FS, {addr:#x}) = {return_value}");
+                Ok(ControlFlow::NextInstruction)
             }
-            _ => {
-                return Err(Error::UnhandledSyscall {
-                    syscall_num: Syscall::ArchPrctl as u32,
-                });
-            }
+            _ => Err(Error::UnhandledSyscall {
+                syscall_num: Syscall::ArchPrctl as u32,
+            }),
         }
-
-        Ok(ControlFlow::NextInstruction)
     }
 
     fn mmap<M: VarnodeDataStore>(
@@ -353,45 +435,59 @@ impl LinuxKernel {
         sleigh: &impl Sleigh,
         memory: &mut M,
     ) -> Result<ControlFlow> {
-        let _addr: u64 = self.syscall_arg(sleigh, memory, 0)?;
+        let addr: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let len: u64 = self.syscall_arg(sleigh, memory, 1)?;
-        let _prot: u64 = self.syscall_arg(sleigh, memory, 2)?;
+        let prot: u64 = self.syscall_arg(sleigh, memory, 2)?;
         let flags: u64 = self.syscall_arg(sleigh, memory, 3)?;
-        let _fd: u64 = self.syscall_arg(sleigh, memory, 4)?;
-        let _offset: u64 = self.syscall_arg(sleigh, memory, 5)?;
-        //println!("mmap({addr:016x}, {len}, {prot:016x}, {flags:016x}, {fd}, {offset})");
+        let fd: i64 = self.syscall_arg(sleigh, memory, 4)?;
+        let offset: u64 = self.syscall_arg(sleigh, memory, 5)?;
 
         if flags & MmapFlags::Anonymous as u64 == 0 {
-            //println!("WARNING: File mmap not supported");
+            error!("File mmap not emulated");
             return Err(Error::UnhandledSyscall {
                 syscall_num: Syscall::Mmap as u32,
             });
         }
 
-        // Kernel should use the addr as a hint but is not required to.
-        let addr = self
-            .mmap_pages
-            .last()
-            .copied()
-            .map(|page| page.next_multiple_of(4096))
-            .unwrap_or(0xA000000000);
+        if len == 0 {
+            // EINVAL (since Linux 2.6.12) if length was 0.
+            let return_value = -(Errno::Einval as i64);
+            let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+            memory.write(&return_register, M::Value::from_le(-(Errno::Einval as i64)))?;
+            return Ok(ControlFlow::NextInstruction);
+        }
 
-        // Zero initialize contents
+        let mmap_addr = if flags & MmapFlags::Fixed as u64 != 0 {
+            // TODO What if addr is 0 here?
+            addr
+        } else {
+            self.mmap_pages
+                .last()
+                .copied()
+                .map(|page| page + 4096)
+                .unwrap_or(0xA000000000)
+        };
+
+        // MAP_ANONYMOUS must zero initialize contents
         let ram = sleigh
             .address_space_by_name("ram")
             .expect("failed to find ram");
         for i in 0..len {
-            let offset = addr + i;
+            let offset = mmap_addr + i;
             let zero_addr = VarnodeData::new(Address::new(ram.clone(), offset), 1);
-            memory.write(&zero_addr, M::Value::from_le(0u8))?;
-            if offset % 4096 == 0 {
-                self.mmap_pages.push(offset);
+            memory.write(&zero_addr, M::Value::from_le(0x0u8))?;
+            if offset.is_multiple_of(4096) {
+                self.mmap_pages.insert(offset);
             }
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(addr))?;
+        let return_value = mmap_addr;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
 
+        trace!(
+            "mmap({addr:#x}, {len}, {prot:#016x}, {flags:#016x}, {fd}, {offset}) = {return_value:#x}"
+        );
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -401,8 +497,10 @@ impl LinuxKernel {
         memory: &mut M,
     ) -> Result<ControlFlow> {
         // Noop, protection not enforced
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_value = 0u64;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+        trace!("mprotect(...) = {return_value}");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -413,48 +511,24 @@ impl LinuxKernel {
     ) -> Result<ControlFlow> {
         let addr: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let len: u64 = self.syscall_arg(sleigh, memory, 1)?;
-        //println!("munmap({addr:016x}, {len})");
 
-        match self.mmap_pages.binary_search(&addr) {
-            Ok(start) => {
-                // Unmap this page and possibly more
-                let num_pages = (len / 4096) as usize;
-                if start + num_pages > self.mmap_pages.len() {
-                    // Length would unmap too many pages
-                    let rax = sleigh.register_from_name("RAX")?;
-                    memory.write(&rax, M::Value::from_le(-(Errno::Einval as i64)))?;
-                    return Ok(ControlFlow::NextInstruction);
-                }
-
-                let mut rm_addr = addr;
-                for i in 0..num_pages {
-                    // Ensure that these pages match expected addr values
-                    if rm_addr != self.mmap_pages[start + i] {
-                        // Length is too large, would unmap unrelated page
-                        let rax = sleigh.register_from_name("RAX")?;
-                        memory.write(&rax, M::Value::from_le(-(Errno::Einval as i64)))?;
-                        return Ok(ControlFlow::NextInstruction);
-                    }
-                    rm_addr = rm_addr.next_multiple_of(4096);
-                }
-
-                // Everything is good!
-                // Using a Vec here makes this SLOW. Consider a BtreeSet instead since we are just
-                // tracking whether a page is allocated or not.
-                for _ in 0..num_pages {
-                    self.mmap_pages.remove(start);
+        match self.mmap_pages.get(&addr).copied() {
+            Some(start) => {
+                for rm_addr in (start..start + len).step_by(4096) {
+                    self.mmap_pages.remove(&rm_addr);
                 }
             }
-            Err(_) => {
-                // Address is not mapped
-                let rax = sleigh.register_from_name("RAX")?;
-                memory.write(&rax, M::Value::from_le(-(Errno::Einval as i64)))?;
-                return Ok(ControlFlow::NextInstruction);
+            None => {
+                // It is not an error if the indicated range does not contain any mapped pages
+                // per https://www.man7.org/linux/man-pages/man2/mmap.2.html
             }
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(0u64))?;
+        let return_value = 0u64;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+
+        trace!("munmap({addr:#x}, {len}) = {return_value}");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -475,15 +549,18 @@ impl LinuxKernel {
                 // Allocating
                 memory.write(
                     &VarnodeData::new(Address::new(ram.clone(), addr), 1),
-                    M::Value::from_le(0u8),
+                    M::Value::from_le(0x0u8),
                 )?;
             }
 
             self.brk = brk;
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(self.brk))?;
+        let return_value = self.brk;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+
+        trace!("brk({brk:08x}) = {return_value:08x}");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -520,8 +597,11 @@ impl LinuxKernel {
             }
         }
 
-        let rax = sleigh.register_from_name("RAX")?;
-        memory.write(&rax, M::Value::from_le(count))?;
+        let return_value = count;
+        let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
+        memory.write(&return_register, M::Value::from_le(return_value))?;
+
+        trace!("write({fd}, {buf:#x}, {count}) = {return_value}");
         Ok(ControlFlow::NextInstruction)
     }
 
@@ -531,13 +611,14 @@ impl LinuxKernel {
         memory: &M,
     ) -> Result<ControlFlow> {
         let status: i32 = self.syscall_arg(sleigh, memory, 0)?;
+        trace!("exitgroup({status})");
         self.exit_status = Some(status);
         Ok(ControlFlow::Halt)
     }
 
     fn syscall_num<M: VarnodeDataStore>(&self, sleigh: &impl Sleigh, memory: &M) -> Result<u32> {
-        let eax = sleigh.register_from_name("EAX")?;
-        let pcode_value = PcodeValue::from(memory.read(&eax)?);
+        let syscall_reg = sleigh.register_from_name(&self.arch_config.syscall_num_register)?;
+        let pcode_value = PcodeValue::from(memory.read(&syscall_reg)?);
         Ok(u32::try_from(pcode_value)?)
     }
 
@@ -546,16 +627,14 @@ impl LinuxKernel {
         M: VarnodeDataStore,
         T: TryFrom<PcodeValue<M::Value>, Error = TryFromPcodeValueError>,
     {
-        // For x86-64
-        let registers = ["RDI", "RSI", "RDX", "R10", "R8", "R9"];
-        self.syscall_arg_from_register(sleigh, memory, registers[arg])
+        self.syscall_arg_from_register(sleigh, memory, &self.arch_config.arg_registers[arg])
     }
 
     fn syscall_arg_from_register<M, T>(
         &self,
         sleigh: &impl Sleigh,
         memory: &M,
-        register_name: &'static str,
+        register_name: &str,
     ) -> Result<T>
     where
         M: VarnodeDataStore,

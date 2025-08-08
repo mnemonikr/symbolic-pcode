@@ -81,10 +81,17 @@ fn large_multiply(x: u128, y: u128) -> u128 {
 }
 
 #[inline(never)]
+#[cfg(target_arch = "x86_64")]
 fn negate(mut x: i64) -> i64 {
     // Required to force the neg instruction since the default assembly produced does not use it
     unsafe {
         core::arch::asm!("neg {x}", x = inout(reg) x);
     }
     x
+}
+
+#[inline(never)]
+#[cfg(not(target_arch = "x86_64"))]
+fn negate(x: i64) -> i64 {
+    -x
 }

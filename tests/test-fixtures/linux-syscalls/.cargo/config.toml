@@ -1,3 +1,9 @@
+# This configuration file assumes this is being built on an x86-64 host platform.
+
 [build]
 target = ["x86_64-unknown-linux-musl"]
 rustflags = ["-Ctarget-feature=+crt-static", "-Crelocation-model=static"]
+
+# This can be installed on Ubuntu/Debian with apt package `gcc-aarch64-linux-gnu`
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-gcc"
