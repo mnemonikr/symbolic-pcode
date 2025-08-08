@@ -39,7 +39,7 @@ impl PcodeEmulator for TracingEmulator {
         memory: &mut T,
         instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
-        println!("Executing: {instruction}");
+        //println!("Executing: {instruction}");
         match &instruction.op_code {
             OpCode::Store => (),
             OpCode::Branch
@@ -203,7 +203,7 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
     // The argv list must be terminated by null pointer. Setting program name to null AND
     // terminating the list with NULL, whence 16 bytes
     //
-    // MUSL has support for null program name:
+    // musl has support for null program name:
     // https://git.musl-libc.org/cgit/musl/tree/src/env/__libc_start_main.c
     let argv = VarnodeData {
         address: Address {
@@ -227,10 +227,10 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
         .write(&envp, SymbolicBitVec::constant(0, u64::BITS as usize))
         .expect("failed to initialize envp");
 
-    // MUSL targets initialize the libc pagesize using aux[AT_PAGESZ]. For architectures without a
+    // musl targets initialize the libc pagesize using aux[AT_PAGESZ]. For architectures without a
     // hardcoded value the libc pagesize is used. For example x86-64 has a hardcoded value of 4096
     // and so this is ignored. However for aarch64 there is no hardcoded value. This must be
-    // supplied otherwise a pagesize of 0 will be used.
+    // supplied otherwise a pagesize of 0 will be used in some cases.
     let mut auxv = VarnodeData {
         address: Address {
             offset: envp.address.offset + envp.size as u64,
@@ -348,7 +348,7 @@ pub fn init_registers_x86_64(sleigh: &impl Sleigh, memory: &mut Memory) {
     init_registers(sleigh, memory, &rsp, registers);
 
     // Initialize the DF register to 0. It appears to be a convention that whenever STD is called
-    // CLD is called thereafter to reset it. There is a bug (?) in MUSL where REP STOS is used
+    // CLD is called thereafter to reset it. There is a bug (?) in musl where REP STOS is used
     // without ensuring the flag is cleared
 
     // 0000000000449f4d <__init_libc>:
@@ -395,6 +395,9 @@ pub fn init_registers_aarch64(sleigh: &impl Sleigh, memory: &mut Memory) {
     // - Bit [4] Data Zero Prohibited (DZP). This field indicates whether the use of `DC ZVA`
     // instruction is permitted (0b0) or prohibited (0b1).
     // - Bits [3:0] Block Size (BS). Log2 of the block size in words.
+    //
+    // Writing 0x10 to prohibit DC ZVA. This instruction is not supported directly in pcode and
+    // would need to be modeled.
     let dczid_el0 = sleigh
         .register_from_name("dczid_el0")
         .expect("unknown register");
