@@ -15,6 +15,7 @@ pcode-ops = { path = "../crates/pcode-ops" }
 sym = { path = "../crates/sym" }
 
 [dev-dependencies]
+flexi_logger = "0.31"
 elf = "0.8"
 sleigh-compiler = "2.0"
 

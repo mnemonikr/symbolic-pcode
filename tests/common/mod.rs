@@ -10,6 +10,7 @@ use symbolic_pcode::mem::{GenericMemory, MemoryBranch, VarnodeDataStore};
 use symbolic_pcode::processor::{self, PcodeExecution, ProcessorResponseHandler};
 
 static X86_64_SLA: OnceLock<PathBuf> = OnceLock::new();
+static AARCH_64_SLA: OnceLock<PathBuf> = OnceLock::new();
 
 pub type Memory = GenericMemory<SymbolicBitVec>;
 
@@ -25,7 +26,7 @@ impl PcodeEmulator for TracingEmulator {
         memory: &mut T,
         instruction: &PcodeInstruction,
     ) -> emulator::Result<ControlFlow> {
-        //println!("Executing: {instruction}");
+        println!("Executing: {instruction}");
         match &instruction.op_code {
             OpCode::Store => (),
             OpCode::Branch
@@ -130,11 +131,34 @@ fn compile_x86_64_slaspec() -> sleigh_compiler::Result<PathBuf> {
     Ok(sla_path)
 }
 
+fn compile_aarch64_slaspec() -> sleigh_compiler::Result<PathBuf> {
+    let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("aarch64.sla");
+
+    let mut compiler = sleigh_compiler::SleighCompiler::default();
+    let slaspec_path =
+        std::path::Path::new("ghidra/Ghidra/Processors/AARCH64/data/languages/AARCH64.slaspec");
+    compiler.compile(slaspec_path, &sla_path)?;
+    Ok(sla_path)
+}
+
 pub fn x86_64_sleigh() -> libsla::Result<GhidraSleigh> {
     let sleigh_spec = X86_64_SLA
         .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
     let processor_spec =
         fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
+            .expect("Failed to read processor spec file");
+    let sleigh = GhidraSleigh::builder()
+        .sleigh_spec(sleigh_spec)?
+        .processor_spec(&processor_spec)?
+        .build()?;
+    Ok(sleigh)
+}
+
+pub fn aarch64_sleigh() -> libsla::Result<GhidraSleigh> {
+    let sleigh_spec = AARCH_64_SLA
+        .get_or_init(|| compile_aarch64_slaspec().expect("failed to compile aarch64.slaspec"));
+    let processor_spec =
+        fs::read_to_string("ghidra/Ghidra/Processors/AARCH64/data/languages/AARCH64.pspec")
             .expect("Failed to read processor spec file");
     let sleigh = GhidraSleigh::builder()
         .sleigh_spec(sleigh_spec)?

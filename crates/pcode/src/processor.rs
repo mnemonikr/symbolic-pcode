@@ -342,6 +342,10 @@ impl PcodeExecution {
         Self { pcode, index: 0 }
     }
 
+    pub fn pcode(&self) -> &Disassembly<PcodeInstruction> {
+        &self.pcode
+    }
+
     pub fn origin(&self) -> &VarnodeData {
         &self.pcode.origin
     }

@@ -7,15 +7,18 @@ use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
 use pcode_ops::{PcodeOps, convert::PcodeValue};
 use sym::{self, Evaluator, SymbolicBit, SymbolicBitVec, SymbolicByte, VariableAssignments};
 use symbolic_pcode::{
-    arch::x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
+    arch::{
+        self,
+        x86::{emulator::EmulatorX86, processor::ProcessorHandlerX86},
+    },
     emulator::StandardPcodeEmulator,
-    kernel::linux::LinuxKernel,
+    kernel::linux::{LinuxArchConfig, LinuxKernel},
     mem::{MemoryTree, VarnodeDataStore},
     processor::{self, BranchingProcessor, Processor, ProcessorState},
 };
 
 const INITIAL_STACK: u64 = 0x8000000000;
-const EXIT_RIP: u64 = 0xFEEDBEEF0BADF00D;
+const EXIT_IP_ADDR: u64 = 0xFEEDBEEF0BADF00D;
 
 fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
     // The stack for libc programs:
@@ -64,19 +67,47 @@ fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
         .write(&envp, SymbolicBitVec::constant(0, u64::BITS as usize))
         .expect("failed to initialize envp");
 
-    let auxv = VarnodeData {
+    // MUSL targets initialize the libc pagesize using aux[AT_PAGESZ]. For architectures without a
+    // hardcoded value the libc pagesize is used. For example x86-64 has a hardcoded value of 4096
+    // and so this is ignored. However for aarch64 there is no hardcoded value. This must be
+    // supplied otherwise a pagesize of 0 will be used.
+    let mut auxv = VarnodeData {
         address: Address {
             offset: envp.address.offset + envp.size as u64,
             address_space: ram.clone(),
         },
         size: 8,
     };
+
+    // The index for AT_PAGESZ
+    let at_pagesz = 6;
+    memory
+        .write(
+            &auxv,
+            SymbolicBitVec::constant(at_pagesz, u64::BITS as usize),
+        )
+        .expect("failed to write AT_PAGESZ into auxv");
+    auxv.address.offset += auxv.size as u64;
+
+    let page_size = 4096;
+    memory
+        .write(
+            &auxv,
+            SymbolicBitVec::constant(page_size, u64::BITS as usize),
+        )
+        .expect("failed to write page size into auxv");
+    auxv.address.offset += auxv.size as u64;
+
     memory
         .write(&auxv, SymbolicBitVec::constant(0, u64::BITS as usize))
-        .expect("failed to initialize envp");
+        .expect("failed to initialize auxv");
 }
 
-fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
+fn memory_with_image(
+    sleigh: &GhidraSleigh,
+    image: impl AsRef<Path>,
+    pc_register: &VarnodeData,
+) -> Memory {
     use elf::ElfBytes;
     use elf::abi::PT_LOAD;
     use elf::endian::AnyEndian;
@@ -113,6 +144,11 @@ fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
             )
             .expect("failed to write image section into memory");
 
+        println!(
+            "Loaded segment {vaddr:#x} from {offset:#x} ({file_size})",
+            vaddr = segment.p_vaddr
+        );
+
         // If the virtual size is larger than the file size then zero out the remainder
         let zero_size = (segment.p_memsz - segment.p_filesz) as usize;
         if zero_size > 0 {
@@ -124,6 +160,10 @@ fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
                 },
                 size: zero_size,
             };
+            println!(
+                "Zeroing segment {vaddr:#x} at {zeros_location}",
+                vaddr = segment.p_vaddr
+            );
             memory
                 .write(&zeros_location, zeros.into_iter().collect())
                 .expect("failed to write zeros into memory");
@@ -131,23 +171,86 @@ fn memory_with_image(sleigh: &GhidraSleigh, image: impl AsRef<Path>) -> Memory {
     }
 
     // Init RIP to entry
-    let rip = sleigh.register_from_name("RIP").expect("invalid register");
     memory
-        .write(&rip, elf.ehdr.e_entry.into())
-        .expect("failed to initialize RIP");
+        .write(pc_register, elf.ehdr.e_entry.into())
+        .expect("failed to initialize PC register");
 
     memory
 }
 
-fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
-    let mut bitvar = 0;
+fn init_registers_x86_64(sleigh: &impl Sleigh, memory: &mut Memory) {
+    let rsp = sleigh.register_from_name("RSP").expect("invalid register");
     let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP"]
         .into_iter()
         .map(str::to_owned)
-        .chain((8..16).map(|n| format!("R{n}")))
-        .collect::<Vec<_>>();
+        .chain((8..16).map(|n| format!("R{n}")));
 
-    for register_name in registers {
+    init_registers(sleigh, memory, &rsp, registers);
+
+    // Initialize the DF register to 0. It appears to be a convention that whenever STD is called
+    // CLD is called thereafter to reset it. There is a bug (?) in MUSL where REP STOS is used
+    // without ensuring the flag is cleared
+
+    // 0000000000449f4d <__init_libc>:
+    //   449f4d:       53                      push   rbx
+    //   449f4e:       48 89 fa                mov    rdx,rdi
+    //   449f51:       31 c0                   xor    eax,eax
+    //   449f53:       b9 4c 00 00 00          mov    ecx,0x4c
+    //   449f58:       48 81 ec 50 01 00 00    sub    rsp,0x150
+    //   449f5f:       48 8d 7c 24 20          lea    rdi,[rsp+0x20]
+    //   449f64:       f3 ab                   rep stos DWORD PTR es:[rdi],eax
+
+    let df_register = sleigh
+        .register_from_name("DF")
+        .expect("failed to get DF register");
+    memory
+        .write(&df_register, 0u8.into())
+        .expect("failed to init DF register");
+}
+
+fn init_registers_aarch64(sleigh: &impl Sleigh, memory: &mut Memory) {
+    let sp = sleigh
+        .register_from_name("sp")
+        .expect("invalid stack register");
+    let registers = (0..30).map(|n| format!("x{n}"));
+
+    init_registers(sleigh, memory, &sp, registers);
+
+    // Init link register value to final return address
+    let link_register = sleigh
+        .register_from_name("x30")
+        .expect("invalid link register");
+    memory
+        .write(&link_register, EXIT_IP_ADDR.into())
+        .expect("failed to initialize link register");
+
+    // Initialize system register `dczid_el0`
+    //
+    // Per DDI0487L_b_a-profile_architecture_reference_manual.pdf
+    //
+    // Indicates the block size that is written with byte values of 0 by the DC ZVA (Data Cache
+    // Zero by Address) System instruction.
+    //
+    // - Bits [63:5] Reserved, RES0.
+    // - Bit [4] Data Zero Prohibited (DZP). This field indicates whether the use of `DC ZVA`
+    // instruction is permitted (0b0) or prohibited (0b1).
+    // - Bits [3:0] Block Size (BS). Log2 of the block size in words.
+    let dczid_el0 = sleigh
+        .register_from_name("dczid_el0")
+        .expect("unknown register");
+    memory
+        .write(&dczid_el0, 0x10u64.into())
+        .expect("failed to initialize dczid_el0");
+}
+
+fn init_registers(
+    sleigh: &impl Sleigh,
+    memory: &mut Memory,
+    stack_register: &VarnodeData,
+    registers: impl IntoIterator<Item = String>,
+) {
+    let mut bitvar = 0;
+    for register_name in registers.into_iter() {
         let mut bytes = Vec::with_capacity(8);
         for _ in 0..8 {
             let byte: SymbolicByte = [
@@ -173,31 +276,10 @@ fn init_registers(sleigh: &impl Sleigh, memory: &mut Memory) {
             .unwrap_or_else(|err| panic!("failed to write register {register_name}: {err}"));
     }
 
-    // Init RSP to stack address
-    let rsp = sleigh.register_from_name("RSP").expect("invalid register");
+    // Init stack register to stack address
     memory
-        .write(&rsp, INITIAL_STACK.into())
-        .expect("failed to initialize RSP");
-
-    // Initialize the DF register to 0. It appears to be a convention that whenever STD is called
-    // CLD is called thereafter to reset it. There is a bug (?) in MUSL where REP STOS is used
-    // without ensuring the flag is cleared
-
-    // 0000000000449f4d <__init_libc>:
-    //   449f4d:       53                      push   rbx
-    //   449f4e:       48 89 fa                mov    rdx,rdi
-    //   449f51:       31 c0                   xor    eax,eax
-    //   449f53:       b9 4c 00 00 00          mov    ecx,0x4c
-    //   449f58:       48 81 ec 50 01 00 00    sub    rsp,0x150
-    //   449f5f:       48 8d 7c 24 20          lea    rdi,[rsp+0x20]
-    //   449f64:       f3 ab                   rep stos DWORD PTR es:[rdi],eax
-
-    let df_register = sleigh
-        .register_from_name("DF")
-        .expect("failed to get DF register");
-    memory
-        .write(&df_register, 0u8.into())
-        .expect("failed to init DF register");
+        .write(stack_register, INITIAL_STACK.into())
+        .expect("failed to initialize stack register");
 }
 
 fn find_test_fixture(
@@ -439,7 +521,12 @@ fn doubler_32b() -> processor::Result<()> {
 }
 
 #[test]
-fn hello_world_linux() -> processor::Result<()> {
+fn hello_world_x86_linux() -> processor::Result<()> {
+    flexi_logger::Logger::try_with_env()
+        .unwrap()
+        .start()
+        .unwrap();
+
     // Build test fixture first
     let messages = escargot::CargoBuild::new()
         .bin("linux-syscalls")
@@ -460,8 +547,9 @@ fn hello_world_linux() -> processor::Result<()> {
     };
 
     let sleigh = Rc::new(x86_64_sleigh().expect("failed to build sleigh"));
-    let mut memory = memory_with_image(&sleigh, image);
-    init_registers(sleigh.as_ref(), &mut memory);
+    let rip = sleigh.register_from_name("RIP").expect("invalid register");
+    let mut memory = memory_with_image(&sleigh, image, &rip);
+    init_registers_x86_64(sleigh.as_ref(), &mut memory);
     initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = ProcessorHandlerX86::new(sleigh.as_ref());
@@ -498,6 +586,88 @@ fn hello_world_linux() -> processor::Result<()> {
 }
 
 #[test]
+fn hello_world_aarch64_linux() -> processor::Result<()> {
+    flexi_logger::Logger::try_with_env()
+        .unwrap()
+        .start()
+        .unwrap();
+
+    // Build test fixture first
+    let messages = escargot::CargoBuild::new()
+        .bin("linux-syscalls")
+        .manifest_path("./test-fixtures/linux-syscalls/Cargo.toml")
+        .target("aarch64-unknown-linux-musl")
+        .env(
+            "RUSTFLAGS",
+            "-Ctarget-feature=+crt-static -Crelocation-model=static",
+        )
+        // On Ubuntu can install with sudo apt install gcc-aarch64-linux-gnu
+        .env(
+            "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER",
+            "aarch64-linux-gnu-gcc",
+        )
+        .exec()
+        .unwrap();
+
+    let image = match find_test_fixture(messages) {
+        Ok(image) => image,
+        Err(messages) => {
+            panic!("Failed to find test fixture: {messages:?}");
+        }
+    };
+
+    let sleigh = Rc::new(common::aarch64_sleigh().expect("failed to build sleigh"));
+    let pc = sleigh.register_from_name("pc").expect("invalid register");
+    let mut memory = memory_with_image(&sleigh, image, &pc);
+    init_registers_aarch64(sleigh.as_ref(), &mut memory);
+    initialize_libc_stack(&mut memory, sleigh.as_ref());
+
+    let handler = arch::aarch64::processor::ProcessorHandler::new(sleigh.as_ref());
+    let emulator = arch::aarch64::emulator::Emulator::with_kernel(
+        sleigh.clone(),
+        LinuxKernel::with_config(arch::aarch64::linux::config()),
+    );
+    let mut processor = Processor::new(memory, emulator, handler);
+
+    loop {
+        let print_pcode = matches!(processor.state(), ProcessorState::Decode(_));
+        processor.step(sleigh.as_ref())?;
+
+        if print_pcode {
+            if let ProcessorState::Execute(e) = processor.state() {
+                for instr in &e.pcode().instructions {
+                    println!("{instr}");
+                }
+            }
+        }
+
+        // Debug
+        if matches!(processor.state(), ProcessorState::Decode(_)) {
+            let disassembly = processor.disassemble(sleigh.as_ref())?;
+            let encoded_instr = processor
+                .memory()
+                .read(&disassembly.origin)?
+                .into_le_bytes()
+                .map(|byte| u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}")))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("Encoded instruction from memory: {encoded_instr}");
+            println!("Decoded: {instr}", instr = disassembly.instructions[0]);
+        }
+
+        if matches!(processor.state(), ProcessorState::Halt) {
+            assert_eq!(
+                processor.emulator().kernel().exit_status(),
+                Some(0),
+                "exit code should be 0"
+            );
+            return Ok(());
+        }
+    }
+}
+
+#[test]
 fn pcode_coverage() -> processor::Result<()> {
     // Build test fixture first
     let messages = escargot::CargoBuild::new()
@@ -515,10 +685,11 @@ fn pcode_coverage() -> processor::Result<()> {
     };
 
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
-    let mut memory = memory_with_image(&sleigh, image);
-    init_registers(&sleigh, &mut memory);
+    let rip = sleigh.register_from_name("RIP").expect("invalid register");
+    let mut memory = memory_with_image(&sleigh, image, &rip);
+    init_registers_x86_64(&sleigh, &mut memory);
 
-    // Init stack address in memory to magic EXIT_RIP value
+    // Init stack address in memory to magic EXIT_IP_ADDR value
     let stack_addr = VarnodeData {
         address: Address {
             offset: INITIAL_STACK,
@@ -526,19 +697,16 @@ fn pcode_coverage() -> processor::Result<()> {
                 .address_space_by_name("ram")
                 .expect("failed to find ram"),
         },
-        size: EXIT_RIP.to_le_bytes().len(),
+        size: EXIT_IP_ADDR.to_le_bytes().len(),
     };
     memory
-        .write(&stack_addr, EXIT_RIP.into())
+        .write(&stack_addr, EXIT_IP_ADDR.into())
         .expect("failed to initialize stack");
 
     let handler = ProcessorHandlerX86::new(&sleigh);
     let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
     let mut processor = Processor::new(memory, emulator, handler);
 
-    let rip = sleigh
-        .register_from_name("RIP")
-        .expect("failed to get RIP register");
     loop {
         processor.step(&sleigh)?;
 
@@ -563,7 +731,8 @@ fn pcode_coverage() -> processor::Result<()> {
             .try_into()
             .expect("failed to concretize RIP");
 
-        if instruction_pointer == EXIT_RIP && matches!(processor.state(), ProcessorState::Fetch) {
+        if instruction_pointer == EXIT_IP_ADDR && matches!(processor.state(), ProcessorState::Fetch)
+        {
             break;
         }
     }
@@ -599,6 +768,110 @@ fn pcode_coverage() -> processor::Result<()> {
     // Int(GreaterThanOrEqual(Unsigned))
     // BranchIndirect -- though technically this is covered via Return
     assert_eq!(processor.emulator().executed_instructions().len(), 36);
+    Ok(())
+}
+
+#[test]
+fn pcode_coverage_aarch64() -> processor::Result<()> {
+    // Build test fixture first
+    let messages = escargot::CargoBuild::new()
+        .bin("pcode-coverage")
+        .manifest_path("./test-fixtures/pcode-coverage/Cargo.toml")
+        .target("aarch64-unknown-none")
+        .exec()
+        .unwrap();
+
+    let image = match find_test_fixture(messages) {
+        Ok(image) => image,
+        Err(messages) => {
+            panic!("Failed to find test fixture: {messages:?}");
+        }
+    };
+
+    let sleigh = common::aarch64_sleigh().expect("failed to build sleigh");
+    let pc = sleigh.register_from_name("pc").expect("invalid register");
+    let mut memory = memory_with_image(&sleigh, image, &pc);
+    init_registers_aarch64(&sleigh, &mut memory);
+
+    // Init stack address in memory to magic EXIT_IP_ADDR value
+    let stack_addr = VarnodeData {
+        address: Address {
+            offset: INITIAL_STACK,
+            address_space: sleigh
+                .address_space_by_name("ram")
+                .expect("failed to find ram"),
+        },
+        size: EXIT_IP_ADDR.to_le_bytes().len(),
+    };
+    memory
+        .write(&stack_addr, EXIT_IP_ADDR.into())
+        .expect("failed to initialize stack");
+
+    let handler = arch::aarch64::processor::ProcessorHandler::new(&sleigh);
+    let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
+    let mut processor = Processor::new(memory, emulator, handler);
+
+    loop {
+        processor.step(&sleigh)?;
+
+        // Check if PC is the magic value
+        if matches!(processor.state(), ProcessorState::Decode(_)) {
+            let disassembly = processor.disassemble(&sleigh)?;
+            let encoded_instr = processor
+                .memory()
+                .read(&disassembly.origin)?
+                .into_le_bytes()
+                .map(|byte| u8::try_from(byte).map_or("xx".to_string(), |b| format!("{b:02x}")))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("Encoded instruction from memory: {encoded_instr}");
+            println!("Decoded: {disassembly}");
+        }
+
+        let instruction_pointer: u64 = processor
+            .memory()
+            .read(&pc)?
+            .try_into()
+            .expect("failed to concretize pc register");
+
+        if instruction_pointer == EXIT_IP_ADDR && matches!(processor.state(), ProcessorState::Fetch)
+        {
+            break;
+        }
+    }
+
+    let return_register = sleigh
+        .register_from_name("x0")
+        .expect("failed to get x0 register");
+    let return_value: u64 = processor
+        .memory()
+        .read(&return_register)?
+        .try_into()
+        .expect("failed to concretize return register");
+    assert_eq!(
+        return_value, 0,
+        "unexpected return value: {return_value:016x}"
+    );
+
+    processor
+        .emulator()
+        .executed_instructions()
+        .into_iter()
+        .for_each(|(opcode, count)| println!("Executed {opcode:?}: {count}"));
+
+    // Currently the following p-code instructions are not covered by this test:
+    //
+    // Piece
+    // Bool(Xor)
+    // Int(LessThanOrEqual(Signed))
+    // Int(LessThanOrEqual(Unsigned))
+    // Int(GreaterThan(Signed))
+    // Int(GreaterThan(Unsigned))
+    // Int(GreaterThanOrEqual(Signed))
+    // Int(GreaterThanOrEqual(Unsigned))
+    // BranchIndirect -- though technically this is covered via Return
+    assert_eq!(processor.emulator().executed_instructions().len(), 33);
     Ok(())
 }
 
@@ -647,7 +920,7 @@ fn z3_integration() -> processor::Result<()> {
     write_register(&mut memory, "RSP", &INITIAL_STACK.to_le_bytes());
     write_register(&mut memory, "RBP", &INITIAL_STACK.to_le_bytes());
 
-    // Put EXIT_RIP onto the stack. The final RET will trigger this.
+    // Put EXIT_IP_ADDR onto the stack. The final RET will trigger this.
     memory.write(
         &VarnodeData::new(
             Address::new(
@@ -656,9 +929,9 @@ fn z3_integration() -> processor::Result<()> {
                     .expect("failed to find ram"),
                 INITIAL_STACK,
             ),
-            EXIT_RIP.to_le_bytes().len(),
+            EXIT_IP_ADDR.to_le_bytes().len(),
         ),
-        EXIT_RIP.into(),
+        EXIT_IP_ADDR.into(),
     )?;
 
     let input_value = sym::SymbolicBitVec::with_size(32);
@@ -695,7 +968,7 @@ fn z3_integration() -> processor::Result<()> {
                 .expect("failed to read RIP")
                 .try_into()
                 .expect("failed to concretize RIP");
-            if rip_value == EXIT_RIP {
+            if rip_value == EXIT_IP_ADDR {
                 finished.push(processors.swap_remove(i));
 
                 // Do not update index since processor from end was moved here
@@ -860,7 +1133,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     write_register(&mut memory, "RSP", &INITIAL_STACK.to_le_bytes());
     write_register(&mut memory, "RBP", &INITIAL_STACK.to_le_bytes());
 
-    // Put EXIT_RIP onto the stack. The final RET will trigger this.
+    // Put EXIT_IP_ADDR onto the stack. The final RET will trigger this.
     memory.write(
         &VarnodeData::new(
             Address::new(
@@ -869,9 +1142,9 @@ fn take_the_path_not_taken() -> processor::Result<()> {
                     .expect("failed to find ram"),
                 INITIAL_STACK,
             ),
-            EXIT_RIP.to_le_bytes().len(),
+            EXIT_IP_ADDR.to_le_bytes().len(),
         ),
-        EXIT_RIP.into(),
+        EXIT_IP_ADDR.into(),
     )?;
 
     // Create symbolic input
@@ -927,7 +1200,8 @@ fn take_the_path_not_taken() -> processor::Result<()> {
             .read(&rip)?
             .try_into()
             .expect("failed to concretize RIP");
-        if instruction_pointer == EXIT_RIP && matches!(processor.state(), ProcessorState::Fetch) {
+        if instruction_pointer == EXIT_IP_ADDR && matches!(processor.state(), ProcessorState::Fetch)
+        {
             break;
         }
     }
