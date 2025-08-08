@@ -36,3 +36,7 @@ path = "x86_64_emulator.rs"
 [[test]]
 name = "sleigh"
 path = "sleigh.rs"
+
+[[test]]
+name = "hello_world"
+path = "hello_world.rs"
