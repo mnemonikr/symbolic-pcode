@@ -737,8 +737,10 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         if let Err(e) = processor.step(&sleigh) {
             if let processor::Error::SymbolicBranch { condition_origin } = &e {
                 let condition = processor.memory().read(condition_origin)?;
-                let evaluation =
-                    evaluator.evaluate(&processor.memory().read_bit(condition_origin)?);
+                let evaluation = evaluator
+                    .evaluate(&processor.memory().read_bit(condition_origin)?)
+                    .response
+                    .expect("evaluation should be concrete");
                 if evaluation {
                     branches.push(condition.not_equals(0u8.into()));
                 } else {
