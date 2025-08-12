@@ -34,9 +34,43 @@ fn evaluate_variable() {
 fn evaluate_expression() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
-    let eval = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, false)]));
+    let evaluator = Evaluator::new(VariableAssignments::from_iter([(0, true), (1, false)]));
     let z = x ^ y;
-    assert!(eval.evaluate(&z).response.unwrap());
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(
+        evaluation.response.unwrap(),
+        "true xor false should be true"
+    );
+    assert!(
+        evaluation.used_variables.get(&0).unwrap(),
+        "x should be true"
+    );
+    assert!(
+        !evaluation.used_variables.get(&1).unwrap(),
+        "y should be false"
+    );
+}
+
+#[test]
+fn evaluate_symbolic_expression() {
+    let x = SymbolicBit::Variable(0);
+    let y = SymbolicBit::Variable(1);
+    let evaluator = Evaluator::new(VariableAssignments::from_iter(std::iter::empty()));
+    let z = x ^ y;
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(
+        evaluation.response.is_none(),
+        "evaluation should not have a concrete value"
+    );
+
+    // One of x or y may not be considered unassigned due to short-circuiting of the evaluation
+    assert!(
+        evaluation.unassigned_variables.contains(&0)
+            || evaluation.unassigned_variables.contains(&1),
+        "either x or y (or both) should be unassigned"
+    );
 }
 
 #[test]
