@@ -60,16 +60,32 @@ impl Evaluator {
             SymbolicBit::And(lhs, rhs) => {
                 let mut lhs = self.evaluate(lhs);
                 if let Some(lhs_response) = lhs.response {
-                    let mut rhs = self.evaluate(rhs);
-                    if let Some(rhs_response) = rhs.response {
-                        lhs.response = Some(lhs_response && rhs_response);
-                        lhs.used_variables.append(&mut rhs.used_variables);
+                    if !lhs_response {
+                        // LHS is false, do not need to evaluate RHS
                         lhs
                     } else {
-                        rhs
+                        // LHS is true, evaluate RHS
+                        let mut rhs = self.evaluate(rhs);
+                        if let Some(rhs_response) = rhs.response {
+                            // RHS is concrete value
+                            lhs.response = Some(lhs_response && rhs_response);
+                            lhs.used_variables.append(&mut rhs.used_variables);
+                            lhs
+                        } else {
+                            // RHS is symbolic
+                            rhs
+                        }
                     }
                 } else {
-                    lhs
+                    // LHS is not concrete. Should still evaluate RHS in case it is false
+                    let rhs = self.evaluate(rhs);
+                    if matches!(rhs.response, Some(false)) {
+                        // RHS is false, ignore LHS
+                        rhs
+                    } else {
+                        // RHS is either true or symbolic but LHS is already symbolic
+                        lhs
+                    }
                 }
             }
         }

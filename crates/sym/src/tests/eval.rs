@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::*;
 
 #[test]
@@ -71,6 +73,28 @@ fn evaluate_symbolic_expression() {
             || evaluation.unassigned_variables.contains(&1),
         "either x or y (or both) should be unassigned"
     );
+}
+
+#[test]
+fn evaluate_and_symbolic_lhs() {
+    let x = SymbolicBit::Variable(0);
+    let y = SymbolicBit::Variable(1);
+    let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
+    let evaluator = Evaluator::new(VariableAssignments::from_iter([(0, false)]));
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(!evaluation.response.unwrap(), "evaluation should be false");
+}
+
+#[test]
+fn evaluate_and_symbolic_rhs() {
+    let x = SymbolicBit::Variable(0);
+    let y = SymbolicBit::Variable(1);
+    let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
+    let evaluator = Evaluator::new(VariableAssignments::from_iter([(1, false)]));
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(!evaluation.response.unwrap(), "evaluation should be false");
 }
 
 #[test]
