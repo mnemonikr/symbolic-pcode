@@ -76,7 +76,7 @@ fn evaluate_symbolic_expression() {
 }
 
 #[test]
-fn evaluate_and_symbolic_lhs() {
+fn evaluate_false_and_symbolic() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
     let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
@@ -84,10 +84,32 @@ fn evaluate_and_symbolic_lhs() {
     let evaluation = evaluator.evaluate(&z);
 
     assert!(!evaluation.response.unwrap(), "evaluation should be false");
+    assert!(
+        evaluation.unassigned_variables.is_empty(),
+        "all evaluated variables should be assigned"
+    );
 }
 
 #[test]
-fn evaluate_and_symbolic_rhs() {
+fn evaluate_true_and_symbolic() {
+    let x = SymbolicBit::Variable(0);
+    let y = SymbolicBit::Variable(1);
+    let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
+    let evaluator = Evaluator::new(VariableAssignments::from_iter([(0, true)]));
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(
+        evaluation.response.is_none(),
+        "evaluation should be symbolic"
+    );
+    assert!(
+        evaluation.unassigned_variables.contains(&1),
+        "y should be unassigned"
+    );
+}
+
+#[test]
+fn evaluate_symbolic_and_false() {
     let x = SymbolicBit::Variable(0);
     let y = SymbolicBit::Variable(1);
     let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
@@ -95,6 +117,28 @@ fn evaluate_and_symbolic_rhs() {
     let evaluation = evaluator.evaluate(&z);
 
     assert!(!evaluation.response.unwrap(), "evaluation should be false");
+    assert!(
+        evaluation.unassigned_variables.is_empty(),
+        "all evaluated variables should be assigned"
+    );
+}
+
+#[test]
+fn evaluate_symbolic_and_true() {
+    let x = SymbolicBit::Variable(0);
+    let y = SymbolicBit::Variable(1);
+    let z = SymbolicBit::And(Rc::new(x), Rc::new(y));
+    let evaluator = Evaluator::new(VariableAssignments::from_iter([(1, true)]));
+    let evaluation = evaluator.evaluate(&z);
+
+    assert!(
+        evaluation.response.is_none(),
+        "evaluation should be symbolic"
+    );
+    assert!(
+        evaluation.unassigned_variables.contains(&0),
+        "x should be unassigned"
+    );
 }
 
 #[test]
