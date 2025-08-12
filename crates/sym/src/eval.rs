@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use crate::{SymbolicBit, SymbolicBitVec};
@@ -8,42 +8,68 @@ use crate::{SymbolicBit, SymbolicBitVec};
 #[derive(Clone, Debug, Default)]
 pub struct Evaluator {
     assignments: VariableAssignments,
-    and_gates: std::collections::HashMap<(usize, usize), bool>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub struct Evaluation {
+    /// The evaluation response. This may not be populated if there was a symbolic bit without a
+    /// known concrete value
+    pub response: Option<bool>,
+
+    /// Variables that were used and their assigned value
+    pub used_variables: BTreeMap<usize, bool>,
+
+    /// Variables that were used in the evaluation but did not have an assignment
+    pub unassigned_variables: BTreeSet<usize>,
 }
 
 impl Evaluator {
     /// Create a new instance using the given [VariableAssignments]. The assignments are fixed for
     /// the lifetime of this evaluator.
     pub fn new(assignments: VariableAssignments) -> Self {
-        Self {
-            assignments,
-            and_gates: Default::default(),
-        }
+        Self { assignments }
     }
 
-    /// Evaluate the value of this [SymbolicBit].
-    pub fn evaluate(&mut self, bit: &SymbolicBit) -> bool {
+    pub fn evaluate(&self, bit: &SymbolicBit) -> Evaluation {
         match bit {
-            SymbolicBit::Literal(x) => *x,
-            SymbolicBit::Variable(id) => self
-                .assignments
-                .get(*id)
-                .expect("variable should be defined in cache"),
-            SymbolicBit::Not(bit) => !self.evaluate(bit),
-            SymbolicBit::And(lhs, rhs) => {
-                let lhs_addr = Rc::as_ptr(lhs).addr();
-                let rhs_addr = Rc::as_ptr(rhs).addr();
-                let cache_key = (
-                    usize::min(lhs_addr, rhs_addr),
-                    usize::max(lhs_addr, rhs_addr),
-                );
-
-                if let Some(value) = self.and_gates.get(&cache_key).copied() {
-                    value
+            SymbolicBit::Literal(x) => Evaluation {
+                response: Some(*x),
+                ..Default::default()
+            },
+            SymbolicBit::Variable(id) => {
+                let response = self.assignments.get(*id);
+                if let Some(x) = response {
+                    Evaluation {
+                        response,
+                        used_variables: std::iter::once((*id, x)).collect(),
+                        ..Default::default()
+                    }
                 } else {
-                    let value = self.evaluate(lhs) && self.evaluate(rhs);
-                    self.and_gates.insert(cache_key, value);
-                    value
+                    Evaluation {
+                        response,
+                        unassigned_variables: std::iter::once(*id).collect(),
+                        ..Default::default()
+                    }
+                }
+            }
+            SymbolicBit::Not(bit) => {
+                let mut evaluation = self.evaluate(bit);
+                evaluation.response = evaluation.response.map(|x| !x);
+                evaluation
+            }
+            SymbolicBit::And(lhs, rhs) => {
+                let mut lhs = self.evaluate(lhs);
+                if let Some(lhs_response) = lhs.response {
+                    let mut rhs = self.evaluate(rhs);
+                    if let Some(rhs_response) = rhs.response {
+                        lhs.response = Some(lhs_response && rhs_response);
+                        lhs.used_variables.append(&mut rhs.used_variables);
+                        lhs
+                    } else {
+                        rhs
+                    }
+                } else {
+                    lhs
                 }
             }
         }
