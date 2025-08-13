@@ -252,7 +252,7 @@ impl AddressSpace {
     ///
     /// The address space id must have originated from the Ghidra library in the current process.
     pub unsafe fn from_ghidra_id(id: AddressSpaceId) -> AddressSpace {
-        AddressSpace::from(&*(id.0 as *const sys::AddrSpace))
+        AddressSpace::from(unsafe { &*(id.0 as *const sys::AddrSpace) })
     }
 }
 

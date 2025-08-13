@@ -30,13 +30,5 @@ z3 = "0.12"
 # z3 = { version = "0.12", features = ["static-link-z3"] }
 
 [[test]]
-name = "x86_64_emulator"
-path = "x86_64_emulator.rs"
-
-[[test]]
-name = "sleigh"
-path = "sleigh.rs"
-
-[[test]]
-name = "hello_world"
-path = "hello_world.rs"
+name = "integration-tests"
+path = "main.rs"

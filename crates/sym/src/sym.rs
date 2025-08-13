@@ -250,8 +250,7 @@ impl SymbolicBitVec {
 
     pub fn signed_minimum_value(num_bits: usize) -> Self {
         Self {
-            bits: std::iter::repeat(SymbolicBit::Literal(false))
-                .take(num_bits - 1)
+            bits: std::iter::repeat_n(SymbolicBit::Literal(false), num_bits - 1)
                 .chain(std::iter::once(SymbolicBit::Literal(true)))
                 .collect(),
         }
@@ -259,8 +258,7 @@ impl SymbolicBitVec {
 
     pub fn signed_maximum_value(num_bits: usize) -> Self {
         Self {
-            bits: std::iter::repeat(SymbolicBit::Literal(true))
-                .take(num_bits - 1)
+            bits: std::iter::repeat_n(SymbolicBit::Literal(true), num_bits - 1)
                 .chain(std::iter::once(SymbolicBit::Literal(false)))
                 .collect(),
         }

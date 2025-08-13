@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::ops::Range;
 
-use log::{debug, error, trace, warn};
+use log::{error, trace, warn};
 
 use crate::emulator::{self, ControlFlow};
 use crate::kernel::Kernel;
@@ -123,7 +123,6 @@ struct Stack {
 
 #[repr(i32)]
 enum StackFlags {
-    OnStack = 0x1,
     Disable = 0x2,
 }
 
@@ -132,7 +131,6 @@ enum StackFlags {
 enum MmapFlags {
     Fixed = 0x10,
     Anonymous = 0x20,
-    Stack = 0x020000,
 }
 
 impl Kernel for LinuxKernel {
@@ -449,42 +447,39 @@ impl LinuxKernel {
             });
         }
 
-        if len == 0 {
+        let return_value = if len == 0 {
             // EINVAL (since Linux 2.6.12) if length was 0.
-            let return_value = -(Errno::Einval as i64);
-            let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-            memory.write(&return_register, M::Value::from_le(-(Errno::Einval as i64)))?;
-            return Ok(ControlFlow::NextInstruction);
-        }
-
-        let mmap_addr = if flags & MmapFlags::Fixed as u64 != 0 {
-            // TODO What if addr is 0 here?
-            addr
+            -(Errno::Einval as i64)
         } else {
-            self.mmap_pages
-                .last()
-                .copied()
-                .map(|page| page + 4096)
-                .unwrap_or(0xA000000000)
+            let mmap_addr = if flags & MmapFlags::Fixed as u64 != 0 {
+                // TODO What if addr is 0 here?
+                addr
+            } else {
+                self.mmap_pages
+                    .last()
+                    .copied()
+                    .map(|page| page + 4096)
+                    .unwrap_or(0xA000000000)
+            };
+
+            // MAP_ANONYMOUS must zero initialize contents
+            let ram = sleigh
+                .address_space_by_name("ram")
+                .expect("failed to find ram");
+            for i in 0..len {
+                let offset = mmap_addr + i;
+                let zero_addr = VarnodeData::new(Address::new(ram.clone(), offset), 1);
+                memory.write(&zero_addr, M::Value::from_le(0x0u8))?;
+                if offset.is_multiple_of(4096) {
+                    self.mmap_pages.insert(offset);
+                }
+            }
+
+            mmap_addr as i64
         };
 
-        // MAP_ANONYMOUS must zero initialize contents
-        let ram = sleigh
-            .address_space_by_name("ram")
-            .expect("failed to find ram");
-        for i in 0..len {
-            let offset = mmap_addr + i;
-            let zero_addr = VarnodeData::new(Address::new(ram.clone(), offset), 1);
-            memory.write(&zero_addr, M::Value::from_le(0x0u8))?;
-            if offset.is_multiple_of(4096) {
-                self.mmap_pages.insert(offset);
-            }
-        }
-
-        let return_value = mmap_addr;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
         memory.write(&return_register, M::Value::from_le(return_value))?;
-
         trace!(
             "mmap({addr:#x}, {len}, {prot:#016x}, {flags:#016x}, {fd}, {offset}) = {return_value:#x}"
         );

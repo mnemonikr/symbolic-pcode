@@ -173,12 +173,12 @@ impl<const N: usize> SymbolicBitBuf<N> {
         F: FnOnce(&mut [MaybeUninit<SymbolicBit>]),
     {
         let mut bits: [std::mem::MaybeUninit<SymbolicBit>; N] =
-            std::mem::MaybeUninit::uninit().assume_init();
+            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
 
         initializer(&mut bits);
 
         // SAFETY: Assumes all bits are initialized
-        let bits = (&bits as *const _ as *const [SymbolicBit; N]).read();
+        let bits = unsafe { (&bits as *const _ as *const [SymbolicBit; N]).read() };
 
         Self { bits }
     }
@@ -197,7 +197,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
     pub fn equals(self, rhs: Self) -> SymbolicBit {
         self.bits
             .into_iter()
-            .zip(rhs.bits.into_iter())
+            .zip(rhs.bits)
             .map(|(lhs, rhs)| lhs.equals(rhs))
             .fold(SymbolicBit::Literal(true), |lhs, rhs| lhs & rhs)
     }
@@ -268,7 +268,6 @@ impl<const N: usize> SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Not for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn not(mut self) -> Self::Output {
         for i in 0..N {
             let bit = std::mem::take(&mut self.bits[i]);
@@ -309,7 +308,6 @@ impl<const N: usize> std::ops::BitXorAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn bitand(mut self, rhs: Self) -> Self::Output {
         self &= rhs;
         self
@@ -319,7 +317,6 @@ impl<const N: usize> std::ops::BitAnd for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitOr for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn bitor(mut self, rhs: Self) -> Self::Output {
         self |= rhs;
         self
@@ -329,7 +326,6 @@ impl<const N: usize> std::ops::BitOr for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::BitXor for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn bitxor(mut self, rhs: Self) -> Self::Output {
         self ^= rhs;
         self
@@ -349,7 +345,6 @@ impl<const N: usize> std::ops::ShlAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shl for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn shl(mut self, rhs: Self) -> Self::Output {
         self <<= rhs;
         self
@@ -365,7 +360,6 @@ impl<const N: usize> std::ops::ShlAssign<usize> for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shl<usize> for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn shl(mut self, rhs: usize) -> Self::Output {
         self <<= rhs;
         self
@@ -386,7 +380,6 @@ impl<const N: usize> std::ops::ShrAssign for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shr for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn shr(mut self, rhs: Self) -> Self::Output {
         self >>= rhs;
         self
@@ -402,7 +395,6 @@ impl<const N: usize> std::ops::ShrAssign<usize> for SymbolicBitBuf<N> {
 impl<const N: usize> std::ops::Shr<usize> for SymbolicBitBuf<N> {
     type Output = Self;
 
-    #[must_use]
     fn shr(mut self, rhs: usize) -> Self::Output {
         self >>= rhs;
         self

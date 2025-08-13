@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
 
 use crate::{SymbolicBit, SymbolicBitVec};
 

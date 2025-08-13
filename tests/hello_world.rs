@@ -1,4 +1,4 @@
-mod common;
+mod util;
 
 use std::rc::Rc;
 
@@ -8,6 +8,9 @@ use symbolic_pcode::arch;
 use symbolic_pcode::kernel::linux::LinuxKernel;
 use symbolic_pcode::mem::VarnodeDataStore;
 use symbolic_pcode::processor::{self, Processor, ProcessorState};
+
+use crate::common;
+use util::initialize_libc_stack;
 
 #[test]
 fn hello_world_x86_linux() -> processor::Result<()> {
@@ -36,7 +39,7 @@ fn hello_world_x86_linux() -> processor::Result<()> {
     let rip = sleigh.register_from_name("RIP").expect("invalid register");
     let mut memory = common::memory_with_image(&sleigh, image, &rip);
     common::init_registers_x86_64(sleigh.as_ref(), &mut memory);
-    common::initialize_libc_stack(&mut memory, sleigh.as_ref());
+    initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = arch::x86::processor::ProcessorHandlerX86::new(sleigh.as_ref());
     let emulator =
@@ -104,7 +107,7 @@ fn hello_world_aarch64_linux() -> processor::Result<()> {
     let pc = sleigh.register_from_name("pc").expect("invalid register");
     let mut memory = common::memory_with_image(&sleigh, image, &pc);
     common::init_registers_aarch64(sleigh.as_ref(), &mut memory);
-    common::initialize_libc_stack(&mut memory, sleigh.as_ref());
+    initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = arch::aarch64::processor::ProcessorHandler::new(sleigh.as_ref());
     let emulator = arch::aarch64::emulator::Emulator::with_kernel(
