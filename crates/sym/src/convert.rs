@@ -85,7 +85,9 @@ impl<const BYTES: usize, T: LittleEndian<BYTES>, const BITS: usize> From<Concret
     for SymbolicBitBuf<BITS>
 {
     fn from(value: ConcreteValue<BYTES, T>) -> Self {
-        assert_eq!(8 * BYTES, BITS);
+        const {
+            assert!(8 * BYTES == BITS, "8 BITS must be 1 BYTE");
+        }
 
         // SAFETY: Asserted BITS agrees with BYTES, so the vec length is BITS
         let array: [SymbolicBit; BITS] = unsafe { value.symbolize().try_into().unwrap_unchecked() };
@@ -245,7 +247,9 @@ where
     // TODO Once we can use this directly in the function signature we can remove N
     //
     // Tracking issue: https://github.com/mnemonikr/symbolic-pcode/issues/108
-    assert_eq!(std::mem::size_of::<T>(), N);
+    const {
+        assert!(std::mem::size_of::<T>() == N, "N must match size of T");
+    };
 
     let mut bytes = [0u8; N];
     let mut byte_index = 0;
