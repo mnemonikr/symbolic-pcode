@@ -1,6 +1,3 @@
-mod common;
-
-use common::{Memory, TracingEmulator, x86_64_sleigh};
 use libsla::{Address, Sleigh, VarnodeData};
 use pcode_ops::PcodeOps;
 use sym::{self, Evaluator, SymbolicBitVec, VariableAssignments};
@@ -10,6 +7,8 @@ use symbolic_pcode::{
     mem::{MemoryTree, VarnodeDataStore},
     processor::{self, BranchingProcessor, Processor, ProcessorState},
 };
+
+use crate::common::{self, Memory, TracingEmulator, x86_64_sleigh};
 
 /// Confirms the functionality of general-purpose x86-64 registers and overlapping behavior.
 #[test]
@@ -712,7 +711,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     // symbolic value, we will evaluate the branch using the concrete value instead.
     let concrete_input = -3i32;
     let concrete_input = SymbolicBitVec::from(concrete_input as u32);
-    let mut evaluator = Evaluator::new(VariableAssignments::from_bitvecs(
+    let evaluator = Evaluator::new(VariableAssignments::from_bitvecs(
         &input_value,
         &concrete_input,
     ));
