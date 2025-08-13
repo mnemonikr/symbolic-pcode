@@ -227,6 +227,7 @@ fn pcode_coverage() -> processor::Result<()> {
     let messages = escargot::CargoBuild::new()
         .bin("pcode-coverage")
         .manifest_path("./test-fixtures/pcode-coverage/Cargo.toml")
+        .env("RUSTFLAGS", "")
         .target("x86_64-unknown-none")
         .exec()
         .unwrap();
@@ -332,6 +333,7 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
     let messages = escargot::CargoBuild::new()
         .bin("pcode-coverage")
         .manifest_path("./test-fixtures/pcode-coverage/Cargo.toml")
+        .env("RUSTFLAGS", "")
         .target("aarch64-unknown-none")
         .exec()
         .unwrap();
