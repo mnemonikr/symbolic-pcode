@@ -75,6 +75,12 @@ impl<const N: usize, T: PcodeOps> TryFrom<PcodeValue<T>> for [u8; N] {
     }
 }
 
+impl<const N: usize, T: PcodeOps> From<[u8; N]> for PcodeValue<T> {
+    fn from(value: [u8; N]) -> Self {
+        value.into_iter().collect()
+    }
+}
+
 impl<T: PcodeOps> From<T> for PcodeValue<T> {
     fn from(value: T) -> Self {
         Self { inner: value }
@@ -89,6 +95,12 @@ impl<T: PcodeOps> Deref for PcodeValue<T> {
     }
 }
 
+impl<T: PcodeOps> FromIterator<u8> for PcodeValue<T> {
+    fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
+        PcodeValue::from(iter.into_iter().map(T::Byte::from).collect::<T>())
+    }
+}
+
 macro_rules! impl_tryfrom_pcodevalue {
     ($target:ty) => {
         impl_tryfrom_pcodevalue!($target, { std::mem::size_of::<$target>() }, {
@@ -96,6 +108,12 @@ macro_rules! impl_tryfrom_pcodevalue {
         });
     };
     ($target:ty, $size:expr, $signed:expr) => {
+        impl<T: PcodeOps> From<$target> for PcodeValue<T> {
+            fn from(value: $target) -> PcodeValue<T> {
+                PcodeValue::from(T::from_le(value))
+            }
+        }
+
         impl<T: PcodeOps> TryFrom<PcodeValue<T>> for $target {
             type Error = TryFromPcodeValueError;
 

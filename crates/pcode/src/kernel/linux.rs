@@ -7,7 +7,6 @@ use crate::emulator::{self, ControlFlow};
 use crate::kernel::Kernel;
 use crate::mem::VarnodeDataStore;
 use libsla::{Address, Sleigh, VarnodeData};
-use pcode_ops::PcodeOps;
 use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
 
 #[derive(thiserror::Error, Debug)]
@@ -232,7 +231,7 @@ impl LinuxKernel {
     ) -> Result<ControlFlow> {
         // TODO Completely unimplemented and entirely guessing that return 0 is fine
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(0u64))?;
+        memory.write_value(&return_register, 0u64)?;
         trace!("ppoll(...)");
 
         Ok(ControlFlow::NextInstruction)
@@ -266,7 +265,7 @@ impl LinuxKernel {
         // Number of fds with events. Say 0 for now
         let return_value = 0u64;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
         trace!("poll({poll_fds:?}, {nfds}, {timeout}) = {return_value}");
 
         Ok(ControlFlow::NextInstruction)
@@ -298,18 +297,12 @@ impl LinuxKernel {
 
             // All zeros means default handler with no special flags set
             let old_sigaction = [0u8; std::mem::size_of::<SigAction>()];
-            memory.write(
-                &old_sigaction_varnode,
-                old_sigaction
-                    .into_iter()
-                    .map(<M::Value as PcodeOps>::Byte::from)
-                    .collect(),
-            )?;
+            memory.write_value(&old_sigaction_varnode, old_sigaction)?;
         }
 
         let return_value = 0u64;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
 
         trace!(
             "rt_sigaction({signal}, {new_sigaction_ptr:#x}, {old_sigaction_ptr:#x}, {size}) = {return_value}"
@@ -337,14 +330,11 @@ impl LinuxKernel {
             let ram = sleigh
                 .address_space_by_name("ram")
                 .expect("failed to find ram");
-            memory.write(
-                &VarnodeData::new(Address::new(ram, oldset), 8),
-                M::Value::from_le(0u64),
-            )?;
+            memory.write_value(&VarnodeData::new(Address::new(ram, oldset), 8), 0u64)?;
         }
 
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(0u64))?;
+        memory.write_value(&return_register, 0u64)?;
         trace!("rt_sigprocmask(...)");
         Ok(ControlFlow::NextInstruction)
     }
@@ -357,7 +347,7 @@ impl LinuxKernel {
         // https://www.man7.org/linux/man-pages/man2/set_tid_address.2.html
         // Multithreading not supported. Ignore this and return TID = 0
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(0u64))?;
+        memory.write_value(&return_register, 0u64)?;
         trace!("set_tid_address(...)");
         Ok(ControlFlow::NextInstruction)
     }
@@ -386,12 +376,10 @@ impl LinuxKernel {
             };
 
             let stack: [u8; std::mem::size_of::<Stack>()] = unsafe { std::mem::transmute(stack) };
-            memory.write(
+
+            memory.write_value(
                 &VarnodeData::new(Address::new(ram, old_ss), std::mem::size_of::<Stack>()),
-                stack
-                    .into_iter()
-                    .map(<M::Value as PcodeOps>::Byte::from)
-                    .collect(),
+                stack,
             )?;
         }
 
@@ -412,13 +400,13 @@ impl LinuxKernel {
                 // Set FS base address
                 // In Ghidra this is modeled by the (fake) register FS_OFFSET
                 let fs = sleigh.register_from_name("FS_OFFSET")?;
-                memory.write(&fs, M::Value::from_le(addr))?;
+                memory.write_value(&fs, addr)?;
 
                 // Write 0 on success
                 let return_value = 0u64;
                 let return_register =
                     sleigh.register_from_name(&self.arch_config.return_register)?;
-                memory.write(&return_register, M::Value::from_le(return_value))?;
+                memory.write_value(&return_register, return_value)?;
                 trace!("arch_prctl(ARCH_SET_FS, {addr:#x}) = {return_value}");
                 Ok(ControlFlow::NextInstruction)
             }
@@ -469,7 +457,7 @@ impl LinuxKernel {
             for i in 0..len {
                 let offset = mmap_addr + i;
                 let zero_addr = VarnodeData::new(Address::new(ram.clone(), offset), 1);
-                memory.write(&zero_addr, M::Value::from_le(0x0u8))?;
+                memory.write_value(&zero_addr, 0x0u8)?;
                 if offset.is_multiple_of(4096) {
                     self.mmap_pages.insert(offset);
                 }
@@ -479,7 +467,7 @@ impl LinuxKernel {
         };
 
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
         trace!(
             "mmap({addr:#x}, {len}, {prot:#016x}, {flags:#016x}, {fd}, {offset}) = {return_value:#x}"
         );
@@ -494,7 +482,7 @@ impl LinuxKernel {
         // Noop, protection not enforced
         let return_value = 0u64;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
         trace!("mprotect(...) = {return_value}");
         Ok(ControlFlow::NextInstruction)
     }
@@ -521,7 +509,7 @@ impl LinuxKernel {
 
         let return_value = 0u64;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
 
         trace!("munmap({addr:#x}, {len}) = {return_value}");
         Ok(ControlFlow::NextInstruction)
@@ -542,10 +530,7 @@ impl LinuxKernel {
                 .expect("failed to find ram");
             for addr in self.brk..=brk {
                 // Allocating
-                memory.write(
-                    &VarnodeData::new(Address::new(ram.clone(), addr), 1),
-                    M::Value::from_le(0x0u8),
-                )?;
+                memory.write_value(&VarnodeData::new(Address::new(ram.clone(), addr), 1), 0x0u8)?;
             }
 
             self.brk = brk;
@@ -553,7 +538,7 @@ impl LinuxKernel {
 
         let return_value = self.brk;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
 
         trace!("brk({brk:08x}) = {return_value:08x}");
         Ok(ControlFlow::NextInstruction)
@@ -594,7 +579,7 @@ impl LinuxKernel {
 
         let return_value = count;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
-        memory.write(&return_register, M::Value::from_le(return_value))?;
+        memory.write_value(&return_register, return_value)?;
 
         trace!("write({fd}, {buf:#x}, {count}) = {return_value}");
         Ok(ControlFlow::NextInstruction)

@@ -1,8 +1,7 @@
 use std::rc::Rc;
 
 use libsla::{OpCode, PcodeInstruction, PseudoOp, Sleigh};
-use pcode_ops::PcodeOps;
-use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
+use pcode_ops::convert::TryFromPcodeValueError;
 
 use crate::emulator::{ControlFlow, Error, PcodeEmulator, Result, StandardPcodeEmulator};
 use crate::kernel::{Kernel, NoKernel};
@@ -72,7 +71,7 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
     ) -> Result<ControlFlow> {
         println!("Executing: {instruction}");
         for instr_input in instruction.inputs.iter() {
-            let input = PcodeValue::from(memory.read(instr_input).unwrap());
+            let input = memory.read_value(instr_input).unwrap();
             match u128::try_from(input) {
                 Ok(value) => {
                     println!(
@@ -108,7 +107,7 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                         if let Some(output) = instruction.output.as_ref() {
                             // 1 Indicates that the monitor passes and the register can be written
                             // See usage in AARCH64base.sinc
-                            memory.write(output, M::Value::from_le(1u8))?;
+                            memory.write_value(output, 1u8)?;
                         }
                         return Ok(ControlFlow::NextInstruction);
                     }
@@ -116,7 +115,7 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                         if let Some(output) = instruction.output.as_ref() {
                             // 0 on success
                             // See usage in AARCH64base.sinc
-                            memory.write(output, M::Value::from_le(0u8))?;
+                            memory.write_value(output, 0u8)?;
                         }
                         return Ok(ControlFlow::NextInstruction);
                     }
@@ -143,8 +142,9 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                     println!("PseudoCall: {x:?}")
                 }
                 _ => {
-                    let output_result = memory.read(instruction.output.as_ref().unwrap()).unwrap();
-                    let output = PcodeValue::from(output_result);
+                    let output = memory
+                        .read_value(instruction.output.as_ref().unwrap())
+                        .unwrap();
                     let output: std::result::Result<u128, _> = output.try_into();
                     if let Ok(output) = output {
                         println!(

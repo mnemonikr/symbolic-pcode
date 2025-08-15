@@ -2,7 +2,6 @@ use libsla::{Address, AddressSpace, Sleigh, VarnodeData};
 
 use crate::mem::VarnodeDataStore;
 use crate::processor::{Error, PcodeExecution, ProcessorResponseHandler, Result};
-use pcode_ops::{PcodeOps, convert::PcodeValue};
 
 #[derive(Debug, Clone)]
 pub struct ProcessorHandler {
@@ -25,13 +24,11 @@ impl ProcessorHandler {
 
 impl ProcessorResponseHandler for ProcessorHandler {
     fn fetched<M: VarnodeDataStore>(&mut self, memory: &mut M) -> Result<Address> {
-        let offset = PcodeValue::from(memory.read(&self.pc)?)
-            .try_into()
-            .map_err(|err| {
-                Error::InternalError(format!(
-                    "failed to convert instruction to concrete address: {err:?}"
-                ))
-            })?;
+        let offset = memory.read_value(&self.pc)?.try_into().map_err(|err| {
+            Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         Ok(Address::new(self.instruction_address_space.clone(), offset))
     }
 
@@ -40,13 +37,11 @@ impl ProcessorResponseHandler for ProcessorHandler {
         memory: &mut M,
         execution: &PcodeExecution,
     ) -> Result<()> {
-        let pc_value: u64 = PcodeValue::from(memory.read(&self.pc)?)
-            .try_into()
-            .map_err(|err| {
-                Error::InternalError(format!(
-                    "failed to convert instruction to concrete address: {err:?}"
-                ))
-            })?;
+        let pc_value: u64 = memory.read_value(&self.pc)?.try_into().map_err(|err| {
+            Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         let bytes_read = u64::try_from(execution.origin().size).map_err(|err| {
             Error::InternalError(format!(
                 "RIP value {pc_value:016x} failed to convert to u64: {err}",
@@ -59,13 +54,13 @@ impl ProcessorResponseHandler for ProcessorHandler {
             ))
         })?;
 
-        memory.write(&self.pc, M::Value::from_le(pc_value))?;
+        memory.write_value(&self.pc, pc_value)?;
 
         Ok(())
     }
 
     fn jumped<M: VarnodeDataStore>(&mut self, memory: &mut M, address: &Address) -> Result<()> {
-        memory.write(&self.pc, M::Value::from_le(address.offset))?;
+        memory.write_value(&self.pc, address.offset)?;
         Ok(())
     }
 }

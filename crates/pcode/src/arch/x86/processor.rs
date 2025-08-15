@@ -2,7 +2,7 @@ use libsla::{Address, AddressSpace, Sleigh, VarnodeData};
 
 use crate::mem::VarnodeDataStore;
 use crate::processor::{Error, PcodeExecution, ProcessorResponseHandler, Result};
-use pcode_ops::{PcodeOps, convert::PcodeValue};
+use pcode_ops::convert::PcodeValue;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorHandlerX86 {
@@ -59,13 +59,13 @@ impl ProcessorResponseHandler for ProcessorHandlerX86 {
             ))
         })?;
 
-        memory.write(&self.rip, M::Value::from_le(rip_value))?;
+        memory.write_value(&self.rip, rip_value)?;
 
         Ok(())
     }
 
     fn jumped<M: VarnodeDataStore>(&mut self, memory: &mut M, address: &Address) -> Result<()> {
-        memory.write(&self.rip, M::Value::from_le(address.offset))?;
+        memory.write_value(&self.rip, address.offset)?;
         Ok(())
     }
 }
