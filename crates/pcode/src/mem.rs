@@ -49,10 +49,12 @@ pub trait VarnodeDataStore {
         data: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()>;
 
+    /// Read a [PcodeValue] from memory.
     fn read_value(&self, source: &VarnodeData) -> Result<PcodeValue<Self::Value>> {
         Ok(PcodeValue::from(self.read(source)?))
     }
 
+    /// Write a value which can be converted into a [PcodeValue].
     fn write_value(
         &mut self,
         destination: &VarnodeData,
