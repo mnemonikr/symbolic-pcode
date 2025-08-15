@@ -2,7 +2,6 @@ use libsla::{Address, AddressSpace, Sleigh, VarnodeData};
 
 use crate::mem::VarnodeDataStore;
 use crate::processor::{Error, PcodeExecution, ProcessorResponseHandler, Result};
-use pcode_ops::convert::PcodeValue;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorHandlerX86 {
@@ -25,13 +24,11 @@ impl ProcessorHandlerX86 {
 
 impl ProcessorResponseHandler for ProcessorHandlerX86 {
     fn fetched<M: VarnodeDataStore>(&mut self, memory: &mut M) -> Result<Address> {
-        let offset = PcodeValue::from(memory.read(&self.rip)?)
-            .try_into()
-            .map_err(|err| {
-                Error::InternalError(format!(
-                    "failed to convert instruction to concrete address: {err:?}"
-                ))
-            })?;
+        let offset = memory.read_value(&self.rip)?.try_into().map_err(|err| {
+            Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         Ok(Address::new(self.instruction_address_space.clone(), offset))
     }
 
@@ -40,13 +37,11 @@ impl ProcessorResponseHandler for ProcessorHandlerX86 {
         memory: &mut M,
         execution: &PcodeExecution,
     ) -> Result<()> {
-        let rip_value: u64 = PcodeValue::from(memory.read(&self.rip)?)
-            .try_into()
-            .map_err(|err| {
-                Error::InternalError(format!(
-                    "failed to convert instruction to concrete address: {err:?}"
-                ))
-            })?;
+        let rip_value: u64 = memory.read_value(&self.rip)?.try_into().map_err(|err| {
+            Error::InternalError(format!(
+                "failed to convert instruction to concrete address: {err:?}"
+            ))
+        })?;
         let bytes_read = u64::try_from(execution.origin().size).map_err(|err| {
             Error::InternalError(format!(
                 "RIP value {rip_value:016x} failed to convert to u64: {err}",

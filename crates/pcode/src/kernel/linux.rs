@@ -254,7 +254,7 @@ impl LinuxKernel {
                 Address::new(ram.clone(), pfds + (8 * pfds_offset) as u64),
                 std::mem::size_of::<PollFd>(),
             );
-            let bytes = PcodeValue::from(memory.read(&fds)?).try_into()?;
+            let bytes = memory.read_value(&fds)?.try_into()?;
 
             // SAFETY: All byte combinations are valid
             poll_fds.push(unsafe {
@@ -558,7 +558,7 @@ impl LinuxKernel {
             .address_space_by_name("ram")
             .expect("failed to find ram");
         let target = VarnodeData::new(Address::new(ram, buf), count as usize);
-        let bytes: Vec<u8> = PcodeValue::from(memory.read(&target)?).try_into()?;
+        let bytes: Vec<u8> = memory.read_value(&target)?.try_into()?;
 
         match fd {
             1 => {
@@ -598,7 +598,7 @@ impl LinuxKernel {
 
     fn syscall_num<M: VarnodeDataStore>(&self, sleigh: &impl Sleigh, memory: &M) -> Result<u32> {
         let syscall_reg = sleigh.register_from_name(&self.arch_config.syscall_num_register)?;
-        let pcode_value = PcodeValue::from(memory.read(&syscall_reg)?);
+        let pcode_value = memory.read_value(&syscall_reg)?;
         Ok(u32::try_from(pcode_value)?)
     }
 
@@ -627,6 +627,6 @@ impl LinuxKernel {
             register.size = std::mem::size_of::<T>();
         }
 
-        Ok(T::try_from(PcodeValue::from(memory.read(&register)?))?)
+        Ok(T::try_from(memory.read_value(&register)?)?)
     }
 }
