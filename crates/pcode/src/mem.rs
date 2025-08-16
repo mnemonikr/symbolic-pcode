@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, rc::Rc};
 use thiserror;
 
 use libsla::{Address, AddressSpaceId, AddressSpaceType, LoadImage, VarnodeData};
-use pcode_ops::{BitwisePcodeOps, PcodeOps};
+use pcode_ops::{BitwisePcodeOps, PcodeOps, convert::PcodeValue};
 
 /// Memory result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -48,6 +48,20 @@ pub trait VarnodeDataStore {
         destination: &VarnodeData,
         data: <Self::Value as PcodeOps>::Bit,
     ) -> Result<()>;
+
+    /// Read a [PcodeValue] from memory.
+    fn read_value(&self, source: &VarnodeData) -> Result<PcodeValue<Self::Value>> {
+        Ok(PcodeValue::from(self.read(source)?))
+    }
+
+    /// Write a value which can be converted into a [PcodeValue].
+    fn write_value(
+        &mut self,
+        destination: &VarnodeData,
+        data: impl Into<PcodeValue<Self::Value>>,
+    ) -> Result<()> {
+        self.write(destination, data.into().into_inner())
+    }
 }
 
 /// Generic memory structure that stores [PcodeOps::Byte] keyed on [AddressSpaceId]. This structure
