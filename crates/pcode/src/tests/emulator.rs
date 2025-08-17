@@ -66,8 +66,9 @@ fn constant_address_space() -> AddressSpace {
 fn write_value(
     memory: &mut GenericMemory<Pcode128>,
     offset: u64,
-    value: Pcode128,
+    value: impl Into<Pcode128>,
 ) -> Result<VarnodeData> {
+    let value = value.into();
     let varnode = VarnodeData {
         address: processor_address(offset),
         size: value.num_bytes(),
@@ -116,7 +117,7 @@ fn load() -> Result<()> {
     // Write 0xDEADBEEF to 0x04030201
     let data = 0xDEADBEEFu32;
     let offset = 0x04030201u64;
-    write_value(&mut memory, offset, data.into())?;
+    write_value(&mut memory, offset, data)?;
 
     // Write 0x04030201 to 0x0. This is the load indirection
     let offset_data = offset as u32;
@@ -261,8 +262,8 @@ fn int_sborrow() -> Result<()> {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+        let lhs_input = write_value(&mut memory, 0, lhs)?;
+        let rhs_input = write_value(&mut memory, 1, rhs)?;
 
         let output = VarnodeData {
             address: processor_address(2),
@@ -332,8 +333,8 @@ fn int_multiply() -> Result<()> {
         for rhs in 0..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: processor_address(2),
@@ -362,10 +363,10 @@ fn int_multiply_multibyte() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs: u16 = 0xFF;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
 
     let rhs: u16 = 0x80;
-    let rhs_input = write_value(&mut memory, 2, rhs.into())?;
+    let rhs_input = write_value(&mut memory, 2, rhs)?;
 
     let output = VarnodeData {
         address: processor_address(2),
@@ -393,8 +394,8 @@ fn int_divide() -> Result<()> {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: Address {
@@ -428,8 +429,8 @@ fn int_remainder() -> Result<()> {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: processor_address(2),
@@ -726,8 +727,8 @@ fn int_not_equal() -> Result<()> {
 fn piece() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-    let msb_input = write_value(&mut memory, 0, 0xDEADu16.into())?;
-    let lsb_input = write_value(&mut memory, 2, 0xBEEFu16.into())?;
+    let msb_input = write_value(&mut memory, 0, 0xDEADu16)?;
+    let lsb_input = write_value(&mut memory, 2, 0xBEEFu16)?;
 
     let output = VarnodeData {
         address: processor_address(4),
@@ -808,7 +809,7 @@ fn branch_ind() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let data = 0xDEADBEEFu32;
-    let data_input = write_value(&mut memory, 0, data.into())?;
+    let data_input = write_value(&mut memory, 0, data)?;
     let instruction = PcodeInstruction {
         address: instruction_address(),
         op_code: OpCode::BranchIndirect,
@@ -829,7 +830,7 @@ fn call_ind() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let data = 0xDEADBEEFu32;
-    let data_input = write_value(&mut memory, 0, data.into())?;
+    let data_input = write_value(&mut memory, 0, data)?;
 
     let instruction = PcodeInstruction {
         address: Address {
@@ -854,7 +855,7 @@ fn bool_negate() -> Result<()> {
     for value in 0..=1u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let input = write_value(&mut memory, 0, value.into())?;
+        let input = write_value(&mut memory, 0, value)?;
 
         let output = VarnodeData {
             address: Address {
@@ -889,8 +890,8 @@ fn bool_and() -> Result<()> {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: Address {
@@ -927,8 +928,8 @@ fn bool_or() -> Result<()> {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: Address {
@@ -965,8 +966,8 @@ fn bool_xor() -> Result<()> {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
             let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-            let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-            let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+            let lhs_input = write_value(&mut memory, 0, lhs)?;
+            let rhs_input = write_value(&mut memory, 1, rhs)?;
 
             let output = VarnodeData {
                 address: Address {
@@ -1001,7 +1002,7 @@ fn int_negate() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b1010_0101;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
 
     let output = VarnodeData {
         address: Address {
@@ -1034,7 +1035,7 @@ fn int_2comp() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 1u8;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
 
     let output = VarnodeData {
         address: Address {
@@ -1068,8 +1069,8 @@ fn int_and() -> Result<()> {
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b0011_1100;
     let rhs = 0b1010_0101;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-    let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
+    let rhs_input = write_value(&mut memory, 1, rhs)?;
 
     let output = VarnodeData {
         address: Address {
@@ -1103,8 +1104,8 @@ fn int_or() -> Result<()> {
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b0011_1100;
     let rhs = 0b1010_0101;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-    let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
+    let rhs_input = write_value(&mut memory, 1, rhs)?;
 
     let output = VarnodeData {
         address: Address {
@@ -1138,8 +1139,8 @@ fn int_xor() -> Result<()> {
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b1111_0000_0011_1100;
     let rhs = 0b0000_1111_1010_0101;
-    let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-    let rhs_input = write_value(&mut memory, 2, rhs.into())?;
+    let lhs_input = write_value(&mut memory, 0, lhs)?;
+    let rhs_input = write_value(&mut memory, 2, rhs)?;
 
     let output = VarnodeData {
         address: Address {
@@ -1179,8 +1180,8 @@ fn int_less_than() -> Result<()> {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+        let lhs_input = write_value(&mut memory, 0, lhs)?;
+        let rhs_input = write_value(&mut memory, 1, rhs)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1221,8 +1222,8 @@ fn int_less_than_eq() -> Result<()> {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+        let lhs_input = write_value(&mut memory, 0, lhs)?;
+        let rhs_input = write_value(&mut memory, 1, rhs)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1263,8 +1264,8 @@ fn int_signed_less_than() -> Result<()> {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+        let lhs_input = write_value(&mut memory, 0, lhs)?;
+        let rhs_input = write_value(&mut memory, 1, rhs)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1308,8 +1309,8 @@ fn int_signed_less_than_eq() -> Result<()> {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, lhs.into())?;
-        let rhs_input = write_value(&mut memory, 1, rhs.into())?;
+        let lhs_input = write_value(&mut memory, 0, lhs)?;
+        let rhs_input = write_value(&mut memory, 1, rhs)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1346,8 +1347,8 @@ fn shift_left() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, 0x01u8.into())?;
-        let rhs_input = write_value(&mut memory, 1, n.into())?;
+        let lhs_input = write_value(&mut memory, 0, 0x01u8)?;
+        let rhs_input = write_value(&mut memory, 1, n)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1382,8 +1383,8 @@ fn shift_right() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, 0x80u8.into())?;
-        let rhs_input = write_value(&mut memory, 1, n.into())?;
+        let lhs_input = write_value(&mut memory, 0, 0x80u8)?;
+        let rhs_input = write_value(&mut memory, 1, n)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1418,8 +1419,8 @@ fn signed_shift_right() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, 0x80u8.into())?;
-        let rhs_input = write_value(&mut memory, 1, n.into())?;
+        let lhs_input = write_value(&mut memory, 0, 0x80u8)?;
+        let rhs_input = write_value(&mut memory, 1, n)?;
 
         let output = VarnodeData {
             address: Address {
@@ -1554,7 +1555,7 @@ fn conditional_branch_absolute() -> Result<()> {
         size: 0, // This value is irrelevant
     };
 
-    let condition_input = write_value(&mut memory, 1, 0x1u8.into())?;
+    let condition_input = write_value(&mut memory, 1, 0x1u8)?;
     let instruction = PcodeInstruction {
         address: Address {
             address_space: processor_address_space(),
@@ -1601,7 +1602,7 @@ fn conditional_branch_pcode_relative() -> Result<()> {
         size: 0, // This value is irrelevant
     };
 
-    let condition_input = write_value(&mut memory, 1, 0x1u8.into())?;
+    let condition_input = write_value(&mut memory, 1, 0x1u8)?;
     let instruction = PcodeInstruction {
         address: Address {
             address_space: processor_address_space(),
@@ -1639,7 +1640,7 @@ fn popcount() -> Result<()> {
         let value: u8 = ((1u16 << n) - 1) as u8;
         let mut memory = GenericMemory::<Pcode128>::default();
         let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
-        let lhs_input = write_value(&mut memory, 0, value.into())?;
+        let lhs_input = write_value(&mut memory, 0, value)?;
 
         let output = VarnodeData {
             address: Address {
