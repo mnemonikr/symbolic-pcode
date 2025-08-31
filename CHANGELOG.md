@@ -2,6 +2,12 @@
 
 Nothing here yet.
 
+## libsla-0.4.1
+
+### Added
+
+* Added an alternative `build` method to `GhidraSleighBuilder` to enable building with sla file contents directly. This limitation was introduced during the upgrade to Ghidra 11.4.
+
 ## libsla-0.4.0
 
 ### Changed

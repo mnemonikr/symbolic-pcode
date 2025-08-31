@@ -38,16 +38,15 @@ example using x86-64 see the [sleigh unit tests](./src/sleigh.rs).
 
 ```rust
 // Compiled from x86-64.slaspec in Ghidra repository
-let slaspec = std::fs::read_to_string("x86-64.sla");
+let slaspec = std::fs::read("x86-64.sla")?;
 
 // Located in Ghidra repository. No compilation necessary.
-let pspec = std::fs::read_to_string("x86-64.pspec");
+let pspec = std::fs::read_to_string("x86-64.pspec")?;
 
 // Construct new sleigh instance
 let sleigh = GhidraSleigh::builder()
-    .sleigh_spec(&slaspec)?
     .processor_spec(&pspec)?
-    .build()?;
+    .build(&slaspec)?;
 
 // The instruction reader is defined by the user and implements the LoadImage trait.
 let instruction_reader = InstructionReader::new();
