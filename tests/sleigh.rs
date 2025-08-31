@@ -3,8 +3,7 @@ use std::sync::OnceLock;
 use std::{borrow::Cow, fs};
 
 use libsla::*;
-
-static X86_64_SLA: OnceLock<PathBuf> = OnceLock::new();
+use sleigh_config::processor_x86;
 
 struct LoadImageImpl(Vec<u8>);
 
@@ -46,26 +45,10 @@ fn dump_pcode_response(response: &Disassembly<PcodeInstruction>) {
     }
 }
 
-fn compile_x86_64_slaspec() -> sleigh_compiler::Result<PathBuf> {
-    let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("x86-64.sla");
-
-    let mut compiler = sleigh_compiler::SleighCompiler::default();
-    let slaspec_path =
-        std::path::Path::new("ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
-    compiler.compile(slaspec_path, &sla_path)?;
-    Ok(sla_path)
-}
-
 fn x86_64_sleigh() -> Result<GhidraSleigh> {
-    let sleigh_spec = X86_64_SLA
-        .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
     let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
+        .processor_spec(processor_x86::PSPEC_X86_64)?
+        .build(processor_x86::SLA_X86_64)?;
     Ok(sleigh)
 }
 

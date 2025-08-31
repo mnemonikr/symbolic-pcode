@@ -1,13 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
+use sleigh_config::{processor_aarch64, processor_x86};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
 
-static X86_64_SLA: OnceLock<PathBuf> = OnceLock::new();
-static AARCH_64_SLA: OnceLock<PathBuf> = OnceLock::new();
 static LOGGER_INIT: OnceLock<flexi_logger::LoggerHandle> = OnceLock::new();
 
 pub fn initialize_logger() -> &'static flexi_logger::LoggerHandle {
@@ -24,49 +22,17 @@ pub const EXIT_IP_ADDR: u64 = 0xFEEDBEEF0BADF00D;
 
 pub type Memory = GenericMemory<SymbolicBitVec>;
 
-fn compile_x86_64_slaspec() -> sleigh_compiler::Result<PathBuf> {
-    let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("x86-64.sla");
-
-    let mut compiler = sleigh_compiler::SleighCompiler::default();
-    let slaspec_path =
-        std::path::Path::new("ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
-    compiler.compile(slaspec_path, &sla_path)?;
-    Ok(sla_path)
-}
-
-fn compile_aarch64_slaspec() -> sleigh_compiler::Result<PathBuf> {
-    let sla_path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("aarch64.sla");
-
-    let mut compiler = sleigh_compiler::SleighCompiler::default();
-    let slaspec_path =
-        std::path::Path::new("ghidra/Ghidra/Processors/AARCH64/data/languages/AARCH64.slaspec");
-    compiler.compile(slaspec_path, &sla_path)?;
-    Ok(sla_path)
-}
-
 pub fn x86_64_sleigh() -> libsla::Result<GhidraSleigh> {
-    let sleigh_spec = X86_64_SLA
-        .get_or_init(|| compile_x86_64_slaspec().expect("failed to compile x86-64.slaspec"));
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/x86/data/languages/x86-64.pspec")
-            .expect("Failed to read processor spec file");
     let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
+        .processor_spec(processor_x86::PSPEC_X86_64)?
+        .build(processor_x86::SLA_X86_64)?;
     Ok(sleigh)
 }
 
 pub fn aarch64_sleigh() -> libsla::Result<GhidraSleigh> {
-    let sleigh_spec = AARCH_64_SLA
-        .get_or_init(|| compile_aarch64_slaspec().expect("failed to compile aarch64.slaspec"));
-    let processor_spec =
-        fs::read_to_string("ghidra/Ghidra/Processors/AARCH64/data/languages/AARCH64.pspec")
-            .expect("Failed to read processor spec file");
     let sleigh = GhidraSleigh::builder()
-        .sleigh_spec(sleigh_spec)?
-        .processor_spec(&processor_spec)?
-        .build()?;
+        .processor_spec(processor_aarch64::PSPEC_AARCH64)?
+        .build(processor_aarch64::SLA_AARCH64)?;
     Ok(sleigh)
 }
 
