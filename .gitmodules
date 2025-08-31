@@ -1,4 +1,0 @@
-[submodule "ghidra"]
-	path = tests/ghidra
-	url = https://github.com/NationalSecurityAgency/ghidra.git
-	branch = stable
