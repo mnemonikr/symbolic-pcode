@@ -2,6 +2,14 @@
 
 Nothing here yet.
 
+## libsla-0.4.2
+
+### Changed
+
+* Updated README.md to reflect release of the [sleigh-config](https://crates.io/crates/sleigh-config)
+crate. This crate removes the need to manually compile Ghidra `.slaspec` files, which in most cases
+should eliminate the need to reference the Ghidra repository.
+
 ## libsla-0.4.1
 
 ### Added
