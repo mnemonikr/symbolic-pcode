@@ -587,6 +587,31 @@ impl<P> GhidraSleighBuilder<MissingSpec, P> {
     }
 }
 
+impl GhidraSleighBuilder<MissingSpec, HasSpec> {
+    pub fn build(self, sla: impl AsRef<[u8]>) -> Result<GhidraSleigh> {
+        let_cxx_string!(sla = sla);
+        let mut sleigh = sys::new_sleigh(sys::new_context_internal());
+
+        sleigh
+            .pin_mut()
+            .initialize_from_sla(&sla)
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to initialize Ghidra sleigh"),
+                source: Box::new(err),
+            })?;
+
+        sleigh
+            .pin_mut()
+            .parse_processor_config(&self.store)
+            .map_err(|err| Error::DependencyError {
+                message: Cow::Borrowed("failed to import processor config"),
+                source: Box::new(err),
+            })?;
+
+        Ok(GhidraSleigh { sleigh })
+    }
+}
+
 impl GhidraSleighBuilder<HasSpec, HasSpec> {
     pub fn build(mut self) -> Result<GhidraSleigh> {
         let mut sleigh = sys::new_sleigh(sys::new_context_internal());
