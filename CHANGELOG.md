@@ -2,6 +2,13 @@
 
 Nothing here yet.
 
+## libsla-0.4.3
+
+### Added
+
+* Support for fuzzing `libsla-sys`
+* New raw sla encoding format which does not include compression or data header
+
 ## libsla-0.4.2
 
 ### Changed
