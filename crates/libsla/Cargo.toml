@@ -8,6 +8,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+fuzzing = ["libsla-sys/fuzzing"]
+
 [dependencies]
 thiserror.workspace = true
-libsla-sys = { version = "0.1.2" }
+libsla-sys = { version = "0.1.3" }
