@@ -1,7 +1,7 @@
 [package]
 name = "libsla"
 description = "Rust bindings to Ghidra Sleigh library libsla"
-version = "0.4.3"
+version = "0.4.2"
 
 authors.workspace = true
 edition.workspace = true 
