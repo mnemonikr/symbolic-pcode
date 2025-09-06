@@ -96,7 +96,7 @@ fn build_sla_recompressed() -> Result<()> {
     test_spec.push(SLA_VERSION);
     test_spec.append(&mut compressed_data);
 
-    // Confirm the original spec builds successfully
+    // Confirm the recompressed spec with header builds successfully
     let sleigh = GhidraSleigh::builder()
         .processor_spec(PROCESSOR_SPEC)?
         .build(test_spec)?;
