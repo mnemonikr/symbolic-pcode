@@ -13,8 +13,8 @@ fuzzing = ["libsla-sys/fuzzing"]
 
 [dependencies]
 thiserror.workspace = true
-libsla-sys = { version = "0.1.3" }
+libsla-sys = { version = "0.1.4" }
 
 [dev-dependencies]
 flate2 = "1.1"
-sleigh-config = "0.1"
+sleigh-config = { version = "0.1", features = ["x86"] }
