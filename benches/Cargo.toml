@@ -9,7 +9,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-libsla = { path = "../crates/libsla" }
+libsla = "0.4" #{ path = "../crates/libsla" }
 sym = { path = "../crates/sym" }
 pcode-ops = { path = "../crates/pcode-ops" }
 symbolic-pcode = { path = "../crates/pcode" }
