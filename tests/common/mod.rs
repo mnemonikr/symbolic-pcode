@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use libsla::{Address, GhidraSleigh, Sleigh, VarnodeData};
 use sleigh_config::{processor_aarch64, processor_x86};
 use sym::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use symbolic_pcode::libsla::{self, Address, GhidraSleigh, Sleigh, VarnodeData};
 use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
 
 static LOGGER_INIT: OnceLock<flexi_logger::LoggerHandle> = OnceLock::new();

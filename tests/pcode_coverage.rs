@@ -1,7 +1,7 @@
 mod util;
 
-use libsla::{Address, Sleigh, VarnodeData};
 use pcode_ops::PcodeOps;
+use symbolic_pcode::libsla::{Address, Sleigh, VarnodeData};
 use symbolic_pcode::{
     arch::{self, x86::processor::ProcessorHandlerX86},
     emulator::StandardPcodeEmulator,

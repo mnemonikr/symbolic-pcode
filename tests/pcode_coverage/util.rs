@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use libsla::{OpCode, PcodeInstruction};
+use symbolic_pcode::libsla::{OpCode, PcodeInstruction};
 use symbolic_pcode::{
     emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator},
     mem::VarnodeDataStore,

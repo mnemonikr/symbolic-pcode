@@ -13,6 +13,8 @@
 //! of the instruction to be executed, the [processor::ProcessorResponseHandler::decoded] function
 //! would be used to update the register state prior to execution.
 
+pub use libsla;
+
 /// Pcode emulation module.
 pub mod emulator;
 

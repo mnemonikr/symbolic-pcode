@@ -9,7 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-libsla = { path = "../libsla" }
+libsla = "0.4.3"
 pcode-ops = { path = "../pcode-ops" }
 thiserror.workspace = true
 log.workspace = true

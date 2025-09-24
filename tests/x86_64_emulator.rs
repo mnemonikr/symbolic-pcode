@@ -1,9 +1,9 @@
-use libsla::{Address, Sleigh, VarnodeData};
 use pcode_ops::PcodeOps;
 use sym::{self, Evaluator, SymbolicBitVec, VariableAssignments};
 use symbolic_pcode::{
     arch::x86::processor::ProcessorHandlerX86,
     emulator::StandardPcodeEmulator,
+    libsla::{Address, Sleigh, VarnodeData},
     mem::{MemoryTree, VarnodeDataStore},
     processor::{self, BranchingProcessor, Processor, ProcessorState},
 };

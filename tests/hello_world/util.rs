@@ -1,5 +1,5 @@
-use libsla::{Address, Sleigh, VarnodeData};
 use sym::SymbolicBitVec;
+use symbolic_pcode::libsla::{Address, Sleigh, VarnodeData};
 use symbolic_pcode::mem::VarnodeDataStore;
 
 use crate::common::{INITIAL_STACK, Memory};
