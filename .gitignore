@@ -1,5 +1,4 @@
 /target
-/Cargo.lock
 *.profraw
 *.profdata
 .z3-trace
