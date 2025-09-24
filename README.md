@@ -31,7 +31,7 @@ This section document which p-code operations are currently supported by the emu
 
 ## Native code to p-code
 
-This crate includes Rust bindings to the Ghidra Sleigh library libsla for translating native code to p-code.
+This uses the [libsla](https://crates.io/crates/libsla) crate for translating native code to Ghidra p-code.
 
 Sleigh is a processor specification language developed for the [NSA's Ghidra project](https://github.com/NationalSecurityAgency/ghidra) used to describe microprocessors with enough detail to facilitate disassembly and decompilation. The processor-specific instructions are translated to **p-code**, which captures the instruction semantics independent of the specific processor. The details on how to perform this translation are captured by the compiled Sleigh specification for the processor.
 
