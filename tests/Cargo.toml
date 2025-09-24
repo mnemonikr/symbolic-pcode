@@ -16,7 +16,7 @@ sym = { path = "../crates/sym" }
 [dev-dependencies]
 flexi_logger = "0.31"
 elf = "0.8"
-sleigh-config = { version = "0.1", features = ["AARCH64", "x86"] }
+sleigh-config = { version = "1", features = ["AARCH64", "x86"] }
 
 # For building test fixtures
 escargot = "0.5"
