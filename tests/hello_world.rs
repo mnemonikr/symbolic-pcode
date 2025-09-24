@@ -2,10 +2,10 @@ mod util;
 
 use std::rc::Rc;
 
-use libsla::Sleigh;
 use pcode_ops::PcodeOps;
 use symbolic_pcode::arch;
 use symbolic_pcode::kernel::linux::LinuxKernel;
+use symbolic_pcode::libsla::Sleigh;
 use symbolic_pcode::mem::VarnodeDataStore;
 use symbolic_pcode::processor::{self, Processor, ProcessorState};
 

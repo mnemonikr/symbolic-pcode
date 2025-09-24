@@ -9,7 +9,6 @@ license.workspace = true
 edition.workspace = true 
 
 [dependencies]
-libsla = "0.4"
 symbolic-pcode = { path = "../crates/pcode" }
 pcode-ops = { path = "../crates/pcode-ops" }
 sym = { path = "../crates/sym" }
