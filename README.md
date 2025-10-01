@@ -31,19 +31,9 @@ This section document which p-code operations are currently supported by the emu
 
 ## Native code to p-code
 
-This uses [libsla](https://crates.io/crates/libsla) to interface with Ghidra's SLEIGH library for translating native code to p-code. SLEIGH is a processor specification language developed for the [NSA's Ghidra project](https://github.com/NationalSecurityAgency/ghidra) used to describe microprocessors with enough detail to facilitate disassembly and decompilation. The processor-specific instructions are translated to **p-code**, which captures the instruction semantics independent of the specific processor. The details on how to perform this translation are captured by the compiled SLEIGH specification for the processor.
+This uses [libsla](https://crates.io/crates/libsla) to interface with Ghidra's SLEIGH library for translating native code to p-code. SLEIGH is a processor specification language developed for the [NSA's Ghidra project](https://github.com/NationalSecurityAgency/ghidra) used to describe microprocessors with enough detail to facilitate disassembly and decompilation. The processor-specific instructions are translated to **p-code**, which captures the instruction semantics independent of the specific processor.
 
-# SLEIGH Specifications
-
-A _compiled_ SLEIGH specification (.sla file) is required to translate native code to p-code.
-
-## SLEIGH Compiler
-
-The [sleigh-compiler](https://crates.io/crates/sleigh-compiler) crate can be used from Rust code to compile `.slaspec` files into `.sla` files. Alternatively the original SLEIGH compiler can be built from the [Ghidra decompiler source](https://github.com/NationalSecurityAgency/ghidra/blob/stable/Ghidra/Features/Decompiler/src/decompile/cpp) using `make sleigh_opt`.
-
-## Compile SLEIGH Processor Specification (.slaspec)
-
-The relevant .slaspec file must be compiled using the SLEIGH compiler to generate the appropriate .sla file for the target architecture. Existing .slaspec files can be found in the [Ghidra processors repository](https://github.com/NationalSecurityAgency/ghidra/tree/stable/Ghidra/Processors).
+The details on how to perform this translation are captured by the compiled SLEIGH specification for the processor. Precompiled specifications from Ghidra can be found in the [sleigh-config](https://crates.io/crates/sleigh-config) crate.
 
 # Building tests
 
