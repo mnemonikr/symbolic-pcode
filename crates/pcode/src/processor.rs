@@ -4,7 +4,8 @@ use thiserror;
 use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
 use libsla::{
-    Address, AddressSpace, AssemblyInstruction, Disassembly, PcodeInstruction, Sleigh, VarnodeData,
+    Address, AddressSpace, NativeDisassembly, PcodeDisassembly, PcodeInstruction, Sleigh,
+    VarnodeData,
 };
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
@@ -104,7 +105,7 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
         &self.state
     }
 
-    pub fn disassemble(&self, sleigh: &impl Sleigh) -> Result<Disassembly<AssemblyInstruction>> {
+    pub fn disassemble(&self, sleigh: &impl Sleigh) -> Result<NativeDisassembly> {
         if let ProcessorState::Decode(d) = &self.state {
             d.disassemble(sleigh, ExecutableMemory(&self.memory))
         } else {
@@ -322,7 +323,7 @@ impl DecodeInstruction {
         &self,
         sleigh: &impl Sleigh,
         memory: ExecutableMemory<M>,
-    ) -> Result<Disassembly<AssemblyInstruction>> {
+    ) -> Result<NativeDisassembly> {
         let assembly = sleigh
             .disassemble_native(&memory, self.address.clone())
             .map_err(Error::InstructionDecoding)?;
@@ -333,16 +334,16 @@ impl DecodeInstruction {
 
 #[derive(Clone, Debug)]
 pub struct PcodeExecution {
-    pcode: Disassembly<PcodeInstruction>,
+    pcode: PcodeDisassembly,
     index: usize,
 }
 
 impl PcodeExecution {
-    pub fn new(pcode: Disassembly<PcodeInstruction>) -> Self {
+    pub fn new(pcode: PcodeDisassembly) -> Self {
         Self { pcode, index: 0 }
     }
 
-    pub fn pcode(&self) -> &Disassembly<PcodeInstruction> {
+    pub fn pcode(&self) -> &PcodeDisassembly {
         &self.pcode
     }
 

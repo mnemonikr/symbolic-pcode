@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use thiserror;
 
-use libsla::{Address, AddressSpaceId, AddressSpaceType, LoadImage, VarnodeData};
+use libsla::{Address, AddressSpaceId, AddressSpaceType, InstructionLoader, VarnodeData};
 use pcode_ops::{BitwisePcodeOps, PcodeOps, convert::PcodeValue};
 
 /// Memory result type
@@ -449,9 +449,9 @@ impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
 /// Memory that holds binary-encoded executable instructions.
 pub struct ExecutableMemory<'a, M: VarnodeDataStore>(pub &'a M);
 
-/// Implementation of the LoadImage trait to enable loading instructions from memory
-impl<M: VarnodeDataStore> LoadImage for ExecutableMemory<'_, M> {
-    fn instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
+/// Implementation of the InstructionLoader trait to enable loading instructions from memory
+impl<M: VarnodeDataStore> InstructionLoader for ExecutableMemory<'_, M> {
+    fn load_instruction_bytes(&self, input: &VarnodeData) -> std::result::Result<Vec<u8>, String> {
         let value = self.0.read(input);
 
         // The number of bytes requested may exceed valid data in memory.
