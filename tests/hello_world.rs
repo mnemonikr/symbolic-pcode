@@ -140,7 +140,7 @@ fn hello_world_aarch64_linux() -> processor::Result<()> {
                 .join(" ");
 
             println!("Encoded instruction from memory: {encoded_instr}");
-            println!("Decoded: {instr}", instr = disassembly.instructions[0]);
+            println!("Decoded: {instr}", instr = disassembly.instruction);
         }
 
         if matches!(processor.state(), ProcessorState::Halt) {

@@ -363,7 +363,7 @@ fn memory_tree_without_branches() -> Result<()> {
 }
 
 #[test]
-fn executable_memory_instruction_bytes() -> Result<()> {
+fn executable_memory_load_instruction_bytes() -> Result<()> {
     // Setup memory with an address space
     let value = 0xbe;
     let mut memory = GenericMemory::<Pcode128>::default();
@@ -373,7 +373,7 @@ fn executable_memory_instruction_bytes() -> Result<()> {
     memory.write(&varnode, value.into())?;
     let exec_mem = ExecutableMemory(&memory);
     let data = exec_mem
-        .instruction_bytes(&varnode)
+        .load_instruction_bytes(&varnode)
         .expect("failed to get instruction bytes");
 
     assert_eq!(data.len(), 1);
@@ -388,7 +388,7 @@ fn executable_memory_undefined_data() -> Result<()> {
     let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
     let exec_mem = ExecutableMemory(&memory);
 
-    let result = exec_mem.instruction_bytes(&varnode);
+    let result = exec_mem.load_instruction_bytes(&varnode);
     let msg = result.expect_err("result should be undefined data error");
     assert_eq!(
         msg,
@@ -404,7 +404,7 @@ fn executable_memory_symbolic_data() -> Result<()> {
     memory.write(&varnode, SymbolicValue::default())?;
     let exec_mem = ExecutableMemory(&memory);
 
-    let result = exec_mem.instruction_bytes(&varnode);
+    let result = exec_mem.load_instruction_bytes(&varnode);
     assert!(matches!(result, Err(msg) if msg == "symbolic byte"));
 
     Ok(())
@@ -425,7 +425,7 @@ fn executable_memory_partial_undefined_data() -> Result<()> {
     varnode.size += 1;
 
     let data = exec_mem
-        .instruction_bytes(&varnode)
+        .load_instruction_bytes(&varnode)
         .expect("failed to get instruction bytes");
 
     assert_eq!(data.len(), 1);
