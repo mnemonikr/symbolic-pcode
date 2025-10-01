@@ -11,6 +11,3 @@ repository = "https://github.com/mnemonikr/symbolic-pcode"
 [workspace.dependencies]
 thiserror = "2.0"
 log = "0.4"
-
-[patch.crates-io]
-libsla-sys = { path = "../mnemonikr/libsla-sys" }
