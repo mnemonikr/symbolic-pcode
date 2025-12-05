@@ -1,11 +1,41 @@
 //! Convert circuit of [SymbolicBit]s into [AIGER format](https://github.com/arminbiere/aiger/blob/master/FORMAT).
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-};
+use std::collections::{BTreeMap, HashMap};
 
-use crate::SymbolicBit;
+/// A representation of a symbolic bit. It is assumed the symbolic library being used already
+/// provides its own symbolic bit implementation. It is recommended that a conversion to this type
+/// be implemented.
+///
+/// ## Example
+///
+/// ```
+/// # use std::rc::Rc;
+/// # use sym::aiger;
+/// // The library symbolic bit
+/// enum LibSymBit {
+///     Literal(bool),
+///     Variable(usize),
+///     Not(Rc<Self>),
+///     And(Rc<Self>, Rc<Self>),
+/// }
+///
+/// impl<'a> From<&'a LibSymBit> for aiger::SymbolicBit<'a, LibSymBit> {
+///     fn from(value: &'a LibSymBit) -> Self {
+///         match value {
+///             LibSymBit::Literal(b) => aiger::SymbolicBit::Literal(*b),
+///             LibSymBit::Variable(id) => aiger::SymbolicBit::Variable(*id),
+///             LibSymBit::Not(x) => aiger::SymbolicBit::Not(x.as_ref()),
+///             LibSymBit::And(x, y) => aiger::SymbolicBit::And(x.as_ref(), y.as_ref()),
+///         }
+///     }
+/// }
+/// ```
+pub enum SymbolicBit<'a, T> {
+    And(&'a T, &'a T),
+    Not(&'a T),
+    Variable(usize),
+    Literal(bool),
+}
 
 /// False AIGER literal
 pub const FALSE: AigerLiteral = AigerLiteral::new(0);
@@ -21,8 +51,13 @@ pub struct Aiger {
 }
 
 impl Aiger {
-    /// Create an Aiger object from the given output bits
-    pub fn from_bits(bits: impl IntoIterator<Item = SymbolicBit>) -> Self {
+    /// Create an Aiger object from the given output bits. This will walk the circuit and gather the
+    /// corresponding Aiger data. Identical pointers in [SymbolicBit::And] and [SymbolicBit::Not]
+    /// are deduplicated, but otherwise no equivalence checking is performed for circuit reduction.
+    pub fn from_bits<B>(bits: impl IntoIterator<Item = B>) -> Self
+    where
+        for<'a> &'a B: Into<SymbolicBit<'a, B>>,
+    {
         let mut indexes = Indexes::new();
         let bits = bits.into_iter().collect::<Vec<_>>();
         for bit in bits.iter() {
@@ -50,8 +85,11 @@ impl Aiger {
 
     /// Insert all [SymbolicBit::And] gates into the tree. The tree is a mapping from the gate
     /// index to the [AigerGate] composed of [AigerLiteral]s.
-    fn insert_gates(bit: &SymbolicBit, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>) {
-        match bit {
+    fn insert_gates<B>(bit: &B, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>)
+    where
+        for<'a> &'a B: Into<SymbolicBit<'a, B>>,
+    {
+        match bit.into() {
             SymbolicBit::And(x, y) => {
                 let index = indexes.index(bit);
 
@@ -60,14 +98,14 @@ impl Aiger {
                         index,
                         AigerGate::new(
                             indexes.literal(bit),
-                            (indexes.literal(x.as_ref()), indexes.literal(y.as_ref())),
+                            (indexes.literal(x), indexes.literal(y)),
                         ),
                     );
 
                     // Only insert children if this is a new insertion. If this gate has already
                     // been inserted then its children have also been inserted as well
-                    Self::insert_gates(x.as_ref(), indexes, gates);
-                    Self::insert_gates(y.as_ref(), indexes, gates);
+                    Self::insert_gates(x, indexes, gates);
+                    Self::insert_gates(y, indexes, gates);
                 }
             }
             SymbolicBit::Not(x) => {
@@ -79,21 +117,25 @@ impl Aiger {
         }
     }
 
-    /// Iterator of input literals
+    /// Iterator over all Aiger input literals.
     pub fn inputs(&self) -> impl Iterator<Item = AigerLiteral> {
         (1..=self.inputs.len()).map(AigerLiteral::new)
     }
 
+    /// Get the symbolic library input variable id for this literal.
+    ///
+    /// Returns `None` if the given literal does not map to an input variable.
     pub fn input_variable_id(&self, input: AigerLiteral) -> Option<usize> {
         self.inputs.get(&input).copied()
     }
 
-    /// Iterator of output literals
+    /// Iterator over all Aiger output literals. These literals correspond to the bits provided in
+    /// [Aiger::from_bits].
     pub fn outputs(&self) -> impl Iterator<Item = AigerLiteral> + '_ {
         self.outputs.iter().copied()
     }
 
-    /// Iterator of and gates literals
+    /// Iterator over all Aiger gate literals.
     pub fn gates(&self) -> impl Iterator<Item = AigerGate> + '_ {
         self.gates.iter().copied()
     }
@@ -265,9 +307,9 @@ impl AndId {
     /// addresses of the reference counters are used to ensure that cloned gates will have the same
     /// identifier. This does mean that gates that are equivalent but were not cloned will have
     /// different identifiers.
-    pub fn new(lhs: &Rc<SymbolicBit>, rhs: &Rc<SymbolicBit>) -> Self {
-        let lhs = Rc::as_ptr(lhs) as usize;
-        let rhs = Rc::as_ptr(rhs) as usize;
+    pub fn new<T>(lhs: *const T, rhs: *const T) -> Self {
+        let lhs = lhs as usize;
+        let rhs = rhs as usize;
         if lhs < rhs {
             Self(lhs, rhs)
         } else {
@@ -296,17 +338,20 @@ impl Indexes {
 
     /// Insert all components of the [SymbolicBit] into the index. Components already inserted are
     /// ignored.
-    pub fn insert_indexes(&mut self, bit: &SymbolicBit) {
-        match bit {
+    pub fn insert_indexes<B>(&mut self, bit: &B)
+    where
+        for<'a> &'a B: Into<SymbolicBit<'a, B>>,
+    {
+        match bit.into() {
             SymbolicBit::Variable(id) => {
                 let index = self.variables.len() + 1;
-                self.variables.entry(*id).or_insert(index);
+                self.variables.entry(id).or_insert(index);
             }
             SymbolicBit::And(x, y) => {
                 let id = AndId::new(x, y);
                 if !self.ands.contains_key(&id) {
-                    self.insert_indexes(x.as_ref());
-                    self.insert_indexes(y.as_ref());
+                    self.insert_indexes(x);
+                    self.insert_indexes(y);
 
                     // Index this gate at the end to ensure its index is greater than the index of
                     // anything contained in either the lhs or rhs
@@ -314,7 +359,7 @@ impl Indexes {
                 }
             }
             SymbolicBit::Not(x) => {
-                self.insert_indexes(x.as_ref());
+                self.insert_indexes(x);
             }
             SymbolicBit::Literal(_) => (),
         }
@@ -325,9 +370,12 @@ impl Indexes {
     /// # Panics
     ///
     /// Will panic if the `bit` is not indexed
-    pub fn index(&self, bit: &SymbolicBit) -> usize {
-        match bit {
-            SymbolicBit::Variable(id) => *self.variables.get(id).unwrap(),
+    pub fn index<B>(&self, bit: &B) -> usize
+    where
+        for<'a> &'a B: Into<SymbolicBit<'a, B>>,
+    {
+        match bit.into() {
+            SymbolicBit::Variable(id) => *self.variables.get(&id).unwrap(),
             SymbolicBit::And(x, y) => {
                 let id = AndId::new(x, y);
                 *self.ands.get(&id).unwrap() + self.num_input_literals()
@@ -347,12 +395,15 @@ impl Indexes {
     /// # Panics
     ///
     /// Will panic if this bit is an unindexed variable or and gate, or the negation of such a bit.
-    pub fn literal(&self, bit: &SymbolicBit) -> AigerLiteral {
-        match bit {
+    pub fn literal<B>(&self, bit: &B) -> AigerLiteral
+    where
+        for<'a> &'a B: Into<SymbolicBit<'a, B>>,
+    {
+        match bit.into() {
             SymbolicBit::Literal(false) => FALSE,
             SymbolicBit::Literal(true) => TRUE,
             SymbolicBit::Variable(_) | SymbolicBit::And(_, _) => AigerLiteral::new(self.index(bit)),
-            SymbolicBit::Not(x) => self.literal(x.as_ref()).negated(),
+            SymbolicBit::Not(x) => self.literal(x).negated(),
         }
     }
 }
