@@ -51,7 +51,9 @@ pub struct Aiger {
 }
 
 impl Aiger {
-    /// Create an Aiger object from the given output bits
+    /// Create an Aiger object from the given output bits. This will walk the circuit and gather the
+    /// corresponding Aiger data. Identical pointers in [SymbolicBit::And] and [SymbolicBit::Not]
+    /// are deduplicated, but otherwise no equivalence checking is performed for circuit reduction.
     pub fn from_bits<B>(bits: impl IntoIterator<Item = B>) -> Self
     where
         for<'a> &'a B: Into<SymbolicBit<B>>,
@@ -117,21 +119,25 @@ impl Aiger {
         }
     }
 
-    /// Iterator of input literals
+    /// Iterator over all Aiger input literals.
     pub fn inputs(&self) -> impl Iterator<Item = AigerLiteral> {
         (1..=self.inputs.len()).map(AigerLiteral::new)
     }
 
+    /// Get the symbolic library input variable id for this literal.
+    ///
+    /// Returns `None` if the given literal does not map to an input variable.
     pub fn input_variable_id(&self, input: AigerLiteral) -> Option<usize> {
         self.inputs.get(&input).copied()
     }
 
-    /// Iterator of output literals
+    /// Iterator over all Aiger output literals. These literals correspond to the bits provided in
+    /// [Aiger::from_bits].
     pub fn outputs(&self) -> impl Iterator<Item = AigerLiteral> + '_ {
         self.outputs.iter().copied()
     }
 
-    /// Iterator of and gates literals
+    /// Iterator over all Aiger gate literals.
     pub fn gates(&self) -> impl Iterator<Item = AigerGate> + '_ {
         self.gates.iter().copied()
     }
