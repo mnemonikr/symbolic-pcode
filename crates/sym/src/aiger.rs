@@ -11,7 +11,6 @@ use std::collections::{BTreeMap, HashMap};
 /// ```
 /// # use std::rc::Rc;
 /// # use sym::aiger;
-///
 /// // The library symbolic bit
 /// enum LibSymBit {
 ///     Literal(bool),
