@@ -44,7 +44,7 @@ The test fixtures are Rust components built targeting specific architectures. Ma
 * x86_64-unknown-none
 * x86_64-unknown-linux-musl
 * aarch64-unknown-none
-* aarch64-unknown-linux-musl. This also requires the aarch64-linux-gnu-gcc compiler to be installed for cross-compilation.
+* aarch64-unknown-linux-musl. This also requires the aarch64-linux-gnu-gcc compiler to be installed for linking.
 
 The Linux musl variants are used by integration tests with a Linux kernel model.
 
