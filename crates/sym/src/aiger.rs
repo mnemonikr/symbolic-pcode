@@ -2,6 +2,35 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+/// A representation of a symbolic bit. It is assumed the symbolic library being used already
+/// provides its own symbolic bit implementation. It is recommended that a conversion to this type
+/// be implemented.
+///
+/// ## Example
+///
+/// ```
+/// # use std::rc::Rc;
+/// # use sym::aiger;
+///
+/// // The library symbolic bit
+/// enum LibSymBit {
+///     Literal(bool),
+///     Variable(usize),
+///     Not(Rc<Self>),
+///     And(Rc<Self>, Rc<Self>),
+/// }
+///
+/// impl From<&LibSymBit> for aiger::SymbolicBit<LibSymBit> {
+///     fn from(value: &LibSymBit) -> Self {
+///         match value {
+///             LibSymBit::Literal(b) => aiger::SymbolicBit::Literal(*b),
+///             LibSymBit::Variable(id) => aiger::SymbolicBit::Variable(*id),
+///             LibSymBit::Not(x) => aiger::SymbolicBit::Not(Rc::as_ptr(x)),
+///             LibSymBit::And(x, y) => aiger::SymbolicBit::And(Rc::as_ptr(x), Rc::as_ptr(y)),
+///         }
+///     }
+/// }
+/// ```
 pub enum SymbolicBit<T> {
     And(*const T, *const T),
     Not(*const T),
