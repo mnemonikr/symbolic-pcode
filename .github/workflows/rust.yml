@@ -29,7 +29,7 @@ jobs:
         rustup target add aarch64-unknown-none
         rustup target add aarch64-unknown-linux-musl
     - name: Install aarch64 cross-compiler
-      run: sudo apt install -y gcc-aarch64-linux-gnu
+      run: sudo apt update && sudo apt install -y gcc-aarch64-linux-gnu
     - name: Unit Tests
       run: cargo test --workspace --verbose
     - name: Coverage Report
