@@ -37,4 +37,17 @@ The details on how to perform this translation are captured by the compiled SLEI
 
 # Building tests
 
+## Test Fixtures
+
+The test fixtures are Rust components built targeting specific architectures. Make sure you have the following targets installed via `rustup target`:
+
+* x86_64-unknown-none
+* x86_64-unknown-linux-musl
+* aarch64-unknown-none
+* aarch64-unknown-linux-musl. This also requires the aarch64-linux-gnu-gcc compiler to be installed for cross-compilation.
+
+The Linux musl variants are used by integration tests with a Linux kernel model.
+
+## Z3
+
 The integration tests use [Z3](https://github.com/Z3Prover/z3) to perform constraint solving and expects the Z3 shared library to be installed. Alternatively the integration test [Cargo.toml](./tests/Cargo.toml) can be updated to build and statically link Z3. See the comments in that file for more details.
