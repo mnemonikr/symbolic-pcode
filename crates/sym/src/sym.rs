@@ -58,10 +58,7 @@ impl std::ops::Not for SymbolicBit {
         match self {
             SymbolicBit::Literal(false) => SymbolicBit::Literal(true),
             SymbolicBit::Literal(true) => SymbolicBit::Literal(false),
-
-            // TODO: Use Rc::unwrap_or_clone(y) once feature is stable
-            // See https://github.com/rust-lang/rust/issues/93610
-            SymbolicBit::Not(y) => (*y).clone(),
+            SymbolicBit::Not(y) => Rc::unwrap_or_clone(y),
             _ => SymbolicBit::Not(Rc::new(self)),
         }
     }
