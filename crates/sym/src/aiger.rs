@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-pub enum SymbolicBitWrapper<T> {
+pub enum SymbolicBit<T> {
     And(*const T, *const T),
     Not(*const T),
     Variable(usize),
@@ -26,7 +26,7 @@ impl Aiger {
     /// Create an Aiger object from the given output bits
     pub fn from_bits<B>(bits: impl IntoIterator<Item = B>) -> Self
     where
-        for<'a> &'a B: Into<SymbolicBitWrapper<B>>,
+        for<'a> &'a B: Into<SymbolicBit<B>>,
     {
         let mut indexes = Indexes::new();
         let bits = bits.into_iter().collect::<Vec<_>>();
@@ -57,10 +57,10 @@ impl Aiger {
     /// index to the [AigerGate] composed of [AigerLiteral]s.
     fn insert_gates<B>(bit: &B, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>)
     where
-        for<'a> &'a B: Into<SymbolicBitWrapper<B>>,
+        for<'a> &'a B: Into<SymbolicBit<B>>,
     {
         match bit.into() {
-            SymbolicBitWrapper::And(x, y) => {
+            SymbolicBit::And(x, y) => {
                 let index = indexes.index(bit);
                 let x = unsafe { &*x };
                 let y = unsafe { &*y };
@@ -80,7 +80,7 @@ impl Aiger {
                     Self::insert_gates(y, indexes, gates);
                 }
             }
-            SymbolicBitWrapper::Not(x) => {
+            SymbolicBit::Not(x) => {
                 Self::insert_gates(unsafe { &*x }, indexes, gates);
             }
 
@@ -308,14 +308,14 @@ impl Indexes {
     /// ignored.
     pub fn insert_indexes<B>(&mut self, bit: &B)
     where
-        for<'a> &'a B: Into<SymbolicBitWrapper<B>>,
+        for<'a> &'a B: Into<SymbolicBit<B>>,
     {
         match bit.into() {
-            SymbolicBitWrapper::Variable(id) => {
+            SymbolicBit::Variable(id) => {
                 let index = self.variables.len() + 1;
                 self.variables.entry(id).or_insert(index);
             }
-            SymbolicBitWrapper::And(x, y) => {
+            SymbolicBit::And(x, y) => {
                 let id = AndId::new(x, y);
                 if !self.ands.contains_key(&id) {
                     self.insert_indexes(unsafe { &*x });
@@ -326,10 +326,10 @@ impl Indexes {
                     self.ands.insert(id, self.ands.len() + 1);
                 }
             }
-            SymbolicBitWrapper::Not(x) => {
+            SymbolicBit::Not(x) => {
                 self.insert_indexes(unsafe { &*x });
             }
-            SymbolicBitWrapper::Literal(_) => (),
+            SymbolicBit::Literal(_) => (),
         }
     }
 
@@ -340,16 +340,16 @@ impl Indexes {
     /// Will panic if the `bit` is not indexed
     pub fn index<B>(&self, bit: &B) -> usize
     where
-        for<'a> &'a B: Into<SymbolicBitWrapper<B>>,
+        for<'a> &'a B: Into<SymbolicBit<B>>,
     {
         match bit.into() {
-            SymbolicBitWrapper::Variable(id) => *self.variables.get(&id).unwrap(),
-            SymbolicBitWrapper::And(x, y) => {
+            SymbolicBit::Variable(id) => *self.variables.get(&id).unwrap(),
+            SymbolicBit::And(x, y) => {
                 let id = AndId::new(x, y);
                 *self.ands.get(&id).unwrap() + self.num_input_literals()
             }
-            SymbolicBitWrapper::Literal(_) => panic!("literal bits are not indexed"),
-            SymbolicBitWrapper::Not(_) => panic!("negated bits are not indexed"),
+            SymbolicBit::Literal(_) => panic!("literal bits are not indexed"),
+            SymbolicBit::Not(_) => panic!("negated bits are not indexed"),
         }
     }
 
@@ -365,15 +365,13 @@ impl Indexes {
     /// Will panic if this bit is an unindexed variable or and gate, or the negation of such a bit.
     pub fn literal<B>(&self, bit: &B) -> AigerLiteral
     where
-        for<'a> &'a B: Into<SymbolicBitWrapper<B>>,
+        for<'a> &'a B: Into<SymbolicBit<B>>,
     {
         match bit.into() {
-            SymbolicBitWrapper::Literal(false) => FALSE,
-            SymbolicBitWrapper::Literal(true) => TRUE,
-            SymbolicBitWrapper::Variable(_) | SymbolicBitWrapper::And(_, _) => {
-                AigerLiteral::new(self.index(bit))
-            }
-            SymbolicBitWrapper::Not(x) => self.literal(unsafe { &*x }).negated(),
+            SymbolicBit::Literal(false) => FALSE,
+            SymbolicBit::Literal(true) => TRUE,
+            SymbolicBit::Variable(_) | SymbolicBit::And(_, _) => AigerLiteral::new(self.index(bit)),
+            SymbolicBit::Not(x) => self.literal(unsafe { &*x }).negated(),
         }
     }
 }
