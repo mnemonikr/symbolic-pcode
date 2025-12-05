@@ -1,3 +1,6 @@
+use std::rc::Rc;
+
+use crate::aiger;
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
@@ -334,3 +337,14 @@ impl_little_endian!(u64);
 impl_little_endian!(u32);
 impl_little_endian!(u16);
 impl_little_endian!(u8);
+
+impl From<&SymbolicBit> for aiger::SymbolicBitWrapper<SymbolicBit> {
+    fn from(value: &SymbolicBit) -> Self {
+        match value {
+            SymbolicBit::Literal(b) => aiger::SymbolicBitWrapper::Literal(*b),
+            SymbolicBit::Variable(id) => aiger::SymbolicBitWrapper::Variable(*id),
+            SymbolicBit::Not(x) => aiger::SymbolicBitWrapper::Not(Rc::as_ptr(x)),
+            SymbolicBit::And(x, y) => aiger::SymbolicBitWrapper::And(Rc::as_ptr(x), Rc::as_ptr(y)),
+        }
+    }
+}
