@@ -293,8 +293,8 @@ impl AigerGate {
     const fn max_leb_size() -> usize {
         let num_bits = 8 * std::mem::size_of::<usize>();
 
-        // LEB encoding can hold 7 bits of data. Add 6 to round up instead of down via division
-        (num_bits + 6) / 7
+        // LEB encoding can hold 7 bits of data. Round up to nearest LEB byte
+        num_bits.div_ceil(7)
     }
 }
 
