@@ -12,6 +12,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "aiger-circuit"
+version = "0.1.0"
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -828,6 +832,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 name = "sym"
 version = "0.1.0"
 dependencies = [
+ "aiger-circuit",
  "pcode-ops",
  "thiserror",
 ]
@@ -866,6 +871,7 @@ dependencies = [
 name = "tests-integration"
 version = "0.0.0"
 dependencies = [
+ "aiger-circuit",
  "elf",
  "escargot",
  "flexi_logger",
