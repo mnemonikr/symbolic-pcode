@@ -1,4 +1,3 @@
-use crate::aiger;
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
@@ -336,13 +335,13 @@ impl_little_endian!(u32);
 impl_little_endian!(u16);
 impl_little_endian!(u8);
 
-impl<'a> From<&'a SymbolicBit> for aiger::SymbolicBit<'a, SymbolicBit> {
+impl<'a> From<&'a SymbolicBit> for aiger_circuit::AigerCircuit<'a, SymbolicBit> {
     fn from(value: &'a SymbolicBit) -> Self {
         match value {
-            SymbolicBit::Literal(b) => aiger::SymbolicBit::Literal(*b),
-            SymbolicBit::Variable(id) => aiger::SymbolicBit::Variable(*id),
-            SymbolicBit::Not(x) => aiger::SymbolicBit::Not(x.as_ref()),
-            SymbolicBit::And(x, y) => aiger::SymbolicBit::And(x.as_ref(), y.as_ref()),
+            SymbolicBit::Literal(b) => aiger_circuit::AigerCircuit::Literal(*b),
+            SymbolicBit::Variable(id) => aiger_circuit::AigerCircuit::Variable(*id),
+            SymbolicBit::Not(x) => aiger_circuit::AigerCircuit::Not(x.as_ref()),
+            SymbolicBit::And(x, y) => aiger_circuit::AigerCircuit::And(x.as_ref(), y.as_ref()),
         }
     }
 }
