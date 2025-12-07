@@ -10,9 +10,7 @@ fn true_and_false_are_const() {
 
 #[test]
 fn input_and_gate_literals_not_negated() {
-    let aiger = Aiger::with_outputs(std::iter::once(
-        &(SimpleCircuit::var(0) & SimpleCircuit::var(1)),
-    ));
+    let aiger = Aiger::with_output(&(SimpleCircuit::var(0) & SimpleCircuit::var(1)));
 
     aiger
         .inputs()
@@ -24,7 +22,7 @@ fn input_and_gate_literals_not_negated() {
 
 #[test]
 fn output_false() {
-    let aiger = Aiger::with_outputs(std::iter::once(&SimpleCircuit::lit(false)));
+    let aiger = Aiger::with_output(&SimpleCircuit::lit(false));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert!(inputs.is_empty());
 
@@ -42,7 +40,7 @@ fn output_false() {
 
 #[test]
 fn output_true() {
-    let aiger = Aiger::with_outputs(std::iter::once(&SimpleCircuit::lit(true)));
+    let aiger = Aiger::with_output(&SimpleCircuit::lit(true));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert!(inputs.is_empty());
 
@@ -60,7 +58,7 @@ fn output_true() {
 
 #[test]
 fn output_variable() {
-    let aiger = Aiger::with_outputs(std::iter::once(&SimpleCircuit::var(0)));
+    let aiger = Aiger::with_output(&SimpleCircuit::var(0));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1)]);
 
@@ -78,7 +76,7 @@ fn output_variable() {
 
 #[test]
 fn output_negated_variable() {
-    let aiger = Aiger::with_outputs(std::iter::once(&!SimpleCircuit::var(0)));
+    let aiger = Aiger::with_output(&!SimpleCircuit::var(0));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1)]);
 
@@ -96,9 +94,7 @@ fn output_negated_variable() {
 
 #[test]
 fn output_and_variables() {
-    let aiger = Aiger::with_outputs(std::iter::once(
-        &(SimpleCircuit::var(0) & SimpleCircuit::var(1)),
-    ));
+    let aiger = Aiger::with_output(&(SimpleCircuit::var(0) & SimpleCircuit::var(1)));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
 
@@ -122,9 +118,7 @@ fn output_and_variables() {
 
 #[test]
 fn output_or_variables() {
-    let aiger = Aiger::with_outputs(std::iter::once(
-        &(!(!SimpleCircuit::var(0) & !SimpleCircuit::var(1))),
-    ));
+    let aiger = Aiger::with_output(&(!(!SimpleCircuit::var(0) & !SimpleCircuit::var(1))));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
 
