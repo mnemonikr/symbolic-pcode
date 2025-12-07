@@ -106,7 +106,7 @@ impl Aiger {
                 Self::insert_gates(x, indexes, gates);
             }
 
-            // No other type can lead to an and gate
+            // No other type can lead to an and-gate
             _ => (),
         }
     }
@@ -138,7 +138,7 @@ impl Aiger {
     /// binary and ASCII formats:
     ///
     /// * Inputs are omitted
-    /// * And gates are encoded in a binary format
+    /// * And-gates are encoded in a binary format
     pub fn serialize_binary(&self) -> Vec<u8> {
         let header = format!(
             "aag {M} {I} {L} {O} {A}\n",

@@ -4,7 +4,7 @@ pub const FALSE: AigerLiteral = AigerLiteral::new(0);
 /// True AIGER literal
 pub const TRUE: AigerLiteral = FALSE.negated();
 
-/// An AIGER literal. These are used to represent inputs, outputs, and encode and gates.
+/// An AIGER literal. These are used to represent inputs, outputs, and encode and-gates.
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AigerLiteral(usize);
@@ -17,7 +17,7 @@ impl std::fmt::Display for AigerLiteral {
 
 impl AigerLiteral {
     /// Create a new literal from the given index. Note that this index is a global for the
-    /// circuit, meaning the number of inputs can influence the index of an and gate.
+    /// circuit, meaning the number of inputs can influence the index of an and-gate.
     pub const fn new(index: usize) -> Self {
         Self(index << 1)
     }
@@ -43,7 +43,7 @@ impl AigerLiteral {
     }
 }
 
-/// The encoding for an AIGER and gate. The gate is encoded in LHS and RHS. The LHS is the literal
+/// The encoding for an AIGER and-gate. The gate is encoded in LHS and RHS. The LHS is the literal
 /// identifying this gate. The RHS is a pair of literals representing the gate inputs.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AigerGate {
