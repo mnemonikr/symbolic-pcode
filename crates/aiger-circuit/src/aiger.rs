@@ -6,9 +6,8 @@ use crate::circuit::{AigerCircuit, AsAigerCircuit};
 use crate::index::Indexes;
 use crate::model::{AigerGate, AigerLiteral};
 
-/// Representation of [AigerCircuit] outputs. This can be used to serialize the circuits into the
-/// AIGER format. It can also be used to iterate through all the circuit components. See
-/// [Aiger::inputs], [Aiger::gates], and [Aiger::outputs].
+/// The core object for generating AIGER formatted data. For inspecting the AST see [Aiger::inputs],
+/// [Aiger::gates], and [Aiger::outputs].
 ///
 /// ## Example
 ///
