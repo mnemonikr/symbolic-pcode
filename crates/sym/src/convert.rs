@@ -1,3 +1,7 @@
+use std::rc::Rc;
+
+use aiger_circuit::circuit::{AigerCircuit, AndOperand, AsAigerCircuit};
+
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
 use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
 
@@ -335,13 +339,24 @@ impl_little_endian!(u32);
 impl_little_endian!(u16);
 impl_little_endian!(u8);
 
-impl<'a> From<&'a SymbolicBit> for aiger_circuit::AigerCircuit<'a, SymbolicBit> {
-    fn from(value: &'a SymbolicBit) -> Self {
-        match value {
-            SymbolicBit::Literal(b) => aiger_circuit::AigerCircuit::Literal(*b),
-            SymbolicBit::Variable(id) => aiger_circuit::AigerCircuit::Variable(*id),
-            SymbolicBit::Not(x) => aiger_circuit::AigerCircuit::Not(x.as_ref()),
-            SymbolicBit::And(x, y) => aiger_circuit::AigerCircuit::And(x.as_ref(), y.as_ref()),
+impl<'a> AsAigerCircuit<'a> for SymbolicBit {
+    type Inner = Self;
+
+    fn as_circuit(&'a self) -> AigerCircuit<'a, Self::Inner> {
+        match self {
+            SymbolicBit::Literal(value) => AigerCircuit::Literal(*value),
+            SymbolicBit::Variable(id) => AigerCircuit::Variable(*id),
+            SymbolicBit::Not(x) => AigerCircuit::Not(x.as_ref()),
+            SymbolicBit::And(x, y) => AigerCircuit::And(
+                AndOperand {
+                    id: Rc::as_ptr(x) as usize,
+                    value: x.as_ref(),
+                },
+                AndOperand {
+                    id: Rc::as_ptr(y) as usize,
+                    value: y.as_ref(),
+                },
+            ),
         }
     }
 }

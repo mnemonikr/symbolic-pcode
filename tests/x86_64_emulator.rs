@@ -341,7 +341,7 @@ fn z3_integration() -> processor::Result<()> {
     let result: SymbolicBitVec = result.into_iter().collect();
 
     let assertion = result.equals(SymbolicBitVec::constant(8, 32));
-    let aiger = aiger_circuit::Aiger::from_bits(std::iter::once(assertion));
+    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&assertion));
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 
@@ -564,7 +564,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     let other_branch = parent_path & !last_branch;
 
     // Solve with Z3
-    let aiger = aiger_circuit::Aiger::from_bits(std::iter::once(other_branch));
+    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&other_branch));
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 

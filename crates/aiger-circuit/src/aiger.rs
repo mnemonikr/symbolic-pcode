@@ -2,11 +2,37 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::circuit::AigerCircuit;
+use crate::circuit::{AigerCircuit, AsAigerCircuit};
 use crate::index::Indexes;
 use crate::model::{AigerGate, AigerLiteral};
 
-/// Object capable of coverting [AigerCircuit]s into AIGER format.
+/// Representation of [AigerCircuit] outputs. This can be used to serialize the circuits into the
+/// AIGER format. It can also be used to iterate through all the circuit components. See
+/// [Aiger::inputs], [Aiger::gates], and [Aiger::outputs].
+///
+/// ## Example
+///
+/// ```
+/// # use aiger_circuit::Aiger;
+/// # use aiger_circuit::circuit::SimpleCircuit;
+/// # let output = SimpleCircuit::lit(false);
+/// // Assume output variable is the output bit of a complex circuit
+/// let aiger = Aiger::with_output(&output);
+/// for input in aiger.inputs() {
+///     // Iterates over all variables used in the circuit
+/// }
+///
+/// for gate in aiger.gates() {
+///     // Iterates over all unique gates in the circuit
+/// }
+///
+/// for output in aiger.outputs() {
+///     // Iterate over all outputs
+/// }
+///
+/// // Serialize data into AIGER binary format
+/// let aiger_binary_data = aiger.serialize_binary();
+/// ```
 pub struct Aiger {
     inputs: HashMap<AigerLiteral, usize>,
     outputs: Vec<AigerLiteral>,
@@ -14,41 +40,50 @@ pub struct Aiger {
 }
 
 impl Aiger {
+    /// Create an Aiger object from the given output. See [Aiger::with_outputs].
+    pub fn with_output<'a, T>(output: &'a T) -> Self
+    where
+        T: AsAigerCircuit<'a>,
+    {
+        let outputs = [output];
+        Self::with_outputs(outputs)
+    }
+
     /// Create an Aiger object from the given output bits. This will walk the circuit and gather the
     /// corresponding Aiger data. Identical references in [AigerCircuit::And] and [AigerCircuit::Not]
     /// are deduplicated, but otherwise no equivalence checking is performed for circuit reduction.
-    pub fn from_bits<B>(bits: impl IntoIterator<Item = B>) -> Self
+    pub fn with_outputs<'a, T>(outputs: impl IntoIterator<Item = &'a T>) -> Self
     where
-        for<'a> &'a B: Into<AigerCircuit<'a, B>>,
+        T: AsAigerCircuit<'a> + 'a,
     {
         let mut indexes = Indexes::new();
-        let bits = bits.into_iter().collect::<Vec<_>>();
-        for bit in bits.iter() {
-            indexes.insert_indexes(bit);
+        let outputs = outputs.into_iter().collect::<Vec<_>>();
+        for output in outputs.iter() {
+            indexes.insert_indexes(*output);
         }
 
         let mut gates = Default::default();
-        let mut outputs = Vec::with_capacity(bits.len());
+        let mut aiger_outputs = Vec::with_capacity(outputs.len());
 
-        for bit in bits {
-            Self::insert_gates(&bit, &indexes, &mut gates);
-            outputs.push(indexes.literal(&bit));
+        for output in outputs {
+            Self::insert_gates(output, &indexes, &mut gates);
+            aiger_outputs.push(indexes.literal(output));
         }
         let gates = gates.into_values().collect::<Vec<_>>();
         Self {
             inputs: indexes.variables().collect(),
-            outputs,
+            outputs: aiger_outputs,
             gates,
         }
     }
 
     /// Insert all [AigerCircuit::And] gates into the tree. The tree is a mapping from the gate
     /// index to the [AigerGate] composed of [AigerLiteral]s.
-    fn insert_gates<B>(bit: &B, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>)
+    fn insert_gates<'a, T>(bit: &'a T, indexes: &Indexes, gates: &mut BTreeMap<usize, AigerGate>)
     where
-        for<'a> &'a B: Into<AigerCircuit<'a, B>>,
+        T: AsAigerCircuit<'a>,
     {
-        match bit.into() {
+        match bit.as_circuit() {
             AigerCircuit::And(x, y) => {
                 let index = indexes.index(bit);
 
@@ -57,14 +92,14 @@ impl Aiger {
                         index,
                         AigerGate::new(
                             indexes.literal(bit),
-                            (indexes.literal(x), indexes.literal(y)),
+                            (indexes.literal(x.value), indexes.literal(y.value)),
                         ),
                     );
 
                     // Only insert children if this is a new insertion. If this gate has already
                     // been inserted then its children have also been inserted as well
-                    Self::insert_gates(x, indexes, gates);
-                    Self::insert_gates(y, indexes, gates);
+                    Self::insert_gates(x.value, indexes, gates);
+                    Self::insert_gates(y.value, indexes, gates);
                 }
             }
             AigerCircuit::Not(x) => {
@@ -88,8 +123,8 @@ impl Aiger {
         self.inputs.get(&input).copied()
     }
 
-    /// Iterator over all Aiger output literals. These literals correspond to the bits provided in
-    /// [Aiger::from_bits].
+    /// Iterator over all Aiger output literals. These literals correspond to the values provided in
+    /// [Aiger::with_outputs].
     pub fn outputs(&self) -> impl Iterator<Item = AigerLiteral> + '_ {
         self.outputs.iter().copied()
     }

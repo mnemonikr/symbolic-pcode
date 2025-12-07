@@ -1,10 +1,12 @@
-mod aiger;
-mod circuit;
-mod index;
+#![doc=include_str!("../README.md")]
+
+pub mod circuit;
 pub mod model;
 
+mod aiger;
+mod index;
+
 pub use aiger::Aiger;
-pub use circuit::AigerCircuit;
 
 #[cfg(test)]
 mod tests;

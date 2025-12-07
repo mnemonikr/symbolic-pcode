@@ -43,10 +43,8 @@ impl AigerLiteral {
     }
 }
 
-/// The encoding for an AIGER and gate. The gate is encoded in parts:
-///
-/// 1. The LHS is the literal identifying this gate
-/// 2. The RHS is a pair of literals representing the gate inputs
+/// The encoding for an AIGER and gate. The gate is encoded in LHS and RHS. The LHS is the literal
+/// identifying this gate. The RHS is a pair of literals representing the gate inputs.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AigerGate {
     lhs: AigerLiteral,
@@ -68,14 +66,17 @@ impl AigerGate {
         }
     }
 
+    /// The Aiger literal for this gate.
     pub fn gate_literal(&self) -> AigerLiteral {
         self.lhs
     }
 
+    /// The Aiger literal for the LHS gate input.
     pub fn input_lhs(&self) -> AigerLiteral {
         self.rhs.0
     }
 
+    /// The Aiger literal for the RHS gate input.
     pub fn input_rhs(&self) -> AigerLiteral {
         self.rhs.1
     }
