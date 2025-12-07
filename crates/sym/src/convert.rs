@@ -342,7 +342,7 @@ impl_little_endian!(u8);
 impl<'a> AsAigerCircuit<'a> for SymbolicBit {
     type Inner = Self;
 
-    fn as_circuit(&'a self) -> AigerCircuit<'a, Self::Inner> {
+    fn as_aiger_circuit(&'a self) -> AigerCircuit<'a, Self::Inner> {
         match self {
             SymbolicBit::Literal(value) => AigerCircuit::Literal(*value),
             SymbolicBit::Variable(id) => AigerCircuit::Variable(*id),
