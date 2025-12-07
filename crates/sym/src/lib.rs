@@ -1,4 +1,3 @@
-pub mod aiger;
 mod buf;
 mod convert;
 mod eval;

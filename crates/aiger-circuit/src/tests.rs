@@ -1,7 +1,6 @@
-use std::rc::Rc;
-
-use crate::SymbolicBit;
-use crate::aiger::*;
+use crate::circuit::*;
+use crate::model::*;
+use crate::*;
 
 #[test]
 fn true_and_false_are_const() {
@@ -11,10 +10,7 @@ fn true_and_false_are_const() {
 
 #[test]
 fn input_and_gate_literals_not_negated() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::And(
-        Rc::new(SymbolicBit::Variable(0)),
-        Rc::new(SymbolicBit::Variable(1)),
-    )));
+    let aiger = Aiger::with_output(&(SimpleCircuit::var(0) & SimpleCircuit::var(1)));
 
     aiger
         .inputs()
@@ -26,7 +22,7 @@ fn input_and_gate_literals_not_negated() {
 
 #[test]
 fn output_false() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Literal(false)));
+    let aiger = Aiger::with_output(&SimpleCircuit::lit(false));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert!(inputs.is_empty());
 
@@ -44,7 +40,7 @@ fn output_false() {
 
 #[test]
 fn output_true() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Literal(true)));
+    let aiger = Aiger::with_output(&SimpleCircuit::lit(true));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert!(inputs.is_empty());
 
@@ -62,7 +58,7 @@ fn output_true() {
 
 #[test]
 fn output_variable() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Variable(0)));
+    let aiger = Aiger::with_output(&SimpleCircuit::var(0));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1)]);
 
@@ -80,9 +76,7 @@ fn output_variable() {
 
 #[test]
 fn output_negated_variable() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Not(Rc::new(
-        SymbolicBit::Variable(0),
-    ))));
+    let aiger = Aiger::with_output(&!SimpleCircuit::var(0));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1)]);
 
@@ -100,10 +94,7 @@ fn output_negated_variable() {
 
 #[test]
 fn output_and_variables() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::And(
-        Rc::new(SymbolicBit::Variable(0)),
-        Rc::new(SymbolicBit::Variable(1)),
-    )));
+    let aiger = Aiger::with_output(&(SimpleCircuit::var(0) & SimpleCircuit::var(1)));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
 
@@ -127,12 +118,7 @@ fn output_and_variables() {
 
 #[test]
 fn output_or_variables() {
-    let aiger = Aiger::from_bits(std::iter::once(SymbolicBit::Not(Rc::new(
-        SymbolicBit::And(
-            Rc::new(SymbolicBit::Not(Rc::new(SymbolicBit::Variable(0)))),
-            Rc::new(SymbolicBit::Not(Rc::new(SymbolicBit::Variable(1)))),
-        ),
-    ))));
+    let aiger = Aiger::with_output(&(!(!SimpleCircuit::var(0) & !SimpleCircuit::var(1))));
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
 
@@ -159,10 +145,12 @@ fn output_or_variables() {
 
 #[test]
 fn half_adder() {
-    let both = SymbolicBit::Variable(0) & SymbolicBit::Variable(1);
-    let neither = !SymbolicBit::Variable(0) & !SymbolicBit::Variable(1);
-    let bits = vec![!both.clone() & !neither, both];
-    let aiger = Aiger::from_bits(bits);
+    let x = SimpleCircuit::var(0);
+    let y = SimpleCircuit::var(1);
+    let both = x.clone() & y.clone();
+    let neither = !x & !y;
+    let bits = [!both.clone() & !neither, both];
+    let aiger = Aiger::with_outputs(bits.iter());
 
     let inputs = aiger.inputs().collect::<Vec<_>>();
     assert_eq!(inputs, vec![AigerLiteral::new(1), AigerLiteral::new(2)]);
