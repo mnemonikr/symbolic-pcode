@@ -63,8 +63,14 @@ fn disjunction_with_true() {
 }
 
 #[test]
-fn exclusive_or_with_self() {
+fn exclusive_or_with_same_variable() {
     let x = SymbolicBit::Variable(0);
+    assert_eq!(x.clone() ^ x.clone(), SymbolicBit::Literal(false));
+}
+
+#[test]
+fn exclusive_or_with_complex_self() {
+    let x = complex_bit();
     assert_eq!(x.clone() ^ x.clone(), SymbolicBit::Literal(false));
 }
 
@@ -73,4 +79,12 @@ fn exclusive_or_with_zero() {
     let x = SymbolicBit::Variable(0);
     assert_eq!(x.clone() ^ SymbolicBit::Literal(false), x);
     assert_eq!(SymbolicBit::Literal(false) ^ x.clone(), x);
+}
+
+fn complex_bit() -> SymbolicBit {
+    let mut bit = SymbolicBit::Literal(true);
+    for i in 0..100 {
+        bit = SymbolicBit::Variable(i) & bit;
+    }
+    bit
 }
