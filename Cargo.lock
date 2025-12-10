@@ -13,9 +13,9 @@ dependencies = [
 
 [[package]]
 name = "aiger-circuit"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8202549285e88b2ed41e06741cf2c27c9336704e4be2f42ae03f36b93cdf4102"
+checksum = "b02d3cee73f9dfbc99099943688eceb2a21d046887296967214f81ad13cae49b"
 
 [[package]]
 name = "android_system_properties"
@@ -94,9 +94,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.48"
+version = "1.2.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c481bdbf0ed3b892f6f806287d72acd515b352a4ec27a208489b8c1bc839633a"
+checksum = "90583009037521a116abf44494efecd645ba48b6622457080f080b85544e2215"
 dependencies = [
  "find-msvc-tools",
  "shlex",
