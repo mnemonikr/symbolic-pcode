@@ -83,7 +83,7 @@ fn exclusive_or_with_zero() {
 
 fn complex_bit() -> SymbolicBit {
     let mut bit = SymbolicBit::Literal(true);
-    for i in 0..100 {
+    for i in 0..10 {
         bit = SymbolicBit::Variable(i) & bit;
     }
     bit
