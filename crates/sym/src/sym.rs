@@ -43,6 +43,50 @@ impl SymbolicBit {
     pub fn select(self, lhs: Self, rhs: Self) -> Self {
         (self.clone() & lhs) | (!self & rhs)
     }
+
+    pub fn is_identical(&self, rhs: &Self) -> bool {
+        match self {
+            Self::Literal(x) => {
+                if let Self::Literal(y) = rhs {
+                    return *x == *y;
+                }
+            }
+            Self::Variable(x) => {
+                if let Self::Variable(y) = rhs {
+                    return *x == *y;
+                }
+            }
+            Self::Not(x) => {
+                if let Self::Not(y) = rhs {
+                    if Rc::ptr_eq(x, y) {
+                        return true;
+                    } else if let Self::Variable(x) = **x
+                        && let Self::Variable(y) = **y
+                    {
+                        // Check if same variable
+                        return x == y;
+                    }
+                }
+            }
+            Self::And(x, y) => {
+                if let Self::And(u, v) = rhs {
+                    if Rc::ptr_eq(x, u) && Rc::ptr_eq(y, v) || Rc::ptr_eq(x, v) && Rc::ptr_eq(y, u)
+                    {
+                        return true;
+                    } else if let Self::Variable(x) = **x
+                        && let Self::Variable(y) = **y
+                        && let Self::Variable(u) = **u
+                        && let Self::Variable(v) = **v
+                    {
+                        // Check if same variables
+                        return x == u && y == v || x == v && y == u;
+                    }
+                }
+            }
+        }
+
+        false
+    }
 }
 
 impl Default for SymbolicBit {
@@ -68,27 +112,21 @@ impl std::ops::BitAnd for SymbolicBit {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
+        if self.is_identical(&rhs) {
+            return self;
+        }
+
         match self {
             SymbolicBit::Literal(false) => return SymbolicBit::Literal(false),
             SymbolicBit::Literal(true) => return rhs,
-            SymbolicBit::Variable(x) => match rhs {
-                SymbolicBit::Not(y) if *y == SymbolicBit::Variable(x) => {
-                    return SymbolicBit::Literal(false);
-                }
-                _ => (),
-            },
+            SymbolicBit::Not(z) if z.is_identical(&rhs) => return SymbolicBit::Literal(false),
             _ => (),
         }
 
         match rhs {
             SymbolicBit::Literal(false) => return SymbolicBit::Literal(false),
             SymbolicBit::Literal(true) => return self,
-            SymbolicBit::Variable(x) => match self {
-                SymbolicBit::Not(y) if *y == SymbolicBit::Variable(x) => {
-                    return SymbolicBit::Literal(false);
-                }
-                _ => (),
-            },
+            SymbolicBit::Not(z) if z.is_identical(&self) => return SymbolicBit::Literal(false),
             _ => (),
         }
 
