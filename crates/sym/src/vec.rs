@@ -1,52 +1,20 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::bit::{FALSE, SymbolicBit};
+use crate::bit::{FALSE, SymbolicBit, TRUE};
 use crate::buf::SymbolicByte;
+
+mod convert;
+mod ops;
 
 #[derive(Debug, Clone)]
 pub struct SymbolicBitVec {
     bits: VecDeque<SymbolicBit>,
 }
 
-impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
-    type Error = String;
-
-    fn try_into(self) -> Result<Vec<SymbolicByte>, Self::Error> {
-        if self.bits.len() % 8 == 0 {
-            Ok(self.into_bytes())
-        } else {
-            Err(format!(
-                "invalid number of bits: {len}",
-                len = self.bits.len()
-            ))
-        }
-    }
-}
-
-impl IntoIterator for SymbolicBitVec {
-    type Item = SymbolicBit;
-    type IntoIter = std::collections::vec_deque::IntoIter<SymbolicBit>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.bits.into_iter()
-    }
-}
-
-impl std::ops::Index<usize> for SymbolicBitVec {
-    type Output = SymbolicBit;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.bits[index]
-    }
-}
-
-impl FromIterator<SymbolicBit> for SymbolicBitVec {
-    fn from_iter<T: IntoIterator<Item = SymbolicBit>>(iter: T) -> Self {
-        Self {
-            bits: iter.into_iter().collect(),
-        }
-    }
+enum ShiftDirection {
+    Left,
+    Right,
 }
 
 static START_SYMBOL: AtomicUsize = AtomicUsize::new(0);
@@ -89,7 +57,6 @@ impl SymbolicBitVec {
         assert_eq!(self.bits.len() % 8, 0);
         let num_bytes = self.bits.len() / 8;
 
-        const FALSE: SymbolicBit = SymbolicBit::Literal(false);
         let mut bits = [FALSE; 8];
         let mut bytes = Vec::with_capacity(num_bytes);
 
@@ -139,16 +106,16 @@ impl SymbolicBitVec {
 
     pub fn signed_minimum_value(num_bits: usize) -> Self {
         Self {
-            bits: std::iter::repeat_n(SymbolicBit::Literal(false), num_bits - 1)
-                .chain(std::iter::once(SymbolicBit::Literal(true)))
+            bits: std::iter::repeat_n(FALSE, num_bits - 1)
+                .chain(std::iter::once(TRUE))
                 .collect(),
         }
     }
 
     pub fn signed_maximum_value(num_bits: usize) -> Self {
         Self {
-            bits: std::iter::repeat_n(SymbolicBit::Literal(true), num_bits - 1)
-                .chain(std::iter::once(SymbolicBit::Literal(false)))
+            bits: std::iter::repeat_n(TRUE, num_bits - 1)
+                .chain(std::iter::once(FALSE))
                 .collect(),
         }
     }
@@ -425,7 +392,7 @@ impl SymbolicBitVec {
     pub fn addition_carry_bits(self, rhs: Self) -> Self {
         assert_eq!(self.bits.len(), rhs.bits.len());
         let mut carry = VecDeque::with_capacity(self.bits.len() + 1);
-        carry.push_back(SymbolicBit::Literal(false));
+        carry.push_back(FALSE);
         carry.push_back(self[0].clone() & rhs[0].clone());
         for i in 1..self.bits.len() {
             carry.push_back(
@@ -468,8 +435,7 @@ impl SymbolicBitVec {
 
         let lhs_msb = self.bits.pop_back().unwrap();
         let rhs_msb = rhs.bits.pop_back().unwrap();
-        let less_than = lhs_msb.clone().equals(SymbolicBit::Literal(false))
-            & rhs_msb.clone().equals(SymbolicBit::Literal(true));
+        let less_than = lhs_msb.clone().equals(FALSE) & rhs_msb.clone().equals(TRUE);
 
         if self.bits.is_empty() {
             less_than
@@ -490,8 +456,7 @@ impl SymbolicBitVec {
 
         let lhs_msb = self.bits.pop_back().unwrap();
         let rhs_msb = rhs.bits.pop_back().unwrap();
-        let greater_than = lhs_msb.clone().equals(SymbolicBit::Literal(true))
-            & rhs_msb.clone().equals(SymbolicBit::Literal(false));
+        let greater_than = lhs_msb.clone().equals(TRUE) & rhs_msb.clone().equals(FALSE);
 
         if self.is_empty() {
             greater_than
@@ -512,8 +477,8 @@ impl SymbolicBitVec {
 
         let lhs_sign_bit = self.msb().cloned().unwrap();
         let rhs_sign_bit = rhs.msb().cloned().unwrap();
-        let mixed_sign_case = lhs_sign_bit.clone().equals(SymbolicBit::Literal(true))
-            & rhs_sign_bit.clone().equals(SymbolicBit::Literal(false));
+        let mixed_sign_case =
+            lhs_sign_bit.clone().equals(TRUE) & rhs_sign_bit.clone().equals(FALSE);
         let same_sign_case = lhs_sign_bit.equals(rhs_sign_bit) & self.less_than(rhs);
 
         mixed_sign_case | same_sign_case
@@ -527,8 +492,8 @@ impl SymbolicBitVec {
         assert_eq!(self.len(), rhs.len());
         let lhs_sign_bit = self[self.len() - 1].clone();
         let rhs_sign_bit = rhs[rhs.len() - 1].clone();
-        let mixed_sign_case = lhs_sign_bit.clone().equals(SymbolicBit::Literal(false))
-            & rhs_sign_bit.clone().equals(SymbolicBit::Literal(true));
+        let mixed_sign_case =
+            lhs_sign_bit.clone().equals(FALSE) & rhs_sign_bit.clone().equals(TRUE);
         let same_sign_case = lhs_sign_bit.equals(rhs_sign_bit) & self.greater_than(rhs);
 
         mixed_sign_case | same_sign_case
@@ -599,180 +564,5 @@ impl SymbolicBitVec {
             let lhs = std::mem::take(&mut self.bits[i]);
             self.bits[i] = selector.clone().select(lhs, rhs);
         });
-    }
-}
-
-enum ShiftDirection {
-    Left,
-    Right,
-}
-
-impl std::ops::Not for SymbolicBitVec {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        Self {
-            bits: self.bits.into_iter().map(|bit| !bit).collect(),
-        }
-    }
-}
-
-impl std::ops::BitAnd for SymbolicBitVec {
-    type Output = Self;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.bits.len(), rhs.bits.len());
-        Self {
-            bits: self
-                .bits
-                .into_iter()
-                .zip(rhs.bits)
-                .map(|(lhs, rhs)| lhs & rhs)
-                .collect(),
-        }
-    }
-}
-
-impl std::ops::BitOr for SymbolicBitVec {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.bits.len(), rhs.bits.len());
-        Self {
-            bits: self
-                .bits
-                .into_iter()
-                .zip(rhs.bits)
-                .map(|(lhs, rhs)| lhs | rhs)
-                .collect(),
-        }
-    }
-}
-
-impl std::ops::BitXor for SymbolicBitVec {
-    type Output = Self;
-
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.bits.len(), rhs.bits.len());
-        Self {
-            bits: self
-                .bits
-                .into_iter()
-                .zip(rhs.bits)
-                .map(|(lhs, rhs)| lhs ^ rhs)
-                .collect(),
-        }
-    }
-}
-
-impl std::ops::Shl<usize> for SymbolicBitVec {
-    type Output = Self;
-
-    fn shl(mut self, rhs: usize) -> Self::Output {
-        self <<= rhs;
-        self
-    }
-}
-
-impl std::ops::Shl for SymbolicBitVec {
-    type Output = Self;
-
-    fn shl(mut self, rhs: Self) -> Self::Output {
-        self <<= rhs;
-        self
-    }
-}
-
-impl std::ops::ShlAssign<usize> for SymbolicBitVec {
-    fn shl_assign(&mut self, rhs: usize) {
-        self.shift_mut(rhs, SymbolicBit::Literal(false), ShiftDirection::Left);
-    }
-}
-
-impl std::ops::ShlAssign for SymbolicBitVec {
-    fn shl_assign(&mut self, rhs: Self) {
-        for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
-            let mut shifted_value = self.clone();
-            shifted_value.shift_mut(1 << i, SymbolicBit::Literal(false), ShiftDirection::Left);
-            self.mux_mut(shifted_value, !shift_bit);
-        }
-    }
-}
-
-/// Performs an _unsigned_ right shift.
-impl std::ops::ShrAssign for SymbolicBitVec {
-    fn shr_assign(&mut self, rhs: Self) {
-        for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
-            let mut shifted_value = self.clone();
-            shifted_value.shift_mut(1 << i, SymbolicBit::Literal(false), ShiftDirection::Right);
-            self.mux_mut(shifted_value, !shift_bit);
-        }
-    }
-}
-
-impl std::ops::ShrAssign<usize> for SymbolicBitVec {
-    fn shr_assign(&mut self, rhs: usize) {
-        self.shift_mut(rhs, SymbolicBit::Literal(false), ShiftDirection::Right);
-    }
-}
-
-impl std::ops::Shr for SymbolicBitVec {
-    type Output = Self;
-
-    fn shr(mut self, rhs: Self) -> Self::Output {
-        self >>= rhs;
-        self
-    }
-}
-
-impl std::ops::Shr<usize> for SymbolicBitVec {
-    type Output = Self;
-
-    fn shr(mut self, rhs: usize) -> Self::Output {
-        self >>= rhs;
-        self
-    }
-}
-
-impl std::ops::Add for SymbolicBitVec {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.bits.len(), rhs.bits.len());
-        // The carry bit size is actually N+1 in order to track whether an overflow has occurred.
-        // The addition does not care about the overflow so remove this bit
-        let (sum, _) = self.addition_with_carry(rhs);
-        sum
-    }
-}
-
-impl std::ops::Neg for SymbolicBitVec {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        let num_bits = self.bits.len();
-        !self + SymbolicBitVec::constant(1, num_bits)
-    }
-}
-
-impl std::ops::Sub for SymbolicBitVec {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.bits.len(), rhs.bits.len());
-        self + (-rhs)
-    }
-}
-
-impl std::ops::Mul for SymbolicBitVec {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        // The output size is the sum of the number of bits. Clippy is overly zealous here flagging
-        // the addition as erroneous.
-        #[allow(clippy::suspicious_arithmetic_impl)]
-        let output_size = self.len() + rhs.len();
-
-        self.multiply(rhs, output_size)
     }
 }
