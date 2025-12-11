@@ -6,7 +6,7 @@ impl TryInto<Vec<SymbolicByte>> for SymbolicBitVec {
     type Error = String;
 
     fn try_into(self) -> Result<Vec<SymbolicByte>, Self::Error> {
-        if self.bits.len() % 8 == 0 {
+        if self.bits.len().is_multiple_of(8) {
             Ok(self.into_bytes())
         } else {
             Err(format!(

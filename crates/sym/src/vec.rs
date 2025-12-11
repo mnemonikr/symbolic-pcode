@@ -54,7 +54,7 @@ impl SymbolicBitVec {
     }
 
     pub fn into_bytes(self) -> Vec<SymbolicByte> {
-        assert_eq!(self.bits.len() % 8, 0);
+        assert!(self.bits.len().is_multiple_of(8));
         let num_bytes = self.bits.len() / 8;
 
         let mut bits = [FALSE; 8];
@@ -62,7 +62,7 @@ impl SymbolicBitVec {
 
         for (i, bit) in self.bits.into_iter().enumerate() {
             bits[i % 8] = bit;
-            if (i + 1) % 8 == 0 {
+            if (i + 1).is_multiple_of(8) {
                 bytes.push(bits.into());
                 bits = [FALSE; 8];
             }
@@ -72,7 +72,7 @@ impl SymbolicBitVec {
     }
 
     pub fn into_parts(self, num_bits: usize) -> Vec<Self> {
-        assert_eq!(self.bits.len() % num_bits, 0);
+        assert!(self.bits.len().is_multiple_of(8));
         let mut parts = Vec::new();
         let mut remainder = self;
         while remainder.len() > num_bits {
