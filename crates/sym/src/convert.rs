@@ -2,8 +2,18 @@ use std::rc::Rc;
 
 use aiger_circuit::circuit::{AigerCircuit, AndOperand, AsAigerCircuit};
 
+use crate::bit::{FALSE, SymbolicBit};
 use crate::buf::{SymbolicBitBuf, SymbolicByte};
-use crate::sym::{self, ConcretizationError, SymbolicBit, SymbolicBitVec};
+use crate::vec::SymbolicBitVec;
+
+#[derive(thiserror::Error, Debug)]
+pub enum ConcretizationError {
+    #[error("non-literal bit at index {bit_index}")]
+    NonLiteralBit { bit_index: usize },
+
+    #[error("value exceeded maximum number of bytes ({max_bytes})")]
+    Overflow { max_bytes: usize },
+}
 
 impl From<bool> for SymbolicBit {
     fn from(value: bool) -> Self {
@@ -210,7 +220,7 @@ impl FromIterator<u8> for SymbolicBitVec {
 
 pub fn symbolize(iter: impl IntoIterator<Item = u8>) -> impl Iterator<Item = SymbolicBit> {
     iter.into_iter().flat_map(|byte| {
-        let mut bits = [sym::FALSE; 8];
+        let mut bits = [FALSE; 8];
 
         for (index, bit) in bits.iter_mut().enumerate() {
             *bit = SymbolicBit::Literal((byte & (1 << index)) > 0);
