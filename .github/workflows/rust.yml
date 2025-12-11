@@ -16,7 +16,7 @@ jobs:
       matrix:
         toolchain:
           - "stable"
-          - "1.87" # MSRV
+          - "1.88" # MSRV
 
     steps:
     - uses: actions/checkout@v3
