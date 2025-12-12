@@ -28,7 +28,7 @@ impl SymbolicBitVec {
     }
 
     pub fn num_bytes(&self) -> usize {
-        self.bits.len().next_multiple_of(8) / 8
+        self.bits.len().div_ceil(8)
     }
 
     pub fn len(&self) -> usize {

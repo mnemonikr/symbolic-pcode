@@ -84,17 +84,15 @@ impl<const N: usize> std::ops::IndexMut<usize> for SymbolicBitBuf<N> {
 impl<const N: usize> From<SymbolicBitBuf<N>> for Vec<SymbolicByte> {
     fn from(mut value: SymbolicBitBuf<N>) -> Self {
         const {
-            assert!(N % 8 == 0);
+            assert!(N.is_multiple_of(8));
         }
 
-        let num_bytes = N / 8;
-        let mut result = Vec::with_capacity(num_bytes);
-        for n in 0..num_bytes {
-            let mut bits = [crate::FALSE; 8];
-            for i in 0..8 {
-                std::mem::swap(&mut bits[i], &mut value.bits[8 * n + i]);
-            }
-            result.push(SymbolicByte::from(bits));
+        let mut result = Vec::with_capacity(N / 8);
+        let (buf_bytes, _) = value.bits.as_chunks_mut::<8>();
+        for buf_byte in buf_bytes {
+            let mut byte = [crate::FALSE; 8];
+            std::mem::swap(&mut byte, buf_byte);
+            result.push(SymbolicByte::from(byte));
         }
 
         result
@@ -109,8 +107,7 @@ impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
             let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
                 value
                     .into_iter()
-                    .map(|byte| byte.into_inner().into_iter())
-                    .flatten()
+                    .flat_map(|byte| byte.into_inner().into_iter())
                     .enumerate()
                     .for_each(|(i, bit)| {
                         uninit_bits[i].write(bit);
@@ -136,8 +133,7 @@ impl<const N: usize> TryFrom<Vec<&SymbolicByte>> for SymbolicBitBuf<N> {
             let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
                 value
                     .into_iter()
-                    .map(|byte| byte.inner().iter())
-                    .flatten()
+                    .flat_map(|byte| byte.inner().iter())
                     .cloned()
                     .enumerate()
                     .for_each(|(i, bit)| {
@@ -221,7 +217,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
         let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
             self.bits
                 .into_iter()
-                .chain(rhs.bits.into_iter())
+                .chain(rhs.bits)
                 .enumerate()
                 .for_each(|(i, bit)| {
                     uninit_bits[i].write(bit);
