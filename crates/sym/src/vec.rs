@@ -225,7 +225,7 @@ impl SymbolicBitVec {
     /// # Unsigned Example
     ///
     /// ```
-    /// # use sym::SymbolicBitVec;
+    /// # use symbit::SymbolicBitVec;
     /// let x = SymbolicBitVec::constant(2, 4);
     /// let y = SymbolicBitVec::constant(15, 4);
     ///
@@ -240,7 +240,7 @@ impl SymbolicBitVec {
     /// # Signed Example
     ///
     /// ```
-    /// # use sym::SymbolicBitVec;
+    /// # use symbit::SymbolicBitVec;
     /// let x = SymbolicBitVec::constant(0x2, 4); // Positive 2
     /// let y = SymbolicBitVec::constant(0xF, 4); // Negative 1
     ///

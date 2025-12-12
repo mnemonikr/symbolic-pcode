@@ -9,7 +9,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-sym = { path = "../crates/sym" }
+symbit = { path = "../crates/sym" }
 pcode-ops = { path = "../crates/pcode-ops" }
 symbolic-pcode = { path = "../crates/pcode" }
 

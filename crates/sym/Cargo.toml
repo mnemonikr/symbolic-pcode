@@ -1,5 +1,5 @@
 [package]
-name = "sym"
+name = "symbit"
 description = "Symbolic representation of binary data"
 version = "0.1.0"
 
