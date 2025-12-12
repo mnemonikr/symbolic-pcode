@@ -2,7 +2,7 @@
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 
-use crate::SymbolicBit;
+use crate::bit::{FALSE, SymbolicBit};
 
 /// An array of symbolic bits.
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -62,9 +62,7 @@ impl<const N: usize> From<SymbolicBitBuf<N>> for [SymbolicBit; N] {
 
 impl<const N: usize> Default for SymbolicBitBuf<N> {
     fn default() -> Self {
-        const DEFAULT: SymbolicBit = SymbolicBit::Literal(false);
-        let bits = [DEFAULT; N];
-        Self { bits }
+        Self { bits: [FALSE; N] }
     }
 }
 
@@ -84,17 +82,15 @@ impl<const N: usize> std::ops::IndexMut<usize> for SymbolicBitBuf<N> {
 impl<const N: usize> From<SymbolicBitBuf<N>> for Vec<SymbolicByte> {
     fn from(mut value: SymbolicBitBuf<N>) -> Self {
         const {
-            assert!(N % 8 == 0);
+            assert!(N.is_multiple_of(8));
         }
 
-        let num_bytes = N / 8;
-        let mut result = Vec::with_capacity(num_bytes);
-        for n in 0..num_bytes {
-            let mut bits = [crate::FALSE; 8];
-            for i in 0..8 {
-                std::mem::swap(&mut bits[i], &mut value.bits[8 * n + i]);
-            }
-            result.push(SymbolicByte::from(bits));
+        let mut result = Vec::with_capacity(N / 8);
+        let (buf_bytes, _) = value.bits.as_chunks_mut::<8>();
+        for buf_byte in buf_bytes {
+            let mut byte = [FALSE; 8];
+            std::mem::swap(&mut byte, buf_byte);
+            result.push(SymbolicByte::from(byte));
         }
 
         result
@@ -109,8 +105,7 @@ impl<const N: usize> TryFrom<Vec<SymbolicByte>> for SymbolicBitBuf<N> {
             let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
                 value
                     .into_iter()
-                    .map(|byte| byte.into_inner().into_iter())
-                    .flatten()
+                    .flat_map(|byte| byte.into_inner().into_iter())
                     .enumerate()
                     .for_each(|(i, bit)| {
                         uninit_bits[i].write(bit);
@@ -136,8 +131,7 @@ impl<const N: usize> TryFrom<Vec<&SymbolicByte>> for SymbolicBitBuf<N> {
             let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
                 value
                     .into_iter()
-                    .map(|byte| byte.inner().iter())
-                    .flatten()
+                    .flat_map(|byte| byte.inner().iter())
                     .cloned()
                     .enumerate()
                     .for_each(|(i, bit)| {
@@ -221,7 +215,7 @@ impl<const N: usize> SymbolicBitBuf<N> {
         let initializer = |uninit_bits: &mut [MaybeUninit<SymbolicBit>]| {
             self.bits
                 .into_iter()
-                .chain(rhs.bits.into_iter())
+                .chain(rhs.bits)
                 .enumerate()
                 .for_each(|(i, bit)| {
                     uninit_bits[i].write(bit);
@@ -336,7 +330,7 @@ impl<const N: usize> std::ops::ShlAssign for SymbolicBitBuf<N> {
     fn shl_assign(&mut self, rhs: Self) {
         for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
             let mut shifted_value = self.clone();
-            shifted_value.shift(1 << i, SymbolicBit::Literal(false), ShiftDirection::Left);
+            shifted_value.shift(1 << i, FALSE, ShiftDirection::Left);
             self.mux(shifted_value, !shift_bit);
         }
     }
@@ -353,7 +347,7 @@ impl<const N: usize> std::ops::Shl for SymbolicBitBuf<N> {
 
 impl<const N: usize> std::ops::ShlAssign<usize> for SymbolicBitBuf<N> {
     fn shl_assign(&mut self, rhs: usize) {
-        self.shift(rhs, SymbolicBit::Literal(false), ShiftDirection::Left);
+        self.shift(rhs, FALSE, ShiftDirection::Left);
     }
 }
 
@@ -371,7 +365,7 @@ impl<const N: usize> std::ops::ShrAssign for SymbolicBitBuf<N> {
     fn shr_assign(&mut self, rhs: Self) {
         for (i, shift_bit) in rhs.bits.into_iter().enumerate() {
             let mut shifted_value = self.clone();
-            shifted_value.shift(1 << i, SymbolicBit::Literal(false), ShiftDirection::Right);
+            shifted_value.shift(1 << i, FALSE, ShiftDirection::Right);
             self.mux(shifted_value, !shift_bit);
         }
     }
@@ -388,7 +382,7 @@ impl<const N: usize> std::ops::Shr for SymbolicBitBuf<N> {
 
 impl<const N: usize> std::ops::ShrAssign<usize> for SymbolicBitBuf<N> {
     fn shr_assign(&mut self, rhs: usize) {
-        self.shift(rhs, SymbolicBit::Literal(false), ShiftDirection::Right);
+        self.shift(rhs, FALSE, ShiftDirection::Right);
     }
 }
 
