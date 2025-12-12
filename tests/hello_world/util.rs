@@ -1,4 +1,4 @@
-use sym::SymbolicBitVec;
+use symbit::SymbolicBitVec;
 use symbolic_pcode::libsla::{Address, Sleigh, VarnodeData};
 use symbolic_pcode::mem::VarnodeDataStore;
 

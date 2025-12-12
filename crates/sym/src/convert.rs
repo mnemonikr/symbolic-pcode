@@ -46,7 +46,7 @@ impl From<SymbolicBit> for SymbolicBitVec {
 /// # Examples
 ///
 /// ```
-/// # use sym::{ConcreteValue, SymbolicBitBuf};
+/// # use symbit::{ConcreteValue, SymbolicBitBuf};
 /// let value = ConcreteValue::new(0xDEADBEEFu32);
 /// let buf = SymbolicBitBuf::<32>::from(value);
 /// assert_eq!(value, buf.try_into().unwrap());

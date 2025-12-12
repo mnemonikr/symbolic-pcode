@@ -1,5 +1,5 @@
 use pcode_ops::PcodeOps;
-use sym::{self, Evaluator, SymbolicBitVec, VariableAssignments};
+use symbit::{self, Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
 use symbolic_pcode::{
     arch::x86::processor::ProcessorHandlerX86,
     emulator::StandardPcodeEmulator,
@@ -279,7 +279,7 @@ fn z3_integration() -> processor::Result<()> {
         common::EXIT_IP_ADDR.into(),
     )?;
 
-    let input_value = sym::SymbolicBitVec::with_size(32);
+    let input_value = SymbolicBitVec::with_size(32);
 
     // Input register is EDI
     let name = "EDI";
@@ -493,7 +493,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     )?;
 
     // Create symbolic input
-    let input_value: [_; 32] = std::array::from_fn(sym::SymbolicBit::Variable);
+    let input_value: [_; 32] = std::array::from_fn(SymbolicBit::Variable);
     let input_value = input_value.into_iter().collect();
 
     // The test will emulate with a symbolic value. However if we encounter any branch that uses a
@@ -560,7 +560,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     let parent_path = branches
         .into_iter()
         .reduce(|x, y| x & y)
-        .unwrap_or(sym::TRUE);
+        .unwrap_or(symbit::TRUE);
     let other_branch = parent_path & !last_branch;
 
     // Solve with Z3

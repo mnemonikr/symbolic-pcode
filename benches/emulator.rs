@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use pcode_ops::PcodeOps;
-use sym::{SymbolicBitVec, SymbolicByte};
+use symbit::{SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
