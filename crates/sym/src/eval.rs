@@ -113,10 +113,10 @@ impl VariableAssignments {
     pub fn from_bitvecs(variables: &SymbolicBitVec, literals: &SymbolicBitVec) -> Self {
         let iter =
             std::iter::zip(variables.iter(), literals.iter()).filter_map(|(variable, literal)| {
-                if let SymbolicBit::Variable(variable) = variable {
-                    if let SymbolicBit::Literal(literal) = literal {
-                        return Some((*variable, *literal));
-                    }
+                if let SymbolicBit::Variable(variable) = variable
+                    && let SymbolicBit::Literal(literal) = literal
+                {
+                    return Some((*variable, *literal));
                 }
 
                 None
