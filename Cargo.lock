@@ -50,7 +50,7 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "pcode-ops",
- "sym",
+ "symbit",
  "symbolic-pcode",
 ]
 
@@ -537,9 +537,9 @@ dependencies = [
 
 [[package]]
 name = "libsla-sys"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d336878d48818bcfb2047fe5c3ee3af18e39cbc2d08a6fcb6213801ff81d8e57"
+checksum = "9f2662124969c0a607944ebff7402f50371751ea2329a9ce21e5ef9c6c7caf47"
 dependencies = [
  "cxx",
  "cxx-build",
@@ -831,7 +831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-name = "sym"
+name = "symbit"
 version = "0.1.0"
 dependencies = [
  "aiger-circuit",
@@ -847,6 +847,14 @@ dependencies = [
  "log",
  "pcode-ops",
  "thiserror",
+]
+
+[[package]]
+name = "sympcode"
+version = "0.1.0"
+dependencies = [
+ "pcode-ops",
+ "symbit",
 ]
 
 [[package]]
@@ -879,8 +887,8 @@ dependencies = [
  "flexi_logger",
  "pcode-ops",
  "sleigh-config",
- "sym",
  "symbolic-pcode",
+ "sympcode",
  "z3",
 ]
 

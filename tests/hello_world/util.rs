@@ -1,6 +1,7 @@
-use symbit::SymbolicBitVec;
 use symbolic_pcode::libsla::{Address, Sleigh, VarnodeData};
 use symbolic_pcode::mem::VarnodeDataStore;
+use sympcode::SymPcode;
+use sympcode::symbit::SymbolicBitVec;
 
 use crate::common::{INITIAL_STACK, Memory};
 
@@ -21,7 +22,10 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
         size: 8,
     };
     memory
-        .write(&argc, SymbolicBitVec::constant(1, u64::BITS as usize))
+        .write_value(
+            &argc,
+            SymPcode::from(SymbolicBitVec::constant(1, u64::BITS as usize)),
+        )
         .expect("failed to initialize argc on stack");
 
     // The argv list must be terminated by null pointer. Setting program name to null AND
@@ -37,7 +41,10 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
         size: 16,
     };
     memory
-        .write(&argv, SymbolicBitVec::constant(0, (2 * u64::BITS) as usize))
+        .write_value(
+            &argv,
+            SymPcode::from(SymbolicBitVec::constant(0, (2 * u64::BITS) as usize)),
+        )
         .expect("failed to initialize argv");
 
     let envp = VarnodeData {
@@ -48,7 +55,10 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
         size: 8,
     };
     memory
-        .write(&envp, SymbolicBitVec::constant(0, u64::BITS as usize))
+        .write_value(
+            &envp,
+            SymPcode::from(SymbolicBitVec::constant(0, u64::BITS as usize)),
+        )
         .expect("failed to initialize envp");
 
     // musl targets initialize the libc pagesize using aux[AT_PAGESZ]. For architectures without a
@@ -66,23 +76,26 @@ pub fn initialize_libc_stack(memory: &mut Memory, sleigh: &impl Sleigh) {
     // The index for AT_PAGESZ
     let at_pagesz = 6;
     memory
-        .write(
+        .write_value(
             &auxv,
-            SymbolicBitVec::constant(at_pagesz, u64::BITS as usize),
+            SymPcode::from(SymbolicBitVec::constant(at_pagesz, u64::BITS as usize)),
         )
         .expect("failed to write AT_PAGESZ into auxv");
     auxv.address.offset += auxv.size as u64;
 
     let page_size = 4096;
     memory
-        .write(
+        .write_value(
             &auxv,
-            SymbolicBitVec::constant(page_size, u64::BITS as usize),
+            SymPcode::from(SymbolicBitVec::constant(page_size, u64::BITS as usize)),
         )
         .expect("failed to write page size into auxv");
     auxv.address.offset += auxv.size as u64;
 
     memory
-        .write(&auxv, SymbolicBitVec::constant(0, u64::BITS as usize))
+        .write_value(
+            &auxv,
+            SymPcode::from(SymbolicBitVec::constant(0, u64::BITS as usize)),
+        )
         .expect("failed to initialize auxv");
 }

@@ -1,0 +1,12 @@
+[package]
+name = "sympcode"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+symbit = { version = "0.1", path = "../sym" }
+pcode-ops = { version = "0.1", path = "../pcode-ops/" }

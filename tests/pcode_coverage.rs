@@ -46,7 +46,7 @@ fn pcode_coverage() -> processor::Result<()> {
         size: common::EXIT_IP_ADDR.to_le_bytes().len(),
     };
     memory
-        .write(&stack_addr, common::EXIT_IP_ADDR.into())
+        .write_value(&stack_addr, common::EXIT_IP_ADDR)
         .expect("failed to initialize stack");
 
     let handler = ProcessorHandlerX86::new(&sleigh);
@@ -73,7 +73,7 @@ fn pcode_coverage() -> processor::Result<()> {
 
         let instruction_pointer: u64 = processor
             .memory()
-            .read(&rip)?
+            .read_value(&rip)?
             .try_into()
             .expect("failed to concretize RIP");
 
@@ -89,7 +89,7 @@ fn pcode_coverage() -> processor::Result<()> {
         .expect("failed to get RAX register");
     let return_value: u64 = processor
         .memory()
-        .read(&rax)?
+        .read_value(&rax)?
         .try_into()
         .expect("failed to concretize RAX");
     assert_eq!(
@@ -152,7 +152,7 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
         size: common::EXIT_IP_ADDR.to_le_bytes().len(),
     };
     memory
-        .write(&stack_addr, common::EXIT_IP_ADDR.into())
+        .write_value(&stack_addr, common::EXIT_IP_ADDR)
         .expect("failed to initialize stack");
 
     let handler = arch::aarch64::processor::ProcessorHandler::new(&sleigh);
@@ -179,7 +179,7 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
 
         let instruction_pointer: u64 = processor
             .memory()
-            .read(&pc)?
+            .read_value(&pc)?
             .try_into()
             .expect("failed to concretize pc register");
 
@@ -195,7 +195,7 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
         .expect("failed to get x0 register");
     let return_value: u64 = processor
         .memory()
-        .read(&return_register)?
+        .read_value(&return_register)?
         .try_into()
         .expect("failed to concretize return register");
     assert_eq!(
