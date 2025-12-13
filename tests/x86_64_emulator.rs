@@ -343,7 +343,6 @@ fn z3_integration() -> processor::Result<()> {
     );
 
     let result = memory_tree.read(&eax)?.into_inner();
-    //let result: SymbolicBitVec = result.into_iter().collect();
 
     let assertion = result.equals(SymbolicBitVec::constant(8, 32));
     let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&assertion));
