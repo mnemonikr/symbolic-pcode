@@ -1,5 +1,4 @@
-use pcode_ops::PcodeOps;
-use symbit::{self, Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
+use pcode_ops::{PcodeOps, convert::PcodeValue};
 use symbolic_pcode::{
     arch::x86::processor::ProcessorHandlerX86,
     emulator::StandardPcodeEmulator,
@@ -7,6 +6,8 @@ use symbolic_pcode::{
     mem::{MemoryTree, VarnodeDataStore},
     processor::{self, BranchingProcessor, Processor, ProcessorState},
 };
+use sympcode::SymPcode;
+use sympcode::symbit::{self, Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
 
 use crate::common::{self, Memory, x86_64_sleigh};
 
@@ -20,7 +21,7 @@ fn x86_64_registers() {
             .register_from_name(name)
             .unwrap_or_else(|_| panic!("invalid register {name}"));
         memory
-            .write(&register, data.iter().copied().collect())
+            .write_value(&register, data.iter().copied().collect::<PcodeValue<_>>())
             .unwrap_or_else(|_| panic!("failed to write register {name}"));
     };
 
@@ -29,7 +30,7 @@ fn x86_64_registers() {
             .register_from_name(name)
             .unwrap_or_else(|_| panic!("invalid register {name}"));
         memory
-            .read(&register)
+            .read_value(&register)
             .unwrap_or_else(|_| panic!("failed to read register {name}"))
     };
 
@@ -151,19 +152,22 @@ fn doubler_32b() -> processor::Result<()> {
             .register_from_name(name)
             .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
         memory
-            .write(&register, data.iter().copied().collect())
+            .write_value(&register, data.iter().copied().collect::<PcodeValue<_>>())
             .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
     };
 
     let code_space = sleigh.default_code_space();
     let code = b"\x55\x48\x89\xe5\x89\x7d\xfc\x8b\x45\xfc\x01\xc0\x5d\xc3\x00\x00";
     let destination = VarnodeData::new(Address::new(code_space, base_addr), code.len());
-    memory.write(&destination, code.into_iter().copied().collect())?;
+    memory.write_value(
+        &destination,
+        code.into_iter().copied().collect::<PcodeValue<_>>(),
+    )?;
 
     write_register(&mut memory, "RSP", b"\x00\x01\x01\x01\x01\x01\x01\x00");
     write_register(&mut memory, "RBP", b"\x00\x02\x02\x02\x02\x02\x02\x00");
 
-    memory.write(
+    memory.write_value(
         &VarnodeData::new(
             Address::new(
                 sleigh
@@ -173,7 +177,7 @@ fn doubler_32b() -> processor::Result<()> {
             ),
             8,
         ),
-        0x66778899aabbccddu64.into(),
+        0x66778899aabbccddu64,
     )?;
 
     let initial_value: u32 = 0x99;
@@ -197,7 +201,7 @@ fn doubler_32b() -> processor::Result<()> {
         .expect("failed to get RIP register");
     let rip_value: u64 = processor
         .memory()
-        .read(&rip)?
+        .read_value(&rip)?
         .try_into()
         .expect("failed to convert rip value to u64");
     assert_eq!(rip_value, 0x66778899aabbccdd, "return address on stack");
@@ -207,7 +211,7 @@ fn doubler_32b() -> processor::Result<()> {
         .expect("failed to get RAX register");
     let rax_value: u64 = processor
         .memory()
-        .read(&rax)?
+        .read_value(&rax)?
         .try_into()
         .expect("failed to convert rax value to u64");
     assert_eq!(
@@ -230,7 +234,7 @@ fn z3_integration() -> processor::Result<()> {
             .register_from_name(name)
             .unwrap_or_else(|_| panic!("invalid register {name}"));
         memory
-            .write(&register, data.iter().copied().collect())
+            .write_value(&register, data.iter().copied().collect::<PcodeValue<_>>())
             .unwrap_or_else(|_| panic!("failed to write register {name}"));
     };
 
@@ -252,12 +256,12 @@ fn z3_integration() -> processor::Result<()> {
     ];
 
     let code_offset = 0;
-    memory.write(
+    memory.write_value(
         &VarnodeData::new(
             Address::new(sleigh.default_code_space(), code_offset),
             program_bytes.len(),
         ),
-        program_bytes.into_iter().collect(),
+        program_bytes.into_iter().collect::<PcodeValue<_>>(),
     )?;
     write_register(&mut memory, "RIP", &code_offset.to_le_bytes());
 
@@ -266,7 +270,7 @@ fn z3_integration() -> processor::Result<()> {
     write_register(&mut memory, "RBP", &common::INITIAL_STACK.to_le_bytes());
 
     // Put EXIT_IP_ADDR onto the stack. The final RET will trigger this.
-    memory.write(
+    memory.write_value(
         &VarnodeData::new(
             Address::new(
                 sleigh
@@ -276,10 +280,10 @@ fn z3_integration() -> processor::Result<()> {
             ),
             common::EXIT_IP_ADDR.to_le_bytes().len(),
         ),
-        common::EXIT_IP_ADDR.into(),
+        common::EXIT_IP_ADDR,
     )?;
 
-    let input_value = SymbolicBitVec::with_size(32);
+    let input_value = SymPcode::with_variables(0..32);
 
     // Input register is EDI
     let name = "EDI";
@@ -287,7 +291,7 @@ fn z3_integration() -> processor::Result<()> {
         .register_from_name(name)
         .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
     memory
-        .write(&register, input_value)
+        .write_value(&register, input_value)
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
@@ -309,7 +313,7 @@ fn z3_integration() -> processor::Result<()> {
             let rip_value: u64 = processors[i]
                 .processor()
                 .memory()
-                .read(&rip)
+                .read_value(&rip)
                 .expect("failed to read RIP")
                 .try_into()
                 .expect("failed to concretize RIP");
@@ -337,8 +341,9 @@ fn z3_integration() -> processor::Result<()> {
         finished.iter().map(|p| p.processor().memory()),
         std::iter::empty(),
     );
-    let result = memory_tree.read(&eax)?;
-    let result: SymbolicBitVec = result.into_iter().collect();
+
+    let result = memory_tree.read(&eax)?.into_inner();
+    //let result: SymbolicBitVec = result.into_iter().collect();
 
     let assertion = result.equals(SymbolicBitVec::constant(8, 32));
     let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&assertion));
@@ -443,7 +448,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
             .register_from_name(name)
             .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
         memory
-            .write(&register, data.iter().copied().collect())
+            .write_value(&register, data.iter().copied().collect::<PcodeValue<_>>())
             .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
     };
 
@@ -465,12 +470,12 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     ];
 
     let code_offset = 0;
-    memory.write(
+    memory.write_value(
         &VarnodeData::new(
             Address::new(sleigh.default_code_space(), code_offset),
             program_bytes.len(),
         ),
-        program_bytes.into_iter().collect(),
+        program_bytes.into_iter().collect::<PcodeValue<_>>(),
     )?;
     write_register(&mut memory, "RIP", &code_offset.to_le_bytes());
 
@@ -479,7 +484,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     write_register(&mut memory, "RBP", &common::INITIAL_STACK.to_le_bytes());
 
     // Put EXIT_IP_ADDR onto the stack. The final RET will trigger this.
-    memory.write(
+    memory.write_value(
         &VarnodeData::new(
             Address::new(
                 sleigh
@@ -489,7 +494,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
             ),
             common::EXIT_IP_ADDR.to_le_bytes().len(),
         ),
-        common::EXIT_IP_ADDR.into(),
+        common::EXIT_IP_ADDR,
     )?;
 
     // Create symbolic input
@@ -511,7 +516,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         .register_from_name(name)
         .unwrap_or_else(|err| panic!("invalid register {name}: {err}"));
     memory
-        .write(&register, input_value)
+        .write_value(&register, SymPcode::from(input_value))
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
@@ -524,13 +529,17 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     loop {
         if let Err(e) = processor.step(&sleigh) {
             if let processor::Error::SymbolicBranch { condition_origin } = &e {
-                let condition = processor.memory().read(condition_origin)?;
+                let condition = processor
+                    .memory()
+                    .read_value(condition_origin)?
+                    .into_inner()
+                    .into_inner();
                 let evaluation = evaluator
-                    .evaluate(&processor.memory().read_bit(condition_origin)?)
+                    .evaluate(&processor.memory().read_bit(condition_origin)?.into())
                     .response
                     .expect("evaluation should be concrete");
                 if evaluation {
-                    branches.push(condition.not_equals(0u8.into()));
+                    branches.push(!condition.equals(0u8.into()));
                 } else {
                     branches.push(condition.equals(0u8.into()));
                 }
@@ -544,7 +553,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         // Exit loop when we reach the magic RIP
         let instruction_pointer: u64 = processor
             .memory()
-            .read(&rip)?
+            .read_value(&rip)?
             .try_into()
             .expect("failed to concretize RIP");
         if instruction_pointer == common::EXIT_IP_ADDR

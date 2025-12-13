@@ -1,10 +1,11 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
+use pcode_ops::convert::PcodeValue;
 use sleigh_config::{processor_aarch64, processor_x86};
-use symbit::{SymbolicBit, SymbolicBitVec, SymbolicByte};
 use symbolic_pcode::libsla::{self, Address, GhidraSleigh, Sleigh, VarnodeData};
 use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
+use sympcode::SymPcode;
 
 static LOGGER_INIT: OnceLock<flexi_logger::LoggerHandle> = OnceLock::new();
 
@@ -20,7 +21,7 @@ pub fn initialize_logger() -> &'static flexi_logger::LoggerHandle {
 pub const INITIAL_STACK: u64 = 0x8000000000;
 pub const EXIT_IP_ADDR: u64 = 0xFEEDBEEF0BADF00D;
 
-pub type Memory = GenericMemory<SymbolicBitVec>;
+pub type Memory = GenericMemory<SymPcode>;
 
 pub fn x86_64_sleigh() -> libsla::Result<GhidraSleigh> {
     let sleigh = GhidraSleigh::builder()
@@ -71,9 +72,12 @@ pub fn memory_with_image(
         let offset = segment.p_offset as usize;
         let file_size = segment.p_filesz as usize;
         memory
-            .write(
+            .write_value(
                 &data_location,
-                data[offset..offset + file_size].iter().copied().collect(),
+                data[offset..offset + file_size]
+                    .iter()
+                    .copied()
+                    .collect::<PcodeValue<_>>(),
             )
             .expect("failed to write image section into memory");
 
@@ -98,14 +102,17 @@ pub fn memory_with_image(
                 vaddr = segment.p_vaddr
             );
             memory
-                .write(&zeros_location, zeros.into_iter().collect())
+                .write_value(
+                    &zeros_location,
+                    zeros.into_iter().collect::<PcodeValue<_>>(),
+                )
                 .expect("failed to write zeros into memory");
         }
     }
 
     // Init RIP to entry
     memory
-        .write(pc_register, elf.ehdr.e_entry.into())
+        .write_value(pc_register, elf.ehdr.e_entry)
         .expect("failed to initialize PC register");
 
     memory
@@ -137,7 +144,7 @@ pub fn init_registers_x86_64(sleigh: &impl Sleigh, memory: &mut Memory) {
         .register_from_name("DF")
         .expect("failed to get DF register");
     memory
-        .write(&df_register, 0u8.into())
+        .write_value(&df_register, 0u8)
         .expect("failed to init DF register");
 }
 
@@ -154,7 +161,7 @@ pub fn init_registers_aarch64(sleigh: &impl Sleigh, memory: &mut Memory) {
         .register_from_name("x30")
         .expect("invalid link register");
     memory
-        .write(&link_register, EXIT_IP_ADDR.into())
+        .write_value(&link_register, EXIT_IP_ADDR)
         .expect("failed to initialize link register");
 
     // Initialize system register `dczid_el0`
@@ -175,7 +182,7 @@ pub fn init_registers_aarch64(sleigh: &impl Sleigh, memory: &mut Memory) {
         .register_from_name("dczid_el0")
         .expect("unknown register");
     memory
-        .write(&dczid_el0, 0x10u64.into())
+        .write_value(&dczid_el0, 0x10u64)
         .expect("failed to initialize dczid_el0");
 }
 
@@ -187,34 +194,22 @@ fn init_registers(
 ) {
     let mut bitvar = 0;
     for register_name in registers.into_iter() {
-        let mut bytes = Vec::with_capacity(8);
-        for _ in 0..8 {
-            let byte: SymbolicByte = [
-                SymbolicBit::Variable(bitvar),
-                SymbolicBit::Variable(bitvar + 1),
-                SymbolicBit::Variable(bitvar + 2),
-                SymbolicBit::Variable(bitvar + 3),
-                SymbolicBit::Variable(bitvar + 4),
-                SymbolicBit::Variable(bitvar + 5),
-                SymbolicBit::Variable(bitvar + 6),
-                SymbolicBit::Variable(bitvar + 7),
-            ]
-            .into();
-            bytes.push(byte);
-            bitvar += 8;
-        }
-
         let register = sleigh
             .register_from_name(&register_name)
             .unwrap_or_else(|err| panic!("invalid register {register_name}: {err}"));
+        let num_bits = register.size * 8;
         memory
-            .write(&register, bytes.into_iter().collect())
+            .write(
+                &register,
+                SymPcode::with_variables(bitvar..bitvar + num_bits),
+            )
             .unwrap_or_else(|err| panic!("failed to write register {register_name}: {err}"));
+        bitvar += num_bits;
     }
 
     // Init stack register to stack address
     memory
-        .write(stack_register, INITIAL_STACK.into())
+        .write_value(stack_register, INITIAL_STACK)
         .expect("failed to initialize stack register");
 }
 

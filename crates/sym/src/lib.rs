@@ -2,7 +2,6 @@ mod bit;
 mod buf;
 mod convert;
 mod eval;
-mod pcode;
 mod vec;
 
 pub use crate::bit::*;
