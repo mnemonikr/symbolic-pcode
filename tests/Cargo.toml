@@ -12,7 +12,7 @@ edition.workspace = true
 aiger-circuit = "1"
 symbolic-pcode = { path = "../crates/pcode" }
 pcode-ops = { path = "../crates/pcode-ops" }
-symbit = { path = "../crates/sym" }
+sympcode = { path = "../crates/sympcode" }
 
 [dev-dependencies]
 flexi_logger = "0.31"

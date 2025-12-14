@@ -47,7 +47,14 @@ fn hello_world_x86_linux() -> processor::Result<()> {
     let mut processor = Processor::new(memory, emulator, handler);
 
     loop {
+        let print_pcode = matches!(processor.state(), ProcessorState::Decode(_));
         processor.step(sleigh.as_ref())?;
+
+        if print_pcode && let ProcessorState::Execute(e) = processor.state() {
+            for instr in &e.pcode().instructions {
+                println!("{instr}");
+            }
+        }
 
         // Debug
         if matches!(processor.state(), ProcessorState::Decode(_)) {
