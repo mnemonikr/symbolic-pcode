@@ -50,8 +50,8 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "pcode-ops",
- "symbit",
  "symbolic-pcode",
+ "sympcode",
 ]
 
 [[package]]

@@ -2,16 +2,16 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use pcode_ops::PcodeOps;
-use symbit::{SymbolicBitVec, SymbolicByte};
+use pcode_ops::convert::PcodeValue;
 use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
 use symbolic_pcode::libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
 };
 use symbolic_pcode::mem::{GenericMemory, VarnodeDataStore};
+use sympcode::SymPcode;
 
-type Memory = GenericMemory<SymbolicBitVec>;
+type Memory = GenericMemory<SymPcode>;
 
 const fn processor_space() -> AddressSpace {
     AddressSpace {
@@ -47,7 +47,7 @@ const fn internal_space() -> AddressSpace {
 }
 
 fn setup_copy() -> (Memory, PcodeInstruction) {
-    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
+    let data = 0x1122334455667788u64;
     let mut memory = Memory::default();
 
     let pcode_copy = PcodeInstruction {
@@ -73,7 +73,7 @@ fn setup_copy() -> (Memory, PcodeInstruction) {
     };
 
     memory
-        .write(&pcode_copy.inputs[0], data)
+        .write_value(&pcode_copy.inputs[0], data)
         .expect("failed to initialize memory");
 
     (memory, pcode_copy)
@@ -118,13 +118,12 @@ fn setup_load() -> (Memory, PcodeInstruction) {
 
     // Write indirect offset to memory
     let offset = 0x5678u64;
-    let indirect_offset = SymbolicBitVec::from_le(offset);
     memory
-        .write(&pcode_load.inputs[1], indirect_offset)
+        .write_value(&pcode_load.inputs[1], offset)
         .expect("failed to write indirect offset");
 
     // Write data to memory
-    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
+    let data = 0x1122334455667788u64;
     let data_varnode = VarnodeData {
         address: Address {
             offset,
@@ -133,7 +132,7 @@ fn setup_load() -> (Memory, PcodeInstruction) {
         size: 8,
     };
     memory
-        .write(&data_varnode, data)
+        .write_value(&data_varnode, data)
         .expect("failed to write data");
 
     (memory, pcode_load)
@@ -178,15 +177,14 @@ fn setup_store() -> (Memory, PcodeInstruction) {
 
     // Write indirect offset to memory
     let offset = 0x5678u64;
-    let indirect_offset = SymbolicBitVec::from_le(offset);
     memory
-        .write(&instruction.inputs[1], indirect_offset)
+        .write_value(&instruction.inputs[1], offset)
         .expect("failed to write indirect offset");
 
     // Write data to memory
-    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
+    let data = 0x1122334455667788u64;
     memory
-        .write(&instruction.inputs[2], data)
+        .write_value(&instruction.inputs[2], data)
         .expect("failed to write data");
 
     (memory, instruction)
@@ -230,9 +228,9 @@ fn setup_subpiece() -> (Memory, PcodeInstruction) {
     let mut memory = Memory::default();
 
     // Write data to memory
-    let data = SymbolicBitVec::from_le(0x1122334455667788u64);
+    let data = 0x1122334455667788u64;
     memory
-        .write(&instruction.inputs[0], data)
+        .write_value(&instruction.inputs[0], data)
         .expect("failed to write data");
 
     (memory, instruction)
@@ -303,27 +301,25 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
         };
 
         memory
-            .write(
+            .write_value(
                 &instruction.inputs[0],
                 0xfedcba9876543210u64
                     .to_le_bytes()
                     .into_iter()
-                    .map(SymbolicByte::from)
                     .take(instruction.inputs[0].size)
-                    .collect(),
+                    .collect::<PcodeValue<_>>(),
             )
             .expect("failed to write lhs");
 
         if instruction.inputs.len() > 1 {
             memory
-                .write(
+                .write_value(
                     &instruction.inputs[1],
                     0x0123456789abcdefu64
                         .to_le_bytes()
                         .into_iter()
-                        .map(SymbolicByte::from)
                         .take(instruction.inputs[1].size)
-                        .collect(),
+                        .collect::<PcodeValue<_>>(),
                 )
                 .expect("failed to write rhs");
         }
