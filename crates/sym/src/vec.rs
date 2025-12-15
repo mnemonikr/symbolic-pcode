@@ -23,6 +23,10 @@ impl SymbolicBitVec {
         self.bits.back()
     }
 
+    pub fn lsb(&self) -> Option<&SymbolicBit> {
+        self.bits.front()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.bits.is_empty()
     }

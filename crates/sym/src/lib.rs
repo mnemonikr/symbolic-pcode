@@ -1,3 +1,5 @@
+#![doc=include_str!("../README.md")]
+
 mod bit;
 mod buf;
 mod convert;
@@ -12,6 +14,9 @@ pub use crate::convert::concretize;
 pub use crate::convert::concretize_into;
 pub use crate::eval::*;
 pub use crate::vec::*;
+
+#[cfg(feature = "aiger")]
+mod aiger;
 
 #[cfg(test)]
 mod tests;
