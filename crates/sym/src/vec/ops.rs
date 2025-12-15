@@ -171,7 +171,7 @@ impl std::ops::Mul for SymbolicBitVec {
 
     fn mul(self, rhs: Self) -> Self::Output {
         // The output size is the sum of the number of bits. Clippy is overly zealous here flagging
-        // the addition as erroneous.
+        // the addition as erroneous. https://github.com/rust-lang/rust-clippy/issues/16247
         #[allow(clippy::suspicious_arithmetic_impl)]
         let output_size = self.len() + rhs.len();
 

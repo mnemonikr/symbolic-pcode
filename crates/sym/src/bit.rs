@@ -23,6 +23,20 @@ pub enum SymbolicBit {
 }
 
 impl SymbolicBit {
+    pub fn maybe_literal(&self) -> Option<bool> {
+        match self {
+            Self::Literal(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn maybe_variable(&self) -> Option<usize> {
+        match self {
+            Self::Variable(id) => Some(*id),
+            _ => None,
+        }
+    }
+
     pub fn equals(self, rhs: Self) -> Self {
         (self.clone() & rhs.clone()) | (!self & !rhs)
     }

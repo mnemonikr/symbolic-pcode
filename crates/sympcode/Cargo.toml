@@ -8,5 +8,5 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-symbit = { version = "0.1", path = "../sym" }
+symbit = { version = "0.1", path = "../sym", features = ["aiger"] }
 pcode-ops = { version = "0.1", path = "../pcode-ops/" }

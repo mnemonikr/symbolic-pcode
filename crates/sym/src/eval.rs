@@ -25,8 +25,10 @@ pub struct Evaluation {
 impl Evaluator {
     /// Create a new instance using the given [VariableAssignments]. The assignments are fixed for
     /// the lifetime of this evaluator.
-    pub fn new(assignments: VariableAssignments) -> Self {
-        Self { assignments }
+    pub fn new(assignments: impl Into<VariableAssignments>) -> Self {
+        Self {
+            assignments: assignments.into(),
+        }
     }
 
     pub fn evaluate(&self, bit: &SymbolicBit) -> Evaluation {
@@ -126,6 +128,12 @@ impl VariableAssignments {
 
     pub fn get(&self, variable_id: usize) -> Option<bool> {
         self.assignments.get(&variable_id).copied()
+    }
+}
+
+impl<I: IntoIterator<Item = (usize, bool)>> From<I> for VariableAssignments {
+    fn from(iter: I) -> Self {
+        iter.into_iter().collect()
     }
 }
 

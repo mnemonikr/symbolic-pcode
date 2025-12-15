@@ -835,7 +835,6 @@ name = "symbit"
 version = "0.1.0"
 dependencies = [
  "aiger-circuit",
- "pcode-ops",
  "thiserror",
 ]
 
