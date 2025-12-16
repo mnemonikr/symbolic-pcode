@@ -832,7 +832,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "symbit"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76682cead7c03b796d41b40df11b06aead4ef695d9313702f329094595204dea"
 dependencies = [
  "aiger-circuit",
  "thiserror",
