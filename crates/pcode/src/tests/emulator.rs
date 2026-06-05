@@ -1591,6 +1591,54 @@ fn conditional_branch_absolute() -> Result<()> {
 }
 
 #[test]
+fn conditional_branch_when_condition_neither_zero_nor_one() -> Result<()> {
+    let mut memory = GenericMemory::<Pcode128>::default();
+    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let destination_input = VarnodeData {
+        address: Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        },
+        size: 0, // This value is irrelevant
+    };
+
+    // Condition has low bit set to 0, but is non-zero value. Should be considered true
+    let condition_input = write_value(&mut memory, 1, 0x10u8)?;
+    let instruction = PcodeInstruction {
+        address: Address {
+            address_space: processor_address_space(),
+            offset: 0xFF00000000,
+        },
+        op_code: OpCode::BranchConditional,
+        inputs: vec![destination_input.clone(), condition_input.clone()],
+        output: None,
+    };
+
+    let control_flow = emulator.emulate(&mut memory, &instruction)?;
+    let expected_destination = Destination::MachineAddress(Address {
+        address_space: processor_address_space(),
+        offset: 0xDEADBEEF,
+    });
+    match control_flow {
+        ControlFlow::ConditionalBranch {
+            condition_origin,
+            condition,
+            destination,
+        } => {
+            assert_eq!(condition_origin, condition_input);
+            assert_eq!(condition, Some(true));
+            assert_eq!(
+                destination, expected_destination,
+                "invalid branch destination"
+            );
+        }
+        _ => panic!("unexpected control flow instruction: {control_flow:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
 fn conditional_branch_pcode_relative() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
     let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);

@@ -466,17 +466,20 @@ impl StandardPcodeEmulator {
     /// is not treated as a variable but as an address and is interpreted in the same way.
     /// Furthermore, a constant space address is also interpreted as a relative address so that a
     /// CBRANCH can do p-code relative branching. See the discussion for the BRANCH operation.
-    fn conditional_branch(
+    fn conditional_branch<M: VarnodeDataStore>(
         &self,
-        memory: &mut impl VarnodeDataStore,
+        memory: &mut M,
         instruction: &PcodeInstruction,
     ) -> Result<ControlFlow> {
         require_num_inputs(instruction, 2)?;
         require_has_output(instruction, false)?;
         require_input_size_equals(instruction, 1, 1)?;
 
+        let zero = PcodeValue::<M::Value>::from(0u8);
+        let condition = memory.read(&instruction.inputs[1])?;
+
         Ok(ControlFlow::ConditionalBranch {
-            condition: memory.read_bit(&instruction.inputs[1])?.try_into().ok(),
+            condition: condition.not_equals(zero.into_inner()).try_into().ok(),
             condition_origin: instruction.inputs[1].clone(),
             destination: Self::branch_destination(&instruction.inputs[0]),
         })
