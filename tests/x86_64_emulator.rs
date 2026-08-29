@@ -7,7 +7,7 @@ use symbolic_pcode::{
     processor::{self, BranchingProcessor, DefaultEmulatorHandler, Processor, ProcessorState},
 };
 use sympcode::SymPcode;
-use sympcode::symbit::{self, Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
+use sympcode::symbit::{Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
 
 use crate::common::{self, Memory, x86_64_sleigh};
 
@@ -347,7 +347,7 @@ fn z3_integration() -> processor::Result<()> {
     let result = memory_tree.read(&eax)?.into_inner();
 
     let assertion = result.equals(SymbolicBitVec::constant(8, 32));
-    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&assertion));
+    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(assertion.constraint()));
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 
@@ -499,7 +499,7 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     )?;
 
     // Create symbolic input
-    let input_value: [_; 32] = std::array::from_fn(SymbolicBit::Variable);
+    let input_value: [_; 32] = std::array::from_fn(SymbolicBit::variable);
     let input_value = input_value.into_iter().collect();
 
     // The test will emulate with a symbolic value. However if we encounter any branch that uses a
@@ -537,7 +537,10 @@ fn take_the_path_not_taken() -> processor::Result<()> {
                     .into_inner()
                     .into_inner();
                 let evaluation = evaluator
-                    .evaluate(&processor.memory().read_bit(condition_origin)?.into())
+                    .evaluate(
+                        SymbolicBit::from(processor.memory().read_bit(condition_origin)?)
+                            .constraint(),
+                    )
                     .response
                     .expect("evaluation should be concrete");
                 if evaluation {
@@ -571,11 +574,11 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     let parent_path = branches
         .into_iter()
         .reduce(|x, y| x & y)
-        .unwrap_or(symbit::TRUE);
+        .unwrap_or(SymbolicBit::one());
     let other_branch = parent_path & !last_branch;
 
     // Solve with Z3
-    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(&other_branch));
+    let aiger = aiger_circuit::Aiger::with_outputs(std::iter::once(other_branch.constraint()));
     let cfg = z3::Config::new();
     let ctx = z3::Context::new(&cfg);
 

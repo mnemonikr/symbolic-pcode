@@ -1,5 +1,5 @@
 use pcode_ops::{BitwisePcodeOps, PcodeOps};
-use symbit::{SymbolicBit, SymbolicBitVec, SymbolicByte};
+use symbit::{Constraint, SymbolicBit, SymbolicBitVec, SymbolicByte};
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl From<SymPcode> for SymbolicBitVec {
 
 impl SymPcode {
     pub fn with_variables(vars: impl IntoIterator<Item = usize>) -> Self {
-        Self(vars.into_iter().map(SymbolicBit::Variable).collect())
+        Self(vars.into_iter().map(SymbolicBit::variable).collect())
     }
 
     pub fn into_inner(self) -> SymbolicBitVec {
@@ -64,6 +64,12 @@ pub struct SymBit(SymbolicBit);
 impl From<SymBit> for SymbolicBit {
     fn from(value: SymBit) -> Self {
         value.0
+    }
+}
+
+impl From<Constraint> for SymBit {
+    fn from(value: Constraint) -> Self {
+        Self(SymbolicBit::from(value))
     }
 }
 
