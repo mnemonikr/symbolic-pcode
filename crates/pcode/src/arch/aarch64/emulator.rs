@@ -1,11 +1,13 @@
+use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use libsla::{OpCode, PcodeInstruction, PseudoOp, Sleigh};
 use pcode_ops::convert::TryFromPcodeValueError;
 
-use crate::emulator::{ControlFlow, Error, PcodeEmulator, Result, StandardPcodeEmulator};
+use crate::emulator::{BranchResult, Error, PcodeEmulator};
 use crate::kernel::{Kernel, NoKernel};
 use crate::mem::VarnodeDataStore;
+use crate::processor::{ControlFlowResult, EmulatorHandler, default_after_emulate};
 
 #[repr(u64)]
 enum CallOtherOps {
@@ -23,7 +25,7 @@ where
 {
     sleigh: Rc<S>,
     kernel: K,
-    emulator: StandardPcodeEmulator,
+    emulator: PcodeEmulator,
 }
 
 impl<S: Sleigh, K: Kernel + Clone> Clone for Emulator<S, K> {
@@ -40,7 +42,7 @@ impl<S: Sleigh> Emulator<S, NoKernel> {
     /// Create an emulator without a kernel. Syscalls will trigger [Error::UnsupportedInstruction].
     pub fn without_kernel(sleigh: Rc<S>) -> Self {
         Self {
-            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
+            emulator: PcodeEmulator::new(sleigh.address_spaces()),
             kernel: Default::default(),
             sleigh,
         }
@@ -51,7 +53,7 @@ impl<S: Sleigh, K: Kernel> Emulator<S, K> {
     /// Create an emulator with syscalls implemented by the given kernel
     pub fn with_kernel(sleigh: Rc<S>, kernel: K) -> Self {
         Self {
-            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
+            emulator: PcodeEmulator::new(sleigh.address_spaces()),
             kernel,
             sleigh,
         }
@@ -63,12 +65,12 @@ impl<S: Sleigh, K: Kernel> Emulator<S, K> {
     }
 }
 
-impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
-    fn emulate<M: VarnodeDataStore>(
+impl<S: Sleigh, K: Kernel> EmulatorHandler for Emulator<S, K> {
+    fn before_emulate<M: VarnodeDataStore>(
         &mut self,
         memory: &mut M,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         println!("Executing: {instruction}");
         for instr_input in instruction.inputs.iter() {
             let input = memory.read_value(instr_input).unwrap();
@@ -87,8 +89,16 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                 }
             }
         }
-        let result = self.emulator.emulate(memory, instruction);
 
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn after_emulate<M: VarnodeDataStore>(
+        &mut self,
+        memory: &mut M,
+        instruction: &PcodeInstruction,
+        result: BranchResult,
+    ) -> ControlFlowResult {
         if let Err(Error::UnsupportedInstruction { instruction }) = &result {
             if instruction.op_code == OpCode::Pseudo(PseudoOp::CallOther) {
                 let arg = instruction.inputs.first().and_then(|input| {
@@ -109,7 +119,7 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                             // See usage in AARCH64base.sinc
                             memory.write_value(output, 1u8)?;
                         }
-                        return Ok(ControlFlow::NextInstruction);
+                        return Ok(ControlFlow::Continue(()));
                     }
                     Some(x) if x == CallOtherOps::ExclusiveMonitorsStatus as u64 => {
                         if let Some(output) = instruction.output.as_ref() {
@@ -117,10 +127,10 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
                             // See usage in AARCH64base.sinc
                             memory.write_value(output, 0u8)?;
                         }
-                        return Ok(ControlFlow::NextInstruction);
+                        return Ok(ControlFlow::Continue(()));
                     }
                     Some(x) if x == CallOtherOps::DataMemoryBarrier as u64 => {
-                        return Ok(ControlFlow::NextInstruction);
+                        return Ok(ControlFlow::Continue(()));
                     }
                     _ => (),
                 }
@@ -158,6 +168,6 @@ impl<S: Sleigh, K: Kernel> PcodeEmulator for Emulator<S, K> {
             }
         }
 
-        result
+        default_after_emulate(result)
     }
 }

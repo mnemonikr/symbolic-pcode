@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use pcode_ops::PcodeOps;
 use symbolic_pcode::arch;
+use symbolic_pcode::emulator::PcodeEmulator;
 use symbolic_pcode::kernel::linux::LinuxKernel;
 use symbolic_pcode::libsla::Sleigh;
 use symbolic_pcode::mem::VarnodeDataStore;
@@ -42,9 +43,10 @@ fn hello_world_x86_linux() -> processor::Result<()> {
     initialize_libc_stack(&mut memory, sleigh.as_ref());
 
     let handler = arch::x86::processor::ProcessorHandlerX86::new(sleigh.as_ref());
-    let emulator =
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
+    let emulator_handler =
         arch::x86::emulator::EmulatorX86::with_kernel(sleigh.clone(), LinuxKernel::default());
-    let mut processor = Processor::new(memory, emulator, handler);
+    let mut processor = Processor::new(memory, emulator, emulator_handler, handler);
 
     loop {
         let print_pcode = matches!(processor.state(), ProcessorState::Decode(_));
@@ -73,7 +75,7 @@ fn hello_world_x86_linux() -> processor::Result<()> {
 
         if matches!(processor.state(), ProcessorState::Halt) {
             assert_eq!(
-                processor.emulator().kernel().exit_status(),
+                processor.emulator_handler().kernel().exit_status(),
                 Some(0),
                 "exit code should be 0"
             );
@@ -116,12 +118,13 @@ fn hello_world_aarch64_linux() -> processor::Result<()> {
     common::init_registers_aarch64(sleigh.as_ref(), &mut memory);
     initialize_libc_stack(&mut memory, sleigh.as_ref());
 
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
     let handler = arch::aarch64::processor::ProcessorHandler::new(sleigh.as_ref());
-    let emulator = arch::aarch64::emulator::Emulator::with_kernel(
+    let emulator_handler = arch::aarch64::emulator::Emulator::with_kernel(
         sleigh.clone(),
         LinuxKernel::with_config(arch::aarch64::linux::config()),
     );
-    let mut processor = Processor::new(memory, emulator, handler);
+    let mut processor = Processor::new(memory, emulator, emulator_handler, handler);
 
     loop {
         let print_pcode = matches!(processor.state(), ProcessorState::Decode(_));
@@ -152,7 +155,7 @@ fn hello_world_aarch64_linux() -> processor::Result<()> {
 
         if matches!(processor.state(), ProcessorState::Halt) {
             assert_eq!(
-                processor.emulator().kernel().exit_status(),
+                processor.emulator_handler().kernel().exit_status(),
                 Some(0),
                 "exit code should be 0"
             );

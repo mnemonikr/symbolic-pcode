@@ -81,8 +81,7 @@ fn write_value(
 #[test]
 fn copy() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
     let data = 0xDEADBEEFu32;
     let input = VarnodeData {
         address: processor_address(0),
@@ -100,7 +99,10 @@ fn copy() -> Result<()> {
     };
 
     memory.write(&input, data.into())?;
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     memory.read(&output)?;
     let result: u32 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, data);
@@ -111,8 +113,7 @@ fn copy() -> Result<()> {
 #[test]
 fn load() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     // Write 0xDEADBEEF to 0x04030201
     let data = 0xDEADBEEFu32;
@@ -147,7 +148,10 @@ fn load() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u32 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xDEADBEEF);
     Ok(())
@@ -156,8 +160,7 @@ fn load() -> Result<()> {
 #[test]
 fn store() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     // Write 0xDEADBEEF somewhere. This value will be retrieved and stored to the specified
     // address determined through the space id and offset indirection.
@@ -194,7 +197,10 @@ fn store() -> Result<()> {
         output: None,
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
 
     let output = VarnodeData {
         address: Address {
@@ -211,8 +217,7 @@ fn store() -> Result<()> {
 #[test]
 fn int_sub() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let lhs_data = 0xDEADBEEFu32;
     let lhs_input = VarnodeData {
@@ -240,7 +245,10 @@ fn int_sub() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u32 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xDEAD0000);
     Ok(())
@@ -261,7 +269,7 @@ fn int_sborrow() -> Result<()> {
     for (lhs, rhs, expected_result) in test_data {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, lhs)?;
         let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -277,7 +285,10 @@ fn int_sborrow() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
 
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(
@@ -292,8 +303,7 @@ fn int_sborrow() -> Result<()> {
 #[test]
 fn int_add() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let lhs_data = 0xDEAD0000u32;
     let lhs_input = VarnodeData {
@@ -321,7 +331,10 @@ fn int_add() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u32 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xDEADBEEF);
     Ok(())
@@ -332,7 +345,7 @@ fn int_multiply() -> Result<()> {
     for lhs in 0..16u8 {
         for rhs in 0..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -348,7 +361,10 @@ fn int_multiply() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result, lhs * rhs, "failed {lhs} * {rhs}");
@@ -361,7 +377,7 @@ fn int_multiply() -> Result<()> {
 #[test]
 fn int_multiply_multibyte() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs: u16 = 0xFF;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
 
@@ -380,7 +396,10 @@ fn int_multiply_multibyte() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, lhs * rhs, "failed {lhs} * {rhs}");
@@ -393,7 +412,7 @@ fn int_divide() -> Result<()> {
     for lhs in 0..16u8 {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -413,7 +432,10 @@ fn int_divide() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result, lhs / rhs, "failed {lhs} / {rhs}");
@@ -428,7 +450,7 @@ fn int_remainder() -> Result<()> {
     for lhs in 0..16u8 {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -445,7 +467,10 @@ fn int_remainder() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result, lhs % rhs, "failed {lhs} % {rhs}");
@@ -460,7 +485,7 @@ fn int_signed_divide() -> Result<()> {
     for lhs in 0..16u8 {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_value = Pcode128::new(lhs.into(), 4).sign_extend(1);
             let lhs: i8 = lhs_value.signed_value() as i8;
             let lhs_input = write_value(&mut memory, 0, lhs_value)?;
@@ -482,7 +507,10 @@ fn int_signed_divide() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
             let expected = lhs / rhs;
@@ -502,7 +530,7 @@ fn int_signed_remainder() -> Result<()> {
     for lhs in 0..16u8 {
         for rhs in 1..16u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_value = Pcode128::new(lhs.into(), 4).sign_extend(1);
             let lhs: i8 = lhs_value.signed_value() as i8;
             let lhs_input = write_value(&mut memory, 0, lhs_value)?;
@@ -530,7 +558,10 @@ fn int_signed_remainder() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
             assert_eq!(result as i8, lhs % rhs, "failed signed {lhs} % {rhs}");
@@ -543,8 +574,7 @@ fn int_signed_remainder() -> Result<()> {
 #[test]
 fn int_zext() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let data = 0xFFu8;
     let input = VarnodeData {
@@ -565,7 +595,10 @@ fn int_zext() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x00FF);
     Ok(())
@@ -574,8 +607,7 @@ fn int_zext() -> Result<()> {
 #[test]
 fn int_sext() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let data = 0x807Fu16;
     let data_varnode = VarnodeData {
@@ -609,7 +641,10 @@ fn int_sext() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x007F);
 
@@ -623,7 +658,10 @@ fn int_sext() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xFF80);
     Ok(())
@@ -632,8 +670,7 @@ fn int_sext() -> Result<()> {
 #[test]
 fn int_equal() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let data = 0xDEADBEEFu32;
     let lhs_input = VarnodeData {
@@ -669,13 +706,19 @@ fn int_equal() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x1, "Expected 0xDEADBEEF == 0xDEADBEEF to be 1");
 
     memory.write(&rhs_input, 0u32.into())?;
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x0, "Expected 0xDEADBEEF == 0x0 to be 0");
     Ok(())
@@ -684,8 +727,7 @@ fn int_equal() -> Result<()> {
 #[test]
 fn int_not_equal() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let data = 0xDEADBEEFu32;
     let lhs_input = VarnodeData {
@@ -712,12 +754,18 @@ fn int_not_equal() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x0, "Expected 0xDEADBEEF != 0xDEADBEEF to be 0");
 
     memory.write(&rhs_input, 0u32.into())?;
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0x1, "Expected 0xDEADBEEF != 0x0 to be 1");
     Ok(())
@@ -726,7 +774,7 @@ fn int_not_equal() -> Result<()> {
 #[test]
 fn piece() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let msb_input = write_value(&mut memory, 0, 0xDEADu16)?;
     let lsb_input = write_value(&mut memory, 2, 0xBEEFu16)?;
 
@@ -742,7 +790,10 @@ fn piece() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u32 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, 0xDEADBEEF);
@@ -752,8 +803,7 @@ fn piece() -> Result<()> {
 #[test]
 fn subpiece() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator =
-        StandardPcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space(), unique_address_space()]);
 
     let data = 0xDEADBEEFu32;
     let data_input = VarnodeData {
@@ -780,7 +830,10 @@ fn subpiece() -> Result<()> {
     };
 
     // Expect to truncate 2 least-significant bytes
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xDEAD);
 
@@ -798,7 +851,10 @@ fn subpiece() -> Result<()> {
 
     // Expect to truncate 2 least-significant bytes and 1 most significant byte
     // since the output size is less than the input size
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, 0xAD);
     Ok(())
@@ -807,7 +863,7 @@ fn subpiece() -> Result<()> {
 #[test]
 fn branch_ind() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let data = 0xDEADBEEFu32;
     let data_input = write_value(&mut memory, 0, data)?;
     let instruction = PcodeInstruction {
@@ -816,11 +872,16 @@ fn branch_ind() -> Result<()> {
         inputs: vec![data_input.clone()],
         output: None,
     };
-    let branch_addr = emulator.emulate(&mut memory, &instruction)?;
-    let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    }));
+    let branch_addr = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected_addr = Branch::Unconditional {
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
     assert_eq!(branch_addr, expected_addr);
     Ok(())
 }
@@ -828,7 +889,7 @@ fn branch_ind() -> Result<()> {
 #[test]
 fn call_ind() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let data = 0xDEADBEEFu32;
     let data_input = write_value(&mut memory, 0, data)?;
 
@@ -841,11 +902,16 @@ fn call_ind() -> Result<()> {
         inputs: vec![data_input.clone()],
         output: None,
     };
-    let branch_addr = emulator.emulate(&mut memory, &instruction)?;
-    let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    }));
+    let branch_addr = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected_addr = Branch::Unconditional {
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
     assert_eq!(branch_addr, expected_addr);
     Ok(())
 }
@@ -854,7 +920,7 @@ fn call_ind() -> Result<()> {
 fn bool_negate() -> Result<()> {
     for value in 0..=1u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let input = write_value(&mut memory, 0, value)?;
 
         let output = VarnodeData {
@@ -875,7 +941,10 @@ fn bool_negate() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
 
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, (!value) & 0x1, "failed !{value}");
@@ -889,7 +958,7 @@ fn bool_and() -> Result<()> {
     for lhs in 0..=1u8 {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -911,7 +980,10 @@ fn bool_and() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
 
@@ -927,7 +999,7 @@ fn bool_or() -> Result<()> {
     for lhs in 0..=1u8 {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -949,7 +1021,10 @@ fn bool_or() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
 
             let result: u8 = memory.read(&output)?.try_into().unwrap();
 
@@ -965,7 +1040,7 @@ fn bool_xor() -> Result<()> {
     for lhs in 0..=1u8 {
         for rhs in 0..=1u8 {
             let mut memory = GenericMemory::<Pcode128>::default();
-            let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+            let emulator = PcodeEmulator::new(vec![processor_address_space()]);
             let lhs_input = write_value(&mut memory, 0, lhs)?;
             let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -987,7 +1062,10 @@ fn bool_xor() -> Result<()> {
                 output: Some(output.clone()),
             };
 
-            emulator.emulate(&mut memory, &instruction)?;
+            emulator
+                .emulate(&mut memory, &instruction)?
+                .continue_value()
+                .expect("should not branch");
             let result: u8 = memory.read(&output)?.try_into().unwrap();
 
             assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
@@ -1000,7 +1078,7 @@ fn bool_xor() -> Result<()> {
 #[test]
 fn int_negate() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b1010_0101;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
 
@@ -1022,7 +1100,10 @@ fn int_negate() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
 
     let result: u8 = memory.read(&output)?.try_into().unwrap();
     assert_eq!(result, !lhs, "failed !{lhs}");
@@ -1033,7 +1114,7 @@ fn int_negate() -> Result<()> {
 #[test]
 fn int_2comp() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 1u8;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
 
@@ -1055,7 +1136,10 @@ fn int_2comp() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, -1i8 as u8, "failed -{lhs}");
@@ -1066,7 +1150,7 @@ fn int_2comp() -> Result<()> {
 #[test]
 fn int_and() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b0011_1100;
     let rhs = 0b1010_0101;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
@@ -1090,7 +1174,10 @@ fn int_and() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, lhs & rhs, "failed {lhs} & {rhs}");
@@ -1101,7 +1188,7 @@ fn int_and() -> Result<()> {
 #[test]
 fn int_or() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b0011_1100;
     let rhs = 0b1010_0101;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
@@ -1125,7 +1212,10 @@ fn int_or() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u8 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, lhs | rhs, "failed {lhs} | {rhs}");
@@ -1136,7 +1226,7 @@ fn int_or() -> Result<()> {
 #[test]
 fn int_xor() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let lhs = 0b1111_0000_0011_1100;
     let rhs = 0b0000_1111_1010_0101;
     let lhs_input = write_value(&mut memory, 0, lhs)?;
@@ -1160,7 +1250,10 @@ fn int_xor() -> Result<()> {
         output: Some(output.clone()),
     };
 
-    emulator.emulate(&mut memory, &instruction)?;
+    emulator
+        .emulate(&mut memory, &instruction)?
+        .continue_value()
+        .expect("should not branch");
     let result: u16 = memory.read(&output)?.try_into().unwrap();
 
     assert_eq!(result, lhs ^ rhs, "failed {lhs} ^ {rhs}");
@@ -1179,7 +1272,7 @@ fn int_less_than() -> Result<()> {
     for (lhs, rhs, expected_result) in test_data {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, lhs)?;
         let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -1201,7 +1294,10 @@ fn int_less_than() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
 
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         assert_eq!(result, expected_result, "failed {lhs} < {rhs}");
@@ -1221,7 +1317,7 @@ fn int_less_than_eq() -> Result<()> {
     for (lhs, rhs, expected_result) in test_data {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, lhs)?;
         let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -1243,7 +1339,10 @@ fn int_less_than_eq() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(result, expected_result, "failed {lhs} <= {rhs}");
@@ -1263,7 +1362,7 @@ fn int_signed_less_than() -> Result<()> {
     for (lhs, rhs, expected_result) in test_data {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, lhs)?;
         let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -1285,7 +1384,10 @@ fn int_signed_less_than() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(
@@ -1308,7 +1410,7 @@ fn int_signed_less_than_eq() -> Result<()> {
     for (lhs, rhs, expected_result) in test_data {
         let expected_result = if expected_result { 1 } else { 0 };
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, lhs)?;
         let rhs_input = write_value(&mut memory, 1, rhs)?;
 
@@ -1330,7 +1432,10 @@ fn int_signed_less_than_eq() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
 
         assert_eq!(
@@ -1346,7 +1451,7 @@ fn int_signed_less_than_eq() -> Result<()> {
 fn shift_left() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, 0x01u8)?;
         let rhs_input = write_value(&mut memory, 1, n)?;
 
@@ -1368,7 +1473,10 @@ fn shift_left() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         let expected_result = if n < 8 { 1 << n } else { 0 };
 
@@ -1382,7 +1490,7 @@ fn shift_left() -> Result<()> {
 fn shift_right() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, 0x80u8)?;
         let rhs_input = write_value(&mut memory, 1, n)?;
 
@@ -1404,7 +1512,10 @@ fn shift_right() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         let expected_result = if n < 8 { 0x80 >> n } else { 0 };
 
@@ -1418,7 +1529,7 @@ fn shift_right() -> Result<()> {
 fn signed_shift_right() -> Result<()> {
     for n in 0..=8u8 {
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, 0x80u8)?;
         let rhs_input = write_value(&mut memory, 1, n)?;
 
@@ -1440,7 +1551,10 @@ fn signed_shift_right() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let result: u8 = memory.read(&output)?.try_into().unwrap();
         let expected_result = if n < 8 { (-128i8 >> n) as u8 } else { 0xFF };
 
@@ -1453,7 +1567,7 @@ fn signed_shift_right() -> Result<()> {
 #[test]
 fn call() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let data_input = VarnodeData {
         address: Address {
             address_space: processor_address_space(),
@@ -1472,11 +1586,16 @@ fn call() -> Result<()> {
         output: None,
     };
 
-    let branch_addr = emulator.emulate(&mut memory, &instruction)?;
-    let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    }));
+    let branch_addr = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected_addr = Branch::Unconditional {
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
 
     assert_eq!(branch_addr, expected_addr);
     Ok(())
@@ -1485,7 +1604,7 @@ fn call() -> Result<()> {
 #[test]
 fn branch_absolute() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let data_input = VarnodeData {
         address: Address {
             address_space: processor_address_space(),
@@ -1504,11 +1623,16 @@ fn branch_absolute() -> Result<()> {
         output: None,
     };
 
-    let branch_addr = emulator.emulate(&mut memory, &instruction)?;
-    let expected_addr = ControlFlow::Jump(Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    }));
+    let branch_addr = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected_addr = Branch::Unconditional {
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
 
     assert_eq!(branch_addr, expected_addr);
     Ok(())
@@ -1517,7 +1641,7 @@ fn branch_absolute() -> Result<()> {
 #[test]
 fn branch_pcode_relative() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let data_input = VarnodeData {
         address: Address {
             address_space: constant_address_space(),
@@ -1536,8 +1660,13 @@ fn branch_pcode_relative() -> Result<()> {
         output: None,
     };
 
-    let branch_addr = emulator.emulate(&mut memory, &instruction)?;
-    let expected_addr = ControlFlow::Jump(Destination::PcodeAddress(-1));
+    let branch_addr = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected_addr = Branch::Unconditional {
+        destination: Destination::PcodeAddress(-1),
+    };
 
     assert_eq!(branch_addr, expected_addr);
     Ok(())
@@ -1546,7 +1675,7 @@ fn branch_pcode_relative() -> Result<()> {
 #[test]
 fn conditional_branch_absolute() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let destination_input = VarnodeData {
         address: Address {
             address_space: processor_address_space(),
@@ -1566,34 +1695,26 @@ fn conditional_branch_absolute() -> Result<()> {
         output: None,
     };
 
-    let control_flow = emulator.emulate(&mut memory, &instruction)?;
-    let expected_destination = Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    });
-    match control_flow {
-        ControlFlow::ConditionalBranch {
-            condition_origin,
-            condition,
-            destination,
-        } => {
-            assert_eq!(condition_origin, condition_input);
-            assert_eq!(condition, Some(true));
-            assert_eq!(
-                destination, expected_destination,
-                "invalid branch destination"
-            );
-        }
-        _ => panic!("unexpected control flow instruction: {control_flow:?}"),
-    }
-
+    let actual = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected = Branch::Conditional {
+        condition_origin: condition_input,
+        condition: Some(true),
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
+    assert_eq!(actual, expected);
     Ok(())
 }
 
 #[test]
 fn conditional_branch_when_condition_neither_zero_nor_one() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let destination_input = VarnodeData {
         address: Address {
             address_space: processor_address_space(),
@@ -1614,34 +1735,26 @@ fn conditional_branch_when_condition_neither_zero_nor_one() -> Result<()> {
         output: None,
     };
 
-    let control_flow = emulator.emulate(&mut memory, &instruction)?;
-    let expected_destination = Destination::MachineAddress(Address {
-        address_space: processor_address_space(),
-        offset: 0xDEADBEEF,
-    });
-    match control_flow {
-        ControlFlow::ConditionalBranch {
-            condition_origin,
-            condition,
-            destination,
-        } => {
-            assert_eq!(condition_origin, condition_input);
-            assert_eq!(condition, Some(true));
-            assert_eq!(
-                destination, expected_destination,
-                "invalid branch destination"
-            );
-        }
-        _ => panic!("unexpected control flow instruction: {control_flow:?}"),
-    }
-
+    let actual = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected = Branch::Conditional {
+        condition_origin: condition_input,
+        condition: Some(true),
+        destination: Destination::MachineAddress(Address {
+            address_space: processor_address_space(),
+            offset: 0xDEADBEEF,
+        }),
+    };
+    assert_eq!(actual, expected);
     Ok(())
 }
 
 #[test]
 fn conditional_branch_pcode_relative() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let destination_input = VarnodeData {
         address: Address {
             address_space: constant_address_space(),
@@ -1661,24 +1774,16 @@ fn conditional_branch_pcode_relative() -> Result<()> {
         output: None,
     };
 
-    let control_flow = emulator.emulate(&mut memory, &instruction)?;
-    let expected_destination = Destination::PcodeAddress(-1);
-    match control_flow {
-        ControlFlow::ConditionalBranch {
-            condition_origin,
-            condition,
-            destination,
-        } => {
-            assert_eq!(condition_input, condition_origin);
-            assert_eq!(condition, Some(true));
-            assert_eq!(
-                destination, expected_destination,
-                "invalid branch destination"
-            );
-        }
-        _ => panic!("unexpected control flow instruction: {control_flow:?}"),
-    }
-
+    let actual = emulator
+        .emulate(&mut memory, &instruction)?
+        .break_value()
+        .expect("branch");
+    let expected = Branch::Conditional {
+        condition_origin: condition_input,
+        condition: Some(true),
+        destination: Destination::PcodeAddress(-1),
+    };
+    assert_eq!(actual, expected);
     Ok(())
 }
 
@@ -1687,7 +1792,7 @@ fn popcount() -> Result<()> {
     for n in 0..=8u8 {
         let value: u8 = ((1u16 << n) - 1) as u8;
         let mut memory = GenericMemory::<Pcode128>::default();
-        let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+        let emulator = PcodeEmulator::new(vec![processor_address_space()]);
         let lhs_input = write_value(&mut memory, 0, value)?;
 
         let output = VarnodeData {
@@ -1708,11 +1813,14 @@ fn popcount() -> Result<()> {
             output: Some(output.clone()),
         };
 
-        emulator.emulate(&mut memory, &instruction)?;
+        emulator
+            .emulate(&mut memory, &instruction)?
+            .continue_value()
+            .expect("should not branch");
         let expected_result = n;
         let result: u8 = memory.read(&output)?.try_into().unwrap();
 
-        assert_eq!(result, expected_result, "failed popcount of {value:#02x}");
+        assert_eq!(result, expected_result, "failed popcount of {value:#x}");
     }
 
     Ok(())
@@ -1721,7 +1829,7 @@ fn popcount() -> Result<()> {
 #[test]
 fn unsupported_opcode() -> Result<()> {
     let mut memory = GenericMemory::<Pcode128>::default();
-    let mut emulator = StandardPcodeEmulator::new(vec![processor_address_space()]);
+    let emulator = PcodeEmulator::new(vec![processor_address_space()]);
     let instruction = PcodeInstruction {
         address: Address {
             address_space: processor_address_space(),

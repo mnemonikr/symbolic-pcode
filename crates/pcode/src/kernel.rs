@@ -1,7 +1,7 @@
 use libsla::Sleigh;
 
-use crate::emulator::{ControlFlow, Error, Result};
 use crate::mem::VarnodeDataStore;
+use crate::processor::{ControlFlowResult, Error};
 
 pub mod linux;
 
@@ -10,7 +10,7 @@ pub trait Kernel: Clone {
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut impl VarnodeDataStore,
-    ) -> Result<ControlFlow>;
+    ) -> ControlFlowResult;
 }
 
 #[derive(Copy, Clone, Default, Debug)]
@@ -21,7 +21,7 @@ impl Kernel for NoKernel {
         &mut self,
         _sleigh: &impl Sleigh,
         _memory: &mut impl VarnodeDataStore,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         Err(Error::InternalError("no kernel configured".to_string()))
     }
 }

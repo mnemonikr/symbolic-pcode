@@ -1,7 +1,9 @@
+use std::ops::ControlFlow;
+
 use pcode_ops::BitwisePcodeOps;
 use thiserror;
 
-use crate::emulator::{ControlFlow, Destination, PcodeEmulator};
+use crate::emulator::{Branch, BranchResult, Destination, PcodeEmulator};
 use crate::mem::{ExecutableMemory, MemoryBranch, VarnodeDataStore};
 use libsla::{
     Address, AddressSpace, NativeDisassembly, PcodeDisassembly, PcodeInstruction, Sleigh,
@@ -40,6 +42,9 @@ pub enum Error {
 
     #[error("operation not permitted for state {0:?}")]
     InvalidState(ProcessorState),
+
+    #[error("dependency error: {0}")]
+    DependencyError(Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -66,24 +71,60 @@ pub trait ProcessorResponseHandler: Clone {
     fn jumped<M: VarnodeDataStore>(&mut self, memory: &mut M, address: &Address) -> Result<()>;
 }
 
+pub enum ControlFlowBreak {
+    Emulator(Branch),
+    Halt,
+}
+
+pub type ControlFlowResult = Result<ControlFlow<ControlFlowBreak>>;
+
+pub fn default_after_emulate(result: BranchResult) -> ControlFlowResult {
+    Ok(result?.map_break(ControlFlowBreak::Emulator))
+}
+
+pub trait EmulatorHandler {
+    fn before_emulate<M: VarnodeDataStore>(
+        &mut self,
+        _memory: &mut M,
+        _instruction: &PcodeInstruction,
+    ) -> ControlFlowResult {
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn after_emulate<M: VarnodeDataStore>(
+        &mut self,
+        _memory: &mut M,
+        _instruction: &PcodeInstruction,
+        result: BranchResult,
+    ) -> ControlFlowResult {
+        default_after_emulate(result)
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct DefaultEmulatorHandler {}
+impl EmulatorHandler for DefaultEmulatorHandler {}
+
 pub struct Processor<
-    E: PcodeEmulator + Clone,
+    E: EmulatorHandler + Clone,
     M: VarnodeDataStore + Default,
     H: ProcessorResponseHandler + Clone,
 > {
     memory: M,
     state: ProcessorState,
     handler: H,
-    emulator: E,
+    emulator: PcodeEmulator,
+    emulator_handler: E,
 }
 
-impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
+impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
     Processor<E, M, H>
 {
-    pub fn new(memory: M, emulator: E, handler: H) -> Self {
+    pub fn new(memory: M, emulator: PcodeEmulator, emulator_handler: E, handler: H) -> Self {
         Self {
             memory,
             emulator,
+            emulator_handler,
             handler,
             state: ProcessorState::Fetch,
         }
@@ -97,8 +138,12 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
         &mut self.memory
     }
 
-    pub fn emulator(&self) -> &E {
+    pub fn emulator(&self) -> &PcodeEmulator {
         &self.emulator
+    }
+
+    pub fn emulator_handler(&self) -> &E {
+        &self.emulator_handler
     }
 
     pub fn state(&self) -> &ProcessorState {
@@ -148,9 +193,12 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
                 self.state = ProcessorState::Fetch;
             }
             ProcessorState::Execute(x) => {
-                let control_flow = self
-                    .emulator
-                    .emulate(&mut self.memory, x.current_instruction())?;
+                let control_flow = Self::emulate(
+                    &mut self.memory,
+                    &self.emulator,
+                    &mut self.emulator_handler,
+                    x.current_instruction(),
+                )?;
                 match x.next_execution(control_flow) {
                     BranchingNextExecution::Flow(e1) => self.update_execution(e1)?,
                     BranchingNextExecution::Branch(condition, e1, e2) => {
@@ -170,6 +218,21 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
         }
 
         Ok(())
+    }
+
+    fn emulate(
+        memory: &mut M,
+        emulator: &PcodeEmulator,
+        emulator_handler: &mut E,
+        instruction: &PcodeInstruction,
+    ) -> ControlFlowResult {
+        let control_flow = emulator_handler.before_emulate(memory, instruction)?;
+        if control_flow.is_break() {
+            return Ok(control_flow);
+        }
+
+        let result = emulator.emulate(memory, instruction);
+        emulator_handler.after_emulate(memory, instruction, result)
     }
 
     fn update_execution(&mut self, next_execution: NextExecution) -> Result<()> {
@@ -195,19 +258,24 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
 }
 
 pub struct BranchingProcessor<
-    E: PcodeEmulator + Clone,
+    E: EmulatorHandler + Clone,
     M: VarnodeDataStore + Default,
     H: ProcessorResponseHandler + Clone,
 > {
     processor: Processor<E, MemoryBranch<M>, H>,
 }
 
-impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
+impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
     BranchingProcessor<E, M, H>
 {
-    pub fn new(memory: M, emulator: E, handler: H) -> Self {
+    pub fn new(memory: M, emulator: PcodeEmulator, emulator_handler: E, handler: H) -> Self {
         Self {
-            processor: Processor::new(MemoryBranch::new(memory), emulator, handler),
+            processor: Processor::new(
+                MemoryBranch::new(memory),
+                emulator,
+                emulator_handler,
+                handler,
+            ),
         }
     }
 
@@ -255,6 +323,7 @@ impl<E: PcodeEmulator + Clone, M: VarnodeDataStore + Default, H: ProcessorRespon
                 state: self.processor.state.clone(),
                 handler: self.processor.handler.clone(),
                 emulator: self.processor.emulator.clone(),
+                emulator_handler: self.processor.emulator_handler.clone(),
             },
         }
     }
@@ -446,29 +515,33 @@ impl PcodeExecution {
         }
     }
 
-    fn next_execution(&self, flow: ControlFlow) -> BranchingNextExecution {
+    fn next_execution(&self, flow: ControlFlow<ControlFlowBreak>) -> BranchingNextExecution {
         match flow {
-            ControlFlow::NextInstruction
-            | ControlFlow::ConditionalBranch {
+            ControlFlow::Continue(())
+            | ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
                 condition: Some(false),
                 ..
-            } => BranchingNextExecution::Flow(self.next_instruction()),
-            ControlFlow::Jump(destination)
-            | ControlFlow::ConditionalBranch {
+            })) => BranchingNextExecution::Flow(self.next_instruction()),
+            ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Unconditional {
+                destination,
+            }))
+            | ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
                 condition: Some(true),
                 destination,
                 ..
-            } => BranchingNextExecution::Flow(self.jump(&destination)),
-            ControlFlow::ConditionalBranch {
+            })) => BranchingNextExecution::Flow(self.jump(&destination)),
+            ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
                 condition_origin,
                 destination,
                 ..
-            } => BranchingNextExecution::Branch(
+            })) => BranchingNextExecution::Branch(
                 condition_origin,
                 self.jump(&destination),
                 self.next_instruction(),
             ),
-            ControlFlow::Halt => BranchingNextExecution::Flow(NextExecution::Halt),
+            ControlFlow::Break(ControlFlowBreak::Halt) => {
+                BranchingNextExecution::Flow(NextExecution::Halt)
+            }
         }
     }
 }

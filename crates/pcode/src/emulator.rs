@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
@@ -68,9 +70,12 @@ pub enum IllegalInstructionKind {
 /// Emulator result
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Emulator result from a branching operation
+pub type BranchResult = Result<ControlFlow<Branch>>;
+
 /// The pcode emulator structure that holds the necessary data for emulation.
 #[derive(Debug, Clone)]
-pub struct StandardPcodeEmulator {
+pub struct PcodeEmulator {
     address_spaces_by_id: std::collections::BTreeMap<AddressSpaceId, AddressSpace>,
 }
 
@@ -85,45 +90,16 @@ pub enum Destination {
     PcodeAddress(i64),
 }
 
-/// Describes which instruction should be executed next.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum ControlFlow {
-    /// The next pcode instruction. This could be another pcode instruction translated from the
-    /// same machine instruction or, if this is the last pcode instruction, then the first pcode
-    /// instruction of the next machine instruction.
-    #[default]
-    NextInstruction,
-
-    /// Execution should continue at the provided destination
-    Jump(Destination),
-
-    /// Execution should continue at the provided destination if the condition evaluates to true.
-    /// Otherwise execution should continue with the next instruction.
-    ConditionalBranch {
-        condition_origin: VarnodeData,
-        condition: Option<bool>,
+#[derive(Debug, PartialEq, Eq)]
+pub enum Branch {
+    Unconditional {
         destination: Destination,
     },
-
-    /// Execution should halt. It may be permitted for execution to continue again once some
-    /// external state has changed. It may also represent the conclusion of the execution. This
-    /// will never be returned by the core emulator but may be returned by emulator extensions.
-    Halt,
-}
-
-/// Interface for Pcode emulator
-pub trait PcodeEmulator {
-    /// Emulates the given instruction. Depending on the instruction, this may result in the
-    /// provided memory being updated. This may also result in a non-default [ControlFlow] value
-    /// being returned, such as in the case of branching instructions.
-    ///
-    /// It is strongly encouraged for alternative implementations of this trait to call the emulate
-    /// function in [StandardPcodeEmulator] for the core emulation logic.
-    fn emulate<M: VarnodeDataStore>(
-        &mut self,
-        memory: &mut M,
-        instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow>;
+    Conditional {
+        destination: Destination,
+        condition_origin: VarnodeData,
+        condition: Option<bool>,
+    },
 }
 
 macro_rules! binary_shift_op {
@@ -198,12 +174,12 @@ macro_rules! bool_binary_op {
     }};
 }
 
-impl PcodeEmulator for StandardPcodeEmulator {
-    fn emulate<M: VarnodeDataStore>(
-        &mut self,
+impl PcodeEmulator {
+    pub fn emulate<M: VarnodeDataStore>(
+        &self,
         memory: &mut M,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> BranchResult {
         match instruction.op_code {
             OpCode::Copy => self.copy(memory, instruction)?,
             OpCode::Load => self.load(memory, instruction)?,
@@ -280,11 +256,11 @@ impl PcodeEmulator for StandardPcodeEmulator {
             }
         }
 
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 }
 
-impl StandardPcodeEmulator {
+impl PcodeEmulator {
     /// Create a new emulator over the given set of address spaces. These address spaces are
     /// necessary to support indirect memory lookups, since such lookups are encoded into the
     /// pcode operands as address space ids.
@@ -398,12 +374,11 @@ impl StandardPcodeEmulator {
     /// instruction. For example, if the BRANCH occurs as the pcode operation with index 5 for the
     /// instruction, it can branch to operation with index 8 by specifying a constant destination
     /// "address" of 3. Negative constants can be used for backward branches.
-    fn branch(&self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+    fn branch(&self, instruction: &PcodeInstruction) -> BranchResult {
         require_num_inputs(instruction, 1)?;
         require_has_output(instruction, false)?;
-        Ok(ControlFlow::Jump(Self::branch_destination(
-            &instruction.inputs[0],
-        )))
+        let destination = Self::branch_destination(&instruction.inputs[0]);
+        Ok(ControlFlow::Break(Branch::Unconditional { destination }))
     }
 
     /// Determine the destination of a branch instruction based on its input address.
@@ -441,7 +416,7 @@ impl StandardPcodeEmulator {
     /// recovery of the parameters being passed to the logical call represented by this operation.
     /// These additional parameters have no effect on the original semantics of the raw p-code but
     /// naturally hold the varnode values flowing into the call.
-    fn call(&self, instruction: &PcodeInstruction) -> Result<ControlFlow> {
+    fn call(&self, instruction: &PcodeInstruction) -> BranchResult {
         self.branch(instruction)
     }
 
@@ -456,7 +431,7 @@ impl StandardPcodeEmulator {
         &self,
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> BranchResult {
         self.branch_ind(memory, instruction)
     }
 
@@ -470,7 +445,7 @@ impl StandardPcodeEmulator {
         &self,
         memory: &mut M,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> BranchResult {
         require_num_inputs(instruction, 2)?;
         require_has_output(instruction, false)?;
         require_input_size_equals(instruction, 1, 1)?;
@@ -478,11 +453,11 @@ impl StandardPcodeEmulator {
         let zero = PcodeValue::<M::Value>::from(0u8);
         let condition = memory.read(&instruction.inputs[1])?;
 
-        Ok(ControlFlow::ConditionalBranch {
+        Ok(ControlFlow::Break(Branch::Conditional {
             condition: condition.not_equals(zero.into_inner()).try_into().ok(),
             condition_origin: instruction.inputs[1].clone(),
             destination: Self::branch_destination(&instruction.inputs[0]),
-        })
+        }))
     }
 
     /// Zero-extend the data in input0 and store the result in output. Copy all the data from input0
@@ -612,7 +587,7 @@ impl StandardPcodeEmulator {
         &self,
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> BranchResult {
         require_num_inputs(instruction, 1)?;
         require_has_output(instruction, false)?;
 
@@ -626,11 +601,14 @@ impl StandardPcodeEmulator {
         }
 
         let offset = Self::indirect_offset(memory, instruction, 0, address_space)?;
-
-        Ok(ControlFlow::Jump(Destination::MachineAddress(Address {
+        let destination = Destination::MachineAddress(Address {
             address_space: address_space.clone(),
             offset,
-        })))
+        });
+
+        Ok(std::ops::ControlFlow::Break(Branch::Unconditional {
+            destination,
+        }))
     }
 
     /// This instruction is semantically equivalent to the BRANCHIND instruction. It does not
@@ -646,7 +624,7 @@ impl StandardPcodeEmulator {
         &self,
         memory: &mut impl VarnodeDataStore,
         instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
+    ) -> BranchResult {
         self.branch_ind(memory, instruction)
     }
 
