@@ -1,10 +1,12 @@
+use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use libsla::{OpCode, PcodeInstruction, PseudoOp, Sleigh};
 
-use crate::emulator::{ControlFlow, Error, PcodeEmulator, Result, StandardPcodeEmulator};
+use crate::emulator::{BranchResult, Error};
 use crate::kernel::{Kernel, NoKernel};
 use crate::mem::VarnodeDataStore;
+use crate::processor::{ControlFlowResult, EmulatorHandler, default_after_emulate};
 
 #[repr(u64)]
 enum CallOtherOps {
@@ -26,7 +28,6 @@ where
 {
     sleigh: Rc<S>,
     kernel: K,
-    emulator: StandardPcodeEmulator,
 }
 
 impl<S: Sleigh, K: Kernel + Clone> Clone for EmulatorX86<S, K> {
@@ -34,7 +35,6 @@ impl<S: Sleigh, K: Kernel + Clone> Clone for EmulatorX86<S, K> {
         Self {
             sleigh: self.sleigh.clone(),
             kernel: self.kernel.clone(),
-            emulator: self.emulator.clone(),
         }
     }
 }
@@ -43,7 +43,6 @@ impl<S: Sleigh> EmulatorX86<S, NoKernel> {
     /// Create an emulator without a kernel. Syscalls will trigger [Error::UnsupportedInstruction].
     pub fn without_kernel(sleigh: Rc<S>) -> Self {
         Self {
-            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
             kernel: Default::default(),
             sleigh,
         }
@@ -53,11 +52,7 @@ impl<S: Sleigh> EmulatorX86<S, NoKernel> {
 impl<S: Sleigh, K: Kernel> EmulatorX86<S, K> {
     /// Create an emulator with syscalls implemented by the given kernel
     pub fn with_kernel(sleigh: Rc<S>, kernel: K) -> Self {
-        Self {
-            emulator: StandardPcodeEmulator::new(sleigh.address_spaces()),
-            kernel,
-            sleigh,
-        }
+        Self { kernel, sleigh }
     }
 
     /// Get a reference to the kernel
@@ -66,44 +61,43 @@ impl<S: Sleigh, K: Kernel> EmulatorX86<S, K> {
     }
 }
 
-impl<S: Sleigh, K: Kernel> PcodeEmulator for EmulatorX86<S, K> {
-    fn emulate<M: VarnodeDataStore>(
+impl<S: Sleigh, K: Kernel> EmulatorHandler for EmulatorX86<S, K> {
+    fn after_emulate<M: VarnodeDataStore>(
         &mut self,
         memory: &mut M,
-        instruction: &PcodeInstruction,
-    ) -> Result<ControlFlow> {
-        let result = self.emulator.emulate(memory, instruction);
-
-        if let Err(Error::UnsupportedInstruction { instruction }) = &result {
-            if instruction.op_code == OpCode::Pseudo(PseudoOp::CallOther) {
-                let arg = instruction.inputs.first().and_then(|input| {
-                    if input.address.address_space.is_constant() {
-                        Some(input.address.offset)
-                    } else {
-                        None
-                    }
-                });
-
-                match arg {
-                    // TODO This is dependent on the x86 sleigh implementation
-                    // This should be made more generic around x86 and then support supplying
-                    // different kernels instead of treating this as a Linux emulator specifically
-                    Some(x) if x == CallOtherOps::SysCall as u64 => {
-                        return self.kernel.syscall(self.sleigh.as_ref(), memory);
-                    }
-                    Some(x) if x == CallOtherOps::Lock as u64 => {
-                        // Lock instruction. Multithreading not supported so just ignore
-                        return Ok(ControlFlow::NextInstruction);
-                    }
-                    Some(x) if x == CallOtherOps::Unlock as u64 => {
-                        // Unlock instruction. Multithreading not supported so just ignore
-                        return Ok(ControlFlow::NextInstruction);
-                    }
-                    _ => (),
+        _instruction: &PcodeInstruction,
+        result: BranchResult,
+    ) -> ControlFlowResult {
+        if let Err(Error::UnsupportedInstruction { instruction }) = &result
+            && instruction.op_code == OpCode::Pseudo(PseudoOp::CallOther)
+        {
+            let arg = instruction.inputs.first().and_then(|input| {
+                if input.address.address_space.is_constant() {
+                    Some(input.address.offset)
+                } else {
+                    None
                 }
+            });
+
+            match arg {
+                // TODO This is dependent on the x86 sleigh implementation
+                // This should be made more generic around x86 and then support supplying
+                // different kernels instead of treating this as a Linux emulator specifically
+                Some(x) if x == CallOtherOps::SysCall as u64 => {
+                    return self.kernel.syscall(self.sleigh.as_ref(), memory);
+                }
+                Some(x) if x == CallOtherOps::Lock as u64 => {
+                    // Lock instruction. Multithreading not supported so just ignore
+                    return Ok(ControlFlow::Continue(()));
+                }
+                Some(x) if x == CallOtherOps::Unlock as u64 => {
+                    // Unlock instruction. Multithreading not supported so just ignore
+                    return Ok(ControlFlow::Continue(()));
+                }
+                _ => (),
             }
         }
 
-        result
+        default_after_emulate(result)
     }
 }

@@ -1,10 +1,10 @@
-use pcode_ops::{PcodeOps, convert::PcodeValue};
+use pcode_ops::convert::PcodeValue;
 use symbolic_pcode::{
     arch::x86::processor::ProcessorHandlerX86,
-    emulator::StandardPcodeEmulator,
+    emulator::PcodeEmulator,
     libsla::{Address, Sleigh, VarnodeData},
     mem::{MemoryTree, VarnodeDataStore},
-    processor::{self, BranchingProcessor, Processor, ProcessorState},
+    processor::{self, BranchingProcessor, DefaultEmulatorHandler, Processor, ProcessorState},
 };
 use sympcode::SymPcode;
 use sympcode::symbit::{self, Evaluator, SymbolicBit, SymbolicBitVec, VariableAssignments};
@@ -142,7 +142,7 @@ fn x86_64_registers() {
 #[test]
 fn doubler_32b() -> processor::Result<()> {
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
-    let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::default();
     let base_addr = 0x84210000;
     let num_instructions = 7;
@@ -185,7 +185,8 @@ fn doubler_32b() -> processor::Result<()> {
     write_register(&mut memory, "RIP", &base_addr.to_le_bytes());
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let mut processor = Processor::new(memory, emulator, handler);
+    let mut processor =
+        Processor::new(memory, emulator, DefaultEmulatorHandler::default(), handler);
 
     for _ in 0..num_instructions {
         loop {
@@ -227,7 +228,7 @@ fn doubler_32b() -> processor::Result<()> {
 #[test]
 fn z3_integration() -> processor::Result<()> {
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
-    let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::default();
     let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
         let register = sleigh
@@ -295,7 +296,8 @@ fn z3_integration() -> processor::Result<()> {
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let processor = BranchingProcessor::new(memory, emulator, handler);
+    let processor =
+        BranchingProcessor::new(memory, emulator, DefaultEmulatorHandler::default(), handler);
     let mut processors = vec![processor];
 
     let mut finished = Vec::new();
@@ -440,7 +442,7 @@ fn z3_integration() -> processor::Result<()> {
 #[test]
 fn take_the_path_not_taken() -> processor::Result<()> {
     let sleigh = x86_64_sleigh().expect("failed to build sleigh");
-    let emulator = StandardPcodeEmulator::new(sleigh.address_spaces());
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
     let mut memory = Memory::default();
     let write_register = |memory: &mut Memory, name: &str, data: &[u8]| {
         let register = sleigh
@@ -519,7 +521,8 @@ fn take_the_path_not_taken() -> processor::Result<()> {
         .unwrap_or_else(|err| panic!("failed to write register {name}: {err}"));
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let mut processor = Processor::new(memory, emulator, handler);
+    let mut processor =
+        Processor::new(memory, emulator, DefaultEmulatorHandler::default(), handler);
     let rip = sleigh
         .register_from_name("RIP")
         .expect("failed to get RIP register");

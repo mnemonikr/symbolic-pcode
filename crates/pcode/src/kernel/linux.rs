@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
-use std::ops::Range;
+use std::ops::{ControlFlow, Range};
 
 use log::{error, trace, warn};
 
-use crate::emulator::{self, ControlFlow};
 use crate::kernel::Kernel;
 use crate::mem::VarnodeDataStore;
+use crate::processor;
 use libsla::{Address, Sleigh, VarnodeData};
 use pcode_ops::convert::{PcodeValue, TryFromPcodeValueError};
 
@@ -31,6 +31,7 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+pub type ControlFlowResult = Result<ControlFlow<processor::ControlFlowBreak>>;
 
 // https://github.com/torvalds/linux/blob/master/arch/x86/entry/syscalls/syscall_64.tbl
 #[repr(u32)]
@@ -137,9 +138,9 @@ impl Kernel for LinuxKernel {
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut impl VarnodeDataStore,
-    ) -> emulator::Result<ControlFlow> {
+    ) -> processor::ControlFlowResult {
         self.syscall_internal(sleigh, memory)
-            .map_err(|err| emulator::Error::DependencyError(Box::new(err)))
+            .map_err(|err| processor::Error::DependencyError(Box::new(err)))
     }
 }
 
@@ -179,7 +180,7 @@ impl LinuxKernel {
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let syscall_num = self.syscall_num(sleigh, memory)?;
         if !self.arch_config.syscall_map.is_empty() {
             let syscall = self
@@ -228,20 +229,16 @@ impl LinuxKernel {
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // TODO Completely unimplemented and entirely guessing that return 0 is fine
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
         memory.write_value(&return_register, 0u64)?;
         trace!("ppoll(...)");
 
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
-    fn poll<M: VarnodeDataStore>(
-        &self,
-        sleigh: &impl Sleigh,
-        memory: &mut M,
-    ) -> Result<ControlFlow> {
+    fn poll<M: VarnodeDataStore>(&self, sleigh: &impl Sleigh, memory: &mut M) -> ControlFlowResult {
         let pfds: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let nfds: i32 = self.syscall_arg(sleigh, memory, 1)?;
         let timeout: i32 = self.syscall_arg(sleigh, memory, 2)?;
@@ -268,14 +265,14 @@ impl LinuxKernel {
         memory.write_value(&return_register, return_value)?;
         trace!("poll({poll_fds:?}, {nfds}, {timeout}) = {return_value}");
 
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn rt_sigaction<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // Signals not supported
         let signal: u32 = self.syscall_arg(sleigh, memory, 0)?;
         let new_sigaction_ptr: u64 = self.syscall_arg(sleigh, memory, 1)?;
@@ -307,14 +304,14 @@ impl LinuxKernel {
         trace!(
             "rt_sigaction({signal}, {new_sigaction_ptr:#x}, {old_sigaction_ptr:#x}, {size}) = {return_value}"
         );
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn rt_sigprocmask<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let _how: u32 = self.syscall_arg(sleigh, memory, 0)?;
         let _set: u64 = self.syscall_arg(sleigh, memory, 1)?;
         let oldset: u64 = self.syscall_arg(sleigh, memory, 2)?;
@@ -336,27 +333,27 @@ impl LinuxKernel {
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
         memory.write_value(&return_register, 0u64)?;
         trace!("rt_sigprocmask(...)");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn set_tid_address<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // https://www.man7.org/linux/man-pages/man2/set_tid_address.2.html
         // Multithreading not supported. Ignore this and return TID = 0
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
         memory.write_value(&return_register, 0u64)?;
         trace!("set_tid_address(...)");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn sigaltstack<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let new_ss: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let old_ss: u64 = self.syscall_arg(sleigh, memory, 1)?;
 
@@ -384,14 +381,14 @@ impl LinuxKernel {
         }
 
         trace!("sigaltstack(...)");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn arch_prctl<M: VarnodeDataStore>(
         &self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // https://github.com/torvalds/linux/blob/master/arch/x86/include/uapi/asm/prctl.h
         let op: u32 = self.syscall_arg(sleigh, memory, 0)?;
         let addr: u64 = self.syscall_arg(sleigh, memory, 1)?;
@@ -408,7 +405,7 @@ impl LinuxKernel {
                     sleigh.register_from_name(&self.arch_config.return_register)?;
                 memory.write_value(&return_register, return_value)?;
                 trace!("arch_prctl(ARCH_SET_FS, {addr:#x}) = {return_value}");
-                Ok(ControlFlow::NextInstruction)
+                Ok(ControlFlow::Continue(()))
             }
             _ => Err(Error::UnhandledSyscall {
                 syscall_num: Syscall::ArchPrctl as u32,
@@ -420,7 +417,7 @@ impl LinuxKernel {
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let addr: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let len: u64 = self.syscall_arg(sleigh, memory, 1)?;
         let prot: u64 = self.syscall_arg(sleigh, memory, 2)?;
@@ -471,27 +468,27 @@ impl LinuxKernel {
         trace!(
             "mmap({addr:#x}, {len}, {prot:#016x}, {flags:#016x}, {fd}, {offset}) = {return_value:#x}"
         );
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn mprotect<M: VarnodeDataStore>(
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // Noop, protection not enforced
         let return_value = 0u64;
         let return_register = sleigh.register_from_name(&self.arch_config.return_register)?;
         memory.write_value(&return_register, return_value)?;
         trace!("mprotect(...) = {return_value}");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn munmap<M: VarnodeDataStore>(
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let addr: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let len: u64 = self.syscall_arg(sleigh, memory, 1)?;
 
@@ -512,14 +509,14 @@ impl LinuxKernel {
         memory.write_value(&return_register, return_value)?;
 
         trace!("munmap({addr:#x}, {len}) = {return_value}");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn brk<M: VarnodeDataStore>(
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         // Noop, protection not enforced
         let brk: u64 = self.syscall_arg(sleigh, memory, 0)?;
 
@@ -541,14 +538,14 @@ impl LinuxKernel {
         memory.write_value(&return_register, return_value)?;
 
         trace!("brk({brk:08x}) = {return_value:08x}");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn write<M: VarnodeDataStore>(
         &mut self,
         sleigh: &impl Sleigh,
         memory: &mut M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         use std::io::Write;
         let fd: u64 = self.syscall_arg(sleigh, memory, 0)?;
         let buf: u64 = self.syscall_arg(sleigh, memory, 1)?;
@@ -582,18 +579,18 @@ impl LinuxKernel {
         memory.write_value(&return_register, return_value)?;
 
         trace!("write({fd}, {buf:#x}, {count}) = {return_value}");
-        Ok(ControlFlow::NextInstruction)
+        Ok(ControlFlow::Continue(()))
     }
 
     fn exit_group<M: VarnodeDataStore>(
         &mut self,
         sleigh: &impl Sleigh,
         memory: &M,
-    ) -> Result<ControlFlow> {
+    ) -> ControlFlowResult {
         let status: i32 = self.syscall_arg(sleigh, memory, 0)?;
         trace!("exitgroup({status})");
         self.exit_status = Some(status);
-        Ok(ControlFlow::Halt)
+        Ok(ControlFlow::Break(processor::ControlFlowBreak::Halt))
     }
 
     fn syscall_num<M: VarnodeDataStore>(&self, sleigh: &impl Sleigh, memory: &M) -> Result<u32> {

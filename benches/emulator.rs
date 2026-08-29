@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use pcode_ops::convert::PcodeValue;
-use symbolic_pcode::emulator::{PcodeEmulator, StandardPcodeEmulator};
+use symbolic_pcode::emulator::PcodeEmulator;
 use symbolic_pcode::libsla::{
     Address, AddressSpace, AddressSpaceId, AddressSpaceType, BoolOp, IntOp, IntSign, OpCode,
     PcodeInstruction, VarnodeData,
@@ -328,8 +328,8 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
     }
 }
 
-pub fn standard_emulator(c: &mut Criterion) {
-    let mut emulator = StandardPcodeEmulator::new([internal_space(), processor_space()]);
+pub fn emulator(c: &mut Criterion) {
+    let emulator = PcodeEmulator::new([internal_space(), processor_space()]);
 
     let mut bench_arithmetic = |op_code| {
         let mut group = c.benchmark_group("Emulate");
@@ -456,5 +456,5 @@ pub fn standard_emulator(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, standard_emulator);
+criterion_group!(benches, emulator);
 criterion_main!(benches);

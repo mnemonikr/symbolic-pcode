@@ -4,13 +4,13 @@ use pcode_ops::PcodeOps;
 use symbolic_pcode::libsla::{Address, Sleigh, VarnodeData};
 use symbolic_pcode::{
     arch::{self, x86::processor::ProcessorHandlerX86},
-    emulator::StandardPcodeEmulator,
+    emulator::PcodeEmulator,
     mem::VarnodeDataStore,
     processor::{self, Processor, ProcessorState},
 };
 
 use crate::common::{self, x86_64_sleigh};
-use util::TracingEmulator;
+use util::EmulatorTraceHandler;
 
 #[test]
 fn pcode_coverage() -> processor::Result<()> {
@@ -50,8 +50,9 @@ fn pcode_coverage() -> processor::Result<()> {
         .expect("failed to initialize stack");
 
     let handler = ProcessorHandlerX86::new(&sleigh);
-    let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
-    let mut processor = Processor::new(memory, emulator, handler);
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
+    let emulator_handler = EmulatorTraceHandler::new();
+    let mut processor = Processor::new(memory, emulator, emulator_handler, handler);
 
     loop {
         processor.step(&sleigh)?;
@@ -98,7 +99,7 @@ fn pcode_coverage() -> processor::Result<()> {
     );
 
     processor
-        .emulator()
+        .emulator_handler()
         .executed_instructions()
         .into_iter()
         .for_each(|(opcode, count)| println!("Executed {opcode:?}: {count}"));
@@ -114,7 +115,10 @@ fn pcode_coverage() -> processor::Result<()> {
     // Int(GreaterThanOrEqual(Signed))
     // Int(GreaterThanOrEqual(Unsigned))
     // BranchIndirect -- though technically this is covered via Return
-    assert_eq!(processor.emulator().executed_instructions().len(), 36);
+    assert_eq!(
+        processor.emulator_handler().executed_instructions().len(),
+        36
+    );
     Ok(())
 }
 
@@ -156,8 +160,9 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
         .expect("failed to initialize stack");
 
     let handler = arch::aarch64::processor::ProcessorHandler::new(&sleigh);
-    let emulator = TracingEmulator::new(StandardPcodeEmulator::new(sleigh.address_spaces()));
-    let mut processor = Processor::new(memory, emulator, handler);
+    let emulator = PcodeEmulator::new(sleigh.address_spaces());
+    let emulator_handler = EmulatorTraceHandler::new();
+    let mut processor = Processor::new(memory, emulator, emulator_handler, handler);
 
     loop {
         processor.step(&sleigh)?;
@@ -204,7 +209,7 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
     );
 
     processor
-        .emulator()
+        .emulator_handler()
         .executed_instructions()
         .into_iter()
         .for_each(|(opcode, count)| println!("Executed {opcode:?}: {count}"));
@@ -220,6 +225,9 @@ fn pcode_coverage_aarch64() -> processor::Result<()> {
     // Int(GreaterThanOrEqual(Signed))
     // Int(GreaterThanOrEqual(Unsigned))
     // BranchIndirect -- though technically this is covered via Return
-    assert_eq!(processor.emulator().executed_instructions().len(), 33);
+    assert_eq!(
+        processor.emulator_handler().executed_instructions().len(),
+        33
+    );
     Ok(())
 }

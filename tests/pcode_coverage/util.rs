@@ -1,23 +1,24 @@
 use std::collections::BTreeMap;
+use std::ops::ControlFlow;
 
 use symbolic_pcode::libsla::{OpCode, PcodeInstruction};
 use symbolic_pcode::{
-    emulator::{self, ControlFlow, PcodeEmulator, StandardPcodeEmulator},
+    emulator::BranchResult,
     mem::VarnodeDataStore,
+    processor::{ControlFlowResult, EmulatorHandler, default_after_emulate},
 };
 
 #[derive(Debug, Clone)]
-pub struct TracingEmulator {
-    inner: StandardPcodeEmulator,
+pub struct EmulatorTraceHandler {
     executed_instructions: std::cell::RefCell<BTreeMap<OpCode, usize>>,
 }
 
-impl PcodeEmulator for TracingEmulator {
-    fn emulate<T: VarnodeDataStore>(
+impl EmulatorHandler for EmulatorTraceHandler {
+    fn before_emulate<T: VarnodeDataStore>(
         &mut self,
-        memory: &mut T,
+        _memory: &mut T,
         instruction: &PcodeInstruction,
-    ) -> emulator::Result<ControlFlow> {
+    ) -> ControlFlowResult {
         //println!("Executing: {instruction}");
         match &instruction.op_code {
             OpCode::Store => (),
@@ -58,8 +59,15 @@ impl PcodeEmulator for TracingEmulator {
             }
         };
 
-        let result = self.inner.emulate(memory, instruction)?;
+        Ok(ControlFlow::Continue(()))
+    }
 
+    fn after_emulate<M: VarnodeDataStore>(
+        &mut self,
+        _memory: &mut M,
+        instruction: &PcodeInstruction,
+        result: BranchResult,
+    ) -> ControlFlowResult {
         /*
         match &instruction.op_code {
             OpCode::Store => println!("Store"),
@@ -92,14 +100,13 @@ impl PcodeEmulator for TracingEmulator {
             .borrow_mut()
             .entry(instruction.op_code)
             .or_default() += 1;
-        Ok(result)
+        default_after_emulate(result)
     }
 }
 
-impl TracingEmulator {
-    pub fn new(inner: StandardPcodeEmulator) -> Self {
+impl EmulatorTraceHandler {
+    pub fn new() -> Self {
         Self {
-            inner,
             executed_instructions: Default::default(),
         }
     }
