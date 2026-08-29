@@ -328,7 +328,7 @@ fn create_arithmetic_setup_fn(op_code: OpCode) -> impl FnMut() -> (Memory, Pcode
     }
 }
 
-pub fn standard_emulator(c: &mut Criterion) {
+pub fn emulator(c: &mut Criterion) {
     let emulator = PcodeEmulator::new([internal_space(), processor_space()]);
 
     let mut bench_arithmetic = |op_code| {
@@ -456,5 +456,5 @@ pub fn standard_emulator(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, standard_emulator);
+criterion_group!(benches, emulator);
 criterion_main!(benches);
