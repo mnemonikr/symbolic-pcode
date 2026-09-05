@@ -110,7 +110,8 @@ macro_rules! impl_tryfrom_pcodevalue {
     ($target:ty, $size:expr, $signed:expr) => {
         impl<T: PcodeOps> From<$target> for PcodeValue<T> {
             fn from(value: $target) -> PcodeValue<T> {
-                PcodeValue::from(T::from_le(value))
+                let pcode: T = value.to_le_bytes().into_iter().map(T::Byte::from).collect();
+                PcodeValue::from(pcode)
             }
         }
 

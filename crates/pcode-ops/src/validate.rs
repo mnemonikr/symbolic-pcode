@@ -80,27 +80,29 @@ pub enum BitOperation {
 impl Operation {
     fn evaluate<T: PcodeOps>(&self) -> T {
         match *self {
-            Self::Popcount(x) => T::from_le(x).popcount(),
-            Self::And(x, y) => T::from_le(x).and(T::from_le(y)),
-            Self::Or(x, y) => T::from_le(x).or(T::from_le(y)),
-            Self::Xor(x, y) => T::from_le(x).xor(T::from_le(y)),
-            Self::Not(x) => T::from_le(x).not(),
-            Self::ShiftLeft(x, y) => T::from_le(x).shift_left(T::from_le(y)),
-            Self::SignedShiftRight(x, y) => T::from_le(x).signed_shift_right(T::from_le(y)),
-            Self::UnsignedShiftRight(x, y) => T::from_le(x).unsigned_shift_right(T::from_le(y)),
-            Self::Add(x, y) => T::from_le(x).add(T::from_le(y)),
-            Self::Subtract(x, y) => T::from_le(x).subtract(T::from_le(y)),
-            Self::Multiply(x, y) => T::from_le(x).multiply(T::from_le(y)),
-            Self::UnsignedDivide(x, y) => T::from_le(x).unsigned_divide(T::from_le(y)),
-            Self::SignedDivide(x, y) => T::from_le(x).signed_divide(T::from_le(y)),
-            Self::UnsignedRemainder(x, y) => T::from_le(x).unsigned_remainder(T::from_le(y)),
-            Self::SignedRemainder(x, y) => T::from_le(x).signed_remainder(T::from_le(y)),
-            Self::Negate(x) => T::from_le(x).negate(),
-            Self::ZeroExtend(x, y) => T::from_le(x).zero_extend(y),
-            Self::SignExtend(x, y) => T::from_le(x).sign_extend(y),
-            Self::Piece(x, y) => T::from_le(x).piece(T::from_le(y)),
-            Self::TruncateToSize(x, y) => T::from_le(x).truncate_to_size(y),
-            Self::TruncateTrailingBytes(x, y) => T::from_le(x).truncate_trailing_bytes(y as u64),
+            Self::Popcount(x) => to_pcode::<T>(x).popcount(),
+            Self::And(x, y) => to_pcode::<T>(x).and(to_pcode::<T>(y)),
+            Self::Or(x, y) => to_pcode::<T>(x).or(to_pcode::<T>(y)),
+            Self::Xor(x, y) => to_pcode::<T>(x).xor(to_pcode::<T>(y)),
+            Self::Not(x) => to_pcode::<T>(x).not(),
+            Self::ShiftLeft(x, y) => to_pcode::<T>(x).shift_left(to_pcode::<T>(y)),
+            Self::SignedShiftRight(x, y) => to_pcode::<T>(x).signed_shift_right(to_pcode::<T>(y)),
+            Self::UnsignedShiftRight(x, y) => {
+                to_pcode::<T>(x).unsigned_shift_right(to_pcode::<T>(y))
+            }
+            Self::Add(x, y) => to_pcode::<T>(x).add(to_pcode::<T>(y)),
+            Self::Subtract(x, y) => to_pcode::<T>(x).subtract(to_pcode::<T>(y)),
+            Self::Multiply(x, y) => to_pcode::<T>(x).multiply(to_pcode::<T>(y)),
+            Self::UnsignedDivide(x, y) => to_pcode::<T>(x).unsigned_divide(to_pcode::<T>(y)),
+            Self::SignedDivide(x, y) => to_pcode::<T>(x).signed_divide(to_pcode::<T>(y)),
+            Self::UnsignedRemainder(x, y) => to_pcode::<T>(x).unsigned_remainder(to_pcode::<T>(y)),
+            Self::SignedRemainder(x, y) => to_pcode::<T>(x).signed_remainder(to_pcode::<T>(y)),
+            Self::Negate(x) => to_pcode::<T>(x).negate(),
+            Self::ZeroExtend(x, y) => to_pcode::<T>(x).zero_extend(y),
+            Self::SignExtend(x, y) => to_pcode::<T>(x).sign_extend(y),
+            Self::Piece(x, y) => to_pcode::<T>(x).piece(to_pcode::<T>(y)),
+            Self::TruncateToSize(x, y) => to_pcode::<T>(x).truncate_to_size(y),
+            Self::TruncateTrailingBytes(x, y) => to_pcode::<T>(x).truncate_trailing_bytes(y as u64),
         }
     }
 }
@@ -109,36 +111,38 @@ impl BitOperation {
     fn evaluate<T: PcodeOps>(self) -> T::Bit {
         match self {
             BitOperation::UnsignedCarry(lhs, rhs) => {
-                T::from_le(lhs).unsigned_carry(T::from_le(rhs))
+                to_pcode::<T>(lhs).unsigned_carry(to_pcode::<T>(rhs))
             }
-            BitOperation::SignedCarry(lhs, rhs) => T::from_le(lhs).signed_carry(T::from_le(rhs)),
-            BitOperation::Borrow(lhs, rhs) => T::from_le(lhs).borrow(T::from_le(rhs)),
-            BitOperation::Lsb(x) => T::from_le(x).lsb(),
-            BitOperation::Equals(lhs, rhs) => T::from_le(lhs).equals(T::from_le(rhs)),
-            BitOperation::NotEquals(lhs, rhs) => T::from_le(lhs).not_equals(T::from_le(rhs)),
+            BitOperation::SignedCarry(lhs, rhs) => {
+                to_pcode::<T>(lhs).signed_carry(to_pcode::<T>(rhs))
+            }
+            BitOperation::Borrow(lhs, rhs) => to_pcode::<T>(lhs).borrow(to_pcode::<T>(rhs)),
+            BitOperation::Lsb(x) => to_pcode::<T>(x).lsb(),
+            BitOperation::Equals(lhs, rhs) => to_pcode::<T>(lhs).equals(to_pcode::<T>(rhs)),
+            BitOperation::NotEquals(lhs, rhs) => to_pcode::<T>(lhs).not_equals(to_pcode::<T>(rhs)),
             BitOperation::UnsignedLessThan(lhs, rhs) => {
-                T::from_le(lhs).unsigned_less_than(T::from_le(rhs))
+                to_pcode::<T>(lhs).unsigned_less_than(to_pcode::<T>(rhs))
             }
             BitOperation::UnsignedGreaterThan(lhs, rhs) => {
-                T::from_le(lhs).unsigned_greater_than(T::from_le(rhs))
+                to_pcode::<T>(lhs).unsigned_greater_than(to_pcode::<T>(rhs))
             }
             BitOperation::UnsignedLessThanOrEquals(lhs, rhs) => {
-                T::from_le(lhs).unsigned_less_than_or_equals(T::from_le(rhs))
+                to_pcode::<T>(lhs).unsigned_less_than_or_equals(to_pcode::<T>(rhs))
             }
             BitOperation::UnsignedGreaterThanOrEquals(lhs, rhs) => {
-                T::from_le(lhs).unsigned_greater_than_or_equals(T::from_le(rhs))
+                to_pcode::<T>(lhs).unsigned_greater_than_or_equals(to_pcode::<T>(rhs))
             }
             BitOperation::SignedLessThan(lhs, rhs) => {
-                T::from_le(lhs).signed_less_than(T::from_le(rhs))
+                to_pcode::<T>(lhs).signed_less_than(to_pcode::<T>(rhs))
             }
             BitOperation::SignedGreaterThan(lhs, rhs) => {
-                T::from_le(lhs).signed_greater_than(T::from_le(rhs))
+                to_pcode::<T>(lhs).signed_greater_than(to_pcode::<T>(rhs))
             }
             BitOperation::SignedLessThanOrEquals(lhs, rhs) => {
-                T::from_le(lhs).signed_less_than_or_equals(T::from_le(rhs))
+                to_pcode::<T>(lhs).signed_less_than_or_equals(to_pcode::<T>(rhs))
             }
             BitOperation::SignedGreaterThanOrEquals(lhs, rhs) => {
-                T::from_le(lhs).signed_greater_than_or_equals(T::from_le(rhs))
+                to_pcode::<T>(lhs).signed_greater_than_or_equals(to_pcode::<T>(rhs))
             }
         }
     }
@@ -743,4 +747,9 @@ where
             expected,
         })
     }
+}
+
+/// Helper function to convert value to pcode.
+fn to_pcode<T: PcodeOps>(v: impl Into<PcodeValue<T>>) -> T {
+    v.into().into_inner()
 }
