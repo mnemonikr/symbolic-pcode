@@ -110,9 +110,25 @@ impl BitwisePcodeOps for Pcode128 {
     }
 }
 
+#[repr(transparent)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Byte(u8);
+
+impl From<u8> for Byte {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Byte> for u8 {
+    fn from(value: Byte) -> Self {
+        value.0
+    }
+}
+
 impl PcodeOps for Pcode128 {
     type Bit = bool;
-    type Byte = u8;
+    type Byte = Byte;
 
     fn num_bytes(&self) -> usize {
         self.valid_bits.div_ceil(u8::BITS) as usize
@@ -283,6 +299,7 @@ impl PcodeOps for Pcode128 {
             .to_le_bytes()
             .into_iter()
             .take(self.num_bytes())
+            .map(Byte::from)
     }
 }
 
@@ -295,5 +312,23 @@ impl FromIterator<u8> for Pcode128 {
             valid_bits += 8;
         }
         Pcode128::new(u128::from_le_bytes(buffer), valid_bits)
+    }
+}
+
+impl FromIterator<Byte> for Pcode128 {
+    fn from_iter<T: IntoIterator<Item = Byte>>(iter: T) -> Self {
+        iter.into_iter().map(u8::from).collect()
+    }
+}
+
+impl From<[bool; 8]> for Byte {
+    fn from(value: [bool; 8]) -> Self {
+        let byte = value
+            .into_iter()
+            .enumerate()
+            .map(|(i, b)| if b { 1u8 << i } else { 0 })
+            .reduce(|x, y| x | y)
+            .unwrap();
+        byte.into()
     }
 }
