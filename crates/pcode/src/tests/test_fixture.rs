@@ -9,6 +9,12 @@ impl From<u8> for SymbolicValue {
     }
 }
 
+impl From<[SymbolicValue; 8]> for SymbolicValue {
+    fn from(_value: [SymbolicValue; 8]) -> Self {
+        Self::default()
+    }
+}
+
 impl TryFrom<SymbolicValue> for u8 {
     type Error = &'static str;
     fn try_from(_value: SymbolicValue) -> Result<Self, Self::Error> {

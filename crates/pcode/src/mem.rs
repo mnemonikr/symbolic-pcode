@@ -43,11 +43,6 @@ pub trait VarnodeDataStore {
     }
 
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
-    fn write_bit(
-        &mut self,
-        destination: &VarnodeData,
-        data: <Self::Value as PcodeOps>::Bit,
-    ) -> Result<()>;
 
     /// Read a [PcodeValue] from memory.
     fn read_value(&self, source: &VarnodeData) -> Result<PcodeValue<Self::Value>> {
@@ -190,14 +185,6 @@ impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
 
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
         self.write_bytes(destination, data.into_le_bytes())
-    }
-
-    fn write_bit(
-        &mut self,
-        destination: &VarnodeData,
-        bit: <Self::Value as PcodeOps>::Bit,
-    ) -> Result<()> {
-        self.write_bytes(destination, [<Self::Value as PcodeOps>::Byte::from(bit)])
     }
 }
 
@@ -345,14 +332,6 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
     /// Write the data to the location specified by the varnode.
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()> {
         self.memory.write(destination, data)
-    }
-
-    fn write_bit(
-        &mut self,
-        destination: &VarnodeData,
-        data: <Self::Value as PcodeOps>::Bit,
-    ) -> Result<()> {
-        self.memory.write_bit(destination, data)
     }
 }
 

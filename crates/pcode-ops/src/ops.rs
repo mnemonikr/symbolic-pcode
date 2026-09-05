@@ -4,7 +4,7 @@
 /// condition evaluation.
 pub trait PcodeOps: BitwisePcodeOps + FromIterator<Self::Byte> {
     /// A representation of a byte (8-bit) value.
-    type Byte: From<u8> + TryInto<u8> + Clone + From<Self::Bit>;
+    type Byte: From<u8> + TryInto<u8> + Clone + From<[Self::Bit; 8]>;
 
     /// A representation of a single bit.
     type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;

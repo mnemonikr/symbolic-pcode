@@ -105,6 +105,12 @@ impl TryFrom<SymBit> for bool {
     }
 }
 
+impl From<[SymBit; 8]> for SymByte {
+    fn from(value: [SymBit; 8]) -> Self {
+        SymByte(value.map(|v| v.0).into())
+    }
+}
+
 impl PcodeOps for SymPcode {
     type Byte = SymByte;
     type Bit = SymBit;

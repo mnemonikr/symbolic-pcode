@@ -44,7 +44,7 @@ fn read_and_write() -> Result<()> {
     // Confirm bytes are expected values
     for (i, actual) in iter.enumerate() {
         let expected = u8::from_str_radix(&format!("{x}{x}", x = i + 1), 16).unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(u8::from(actual), expected);
     }
 
     Ok(())

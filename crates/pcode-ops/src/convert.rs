@@ -36,6 +36,20 @@ impl<T: PcodeOps> PcodeValue<T> {
     pub fn into_inner(self) -> T {
         self.inner
     }
+
+    /// Create a value from a byte
+    pub fn from_byte(byte: T::Byte) -> Self {
+        Self {
+            inner: std::iter::once(byte).collect(),
+        }
+    }
+
+    /// Create a value from a bit
+    pub fn from_bit(bit: T::Bit) -> Self {
+        let mut byte = std::array::from_fn(|_| T::Bit::from(false));
+        byte[0] = bit;
+        Self::from_byte(byte.into())
+    }
 }
 
 impl<T: PcodeOps> TryFrom<PcodeValue<T>> for Vec<u8> {

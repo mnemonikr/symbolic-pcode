@@ -145,7 +145,7 @@ macro_rules! binary_op_bit {
 
         let lhs = $mem.read(&$instr.inputs[0])?;
         let rhs = $mem.read(&$instr.inputs[1])?;
-        $mem.write_bit($instr.output.as_ref().unwrap(), lhs.$op(rhs))?;
+        $mem.write($instr.output.as_ref().unwrap(), bit_to_value(lhs.$op(rhs)))?;
     }};
 }
 
@@ -156,8 +156,8 @@ macro_rules! bool_unary_op {
         require_input_sizes_equal($instr, 1)?;
         require_output_size_equals($instr, 1)?;
 
-        let lhs = $mem.read_bit(&$instr.inputs[0])?;
-        $mem.write_bit($instr.output.as_ref().unwrap(), lhs.$op())?;
+        let lhs = $mem.read(&$instr.inputs[0])?.lsb();
+        $mem.write($instr.output.as_ref().unwrap(), bit_to_value(lhs.$op()))?;
     }};
 }
 
@@ -168,9 +168,9 @@ macro_rules! bool_binary_op {
         require_input_sizes_equal($instr, 1)?;
         require_output_size_equals($instr, 1)?;
 
-        let lhs = $mem.read_bit(&$instr.inputs[0])?;
-        let rhs = $mem.read_bit(&$instr.inputs[1])?;
-        $mem.write_bit($instr.output.as_ref().unwrap(), lhs.$op(rhs))?;
+        let lhs = $mem.read(&$instr.inputs[0])?.lsb();
+        let rhs = $mem.read(&$instr.inputs[1])?.lsb();
+        $mem.write($instr.output.as_ref().unwrap(), bit_to_value(lhs.$op(rhs)))?;
     }};
 }
 
@@ -861,4 +861,8 @@ fn require_output_size_exceeds(instruction: &PcodeInstruction, expected_size: us
     }
 
     Ok(())
+}
+
+fn bit_to_value<T: PcodeOps>(bit: T::Bit) -> T {
+    PcodeValue::<T>::from_bit(bit).into_inner()
 }
