@@ -15,15 +15,6 @@ pub trait PcodeOps: BitwisePcodeOps + FromIterator<Self::Byte> {
     /// Returns the number of bytes used to represent this value.
     fn num_bytes(&self) -> usize;
 
-    /// Converts value that has little-endian byte representation.
-    fn from_le<const N: usize, T: crate::convert::LittleEndian<N>>(value: T) -> Self {
-        value
-            .into_words()
-            .into_iter()
-            .map(Self::Byte::from)
-            .collect()
-    }
-
     /// Returns an iterator of bytes in a little endian sequence.
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte>;
 
