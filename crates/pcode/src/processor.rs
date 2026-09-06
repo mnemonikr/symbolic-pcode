@@ -202,7 +202,7 @@ impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResp
                 match x.next_execution(control_flow) {
                     BranchingNextExecution::Flow(e1) => self.update_execution(e1)?,
                     BranchingNextExecution::Branch(branch) => {
-                        let next_execution = match branch.conditional_destination(&self.memory) {
+                        let next_execution = match branch.control_flow(&self.memory) {
                             Some(ControlFlow::Continue(())) => x.next_instruction(),
                             Some(ControlFlow::Break(destination)) => x.jump(destination),
                             None => match branch_condition_evaluation {

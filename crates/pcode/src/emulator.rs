@@ -116,9 +116,9 @@ impl Branch {
         }
     }
 
-    /// Get the branch destination based on the branch condition. Returns None if the branch
+    /// Get the branch control flow based on the branch condition. Returns None if the branch
     /// condition cannot be determined to be either true or false.
-    pub fn conditional_destination<'a, M: VarnodeDataStore>(
+    pub fn control_flow<'a, M: VarnodeDataStore>(
         &'a self,
         mem: &M,
     ) -> Option<ControlFlow<&'a Destination>> {
