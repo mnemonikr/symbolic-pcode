@@ -7,7 +7,7 @@ pub trait PcodeOps: BitwisePcodeOps + FromIterator<Self::Byte> {
     type Byte: From<u8> + TryInto<u8> + Clone + From<[Self::Bit; 8]>;
 
     /// A representation of a single bit.
-    type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;
+    type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + Clone;
 
     /// Returns the number of bytes used to represent this value.
     fn num_bytes(&self) -> usize;

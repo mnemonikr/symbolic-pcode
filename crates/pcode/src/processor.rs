@@ -9,6 +9,7 @@ use libsla::{
     Address, AddressSpace, NativeDisassembly, PcodeDisassembly, PcodeInstruction, Sleigh,
     VarnodeData,
 };
+use pcode_ops::PcodeOps;
 
 // TODO Emulator can also have memory access errors. Probably better to write a custom
 // derivation that converts emulator errors into processor errors.
@@ -264,12 +265,16 @@ pub struct BranchingProcessor<
     E: EmulatorHandler + Clone,
     M: VarnodeDataStore + Default,
     H: ProcessorResponseHandler + Clone,
-> {
+> where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     processor: Processor<E, MemoryBranch<M>, H>,
 }
 
 impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResponseHandler + Clone>
     BranchingProcessor<E, M, H>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
 {
     pub fn new(memory: M, emulator: PcodeEmulator, emulator_handler: E, handler: H) -> Self {
         Self {

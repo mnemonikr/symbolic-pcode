@@ -78,7 +78,10 @@ pub enum BitOperation {
 }
 
 impl Operation {
-    fn evaluate<T: PcodeOps>(&self) -> T {
+    fn evaluate<T: PcodeOps>(&self) -> T
+    where
+        <T as PcodeOps>::Bit: Debug,
+    {
         match *self {
             Self::Popcount(x) => to_pcode::<T>(x).popcount(),
             Self::And(x, y) => to_pcode::<T>(x).and(to_pcode::<T>(y)),
@@ -157,6 +160,7 @@ pub struct Validator<T: PcodeOps> {
 impl<T: PcodeOps + std::fmt::Debug> Validator<T>
 where
     <<T as PcodeOps>::Bit as TryInto<bool>>::Error: Debug,
+    <T as PcodeOps>::Bit: Debug,
 {
     /// Validate all of the [PcodeOps] operations.
     pub fn validate() -> Result {
@@ -704,7 +708,10 @@ where
     }
 }
 
-fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result {
+fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result
+where
+    <T as PcodeOps>::Bit: Debug,
+{
     let actual = op.evaluate::<T>();
     let actual_str = format!("{actual:?}");
     let actual = PcodeValue::from(actual).try_into().map_err(|err| {
@@ -728,6 +735,7 @@ fn expect_op<T: PcodeOps + Debug>(op: Operation, expected: u64) -> Result {
 fn expect_bit_op<T: PcodeOps>(op: BitOperation, expected: bool) -> Result
 where
     <<T as PcodeOps>::Bit as TryInto<bool>>::Error: Debug,
+    <T as PcodeOps>::Bit: Debug,
 {
     let actual = op.evaluate::<T>();
     let actual_str = format!("{actual:?}");
