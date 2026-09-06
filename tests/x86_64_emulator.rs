@@ -530,23 +530,16 @@ fn take_the_path_not_taken() -> processor::Result<()> {
     let mut branches = Vec::new();
     loop {
         if let Err(e) = processor.step(&sleigh) {
-            if let processor::Error::SymbolicBranch { condition_origin } = &e {
-                let condition = processor
-                    .memory()
-                    .read_value(condition_origin)?
-                    .into_inner()
-                    .into_inner();
+            if let processor::Error::SymbolicBranch { branch } = &e {
+                let condition = SymbolicBit::from(branch.condition(processor.memory())?);
                 let evaluation = evaluator
-                    .evaluate(
-                        SymbolicBit::from(processor.memory().read_bit(condition_origin)?)
-                            .constraint(),
-                    )
+                    .evaluate(condition.constraint())
                     .response
                     .expect("evaluation should be concrete");
                 if evaluation {
-                    branches.push(!condition.equals(0u8.into()));
+                    branches.push(condition);
                 } else {
-                    branches.push(condition.equals(0u8.into()));
+                    branches.push(!condition);
                 }
 
                 processor.step_branch(&sleigh, evaluation)?;
