@@ -799,13 +799,8 @@ fn require_has_output(instruction: &PcodeInstruction, has_output: bool) -> Resul
                 instruction: Box::new(instruction.clone()),
                 kind: IllegalInstructionKind::VarnodeMissing(0),
             });
-        } else if instruction
-            .output
-            .as_ref()
-            .unwrap()
-            .address
-            .address_space
-            .is_constant()
+        } else if let Some(output) = instruction.output.as_ref()
+            && output.address.address_space.is_constant()
         {
             return Err(Error::IllegalInstruction {
                 instruction: Box::new(instruction.clone()),

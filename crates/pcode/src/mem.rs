@@ -155,10 +155,8 @@ impl<T: PcodeOps> GenericMemory<T> {
         let space_id = destination.address.address_space.id;
         let memory = self.data.entry(space_id).or_default();
 
-        let mut offset = destination.address.offset;
-        for byte in data {
+        for (offset, byte) in (destination.address.offset..).zip(data) {
             memory.insert(offset, byte);
-            offset += 1;
         }
 
         Ok(())
@@ -294,40 +292,39 @@ where
         // Not using a question mark operator here in order to check for undefined data
         let result = self.memory.read(varnode);
 
-        if let Some(parent) = &self.parent {
-            if let Err(Error::UndefinedData {
+        if let Some(parent) = &self.parent
+            && let Err(Error::UndefinedData {
                 target,
                 relative_offset: num_valid_bytes,
             }) = result
-            {
-                // Special case to defer to the parent if the data is entirely undefined
-                if num_valid_bytes == 0 {
-                    return parent.read(varnode);
-                }
-
-                // Read the known valid data
-                let valid_input = VarnodeData {
-                    address: Address {
-                        offset: varnode.address.offset,
-                        address_space: varnode.address.address_space.clone(),
-                    },
-                    size: num_valid_bytes,
-                };
-                let data = self.memory.read(&valid_input)?;
-
-                // Read the missing data from parent
-                let mut parent_address = target.address.clone();
-                parent_address.offset += num_valid_bytes as u64;
-
-                let parent_varnode = VarnodeData {
-                    address: parent_address,
-                    size: varnode.size - num_valid_bytes,
-                };
-                let parent_data = parent.read(&parent_varnode)?;
-
-                // Combine the two and return the result
-                return Ok(parent_data.piece(data));
+        {
+            // Special case to defer to the parent if the data is entirely undefined
+            if num_valid_bytes == 0 {
+                return parent.read(varnode);
             }
+
+            // Read the known valid data
+            let valid_input = VarnodeData {
+                address: Address {
+                    offset: varnode.address.offset,
+                    address_space: varnode.address.address_space.clone(),
+                },
+                size: num_valid_bytes,
+            };
+            let data = self.memory.read(&valid_input)?;
+
+            // Read the missing data from parent
+            let mut parent_address = target.address.clone();
+            parent_address.offset += num_valid_bytes as u64;
+
+            let parent_varnode = VarnodeData {
+                address: parent_address,
+                size: varnode.size - num_valid_bytes,
+            };
+            let parent_data = parent.read(&parent_varnode)?;
+
+            // Combine the two and return the result
+            return Ok(parent_data.piece(data));
         }
 
         result
