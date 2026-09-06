@@ -9,9 +9,6 @@ pub trait PcodeOps: BitwisePcodeOps + FromIterator<Self::Byte> {
     /// A representation of a single bit.
     type Bit: BitwisePcodeOps + From<bool> + TryInto<bool> + std::fmt::Debug + Clone;
 
-    /// Create a value that is the given bit repeated to fill the specified number of bytes.
-    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self;
-
     /// Returns the number of bytes used to represent this value.
     fn num_bytes(&self) -> usize;
 

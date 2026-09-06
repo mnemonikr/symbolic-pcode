@@ -267,10 +267,6 @@ impl PcodeOps for SymPcode {
     fn unsigned_greater_than_or_equals(self, other: Self) -> Self::Bit {
         SymBit(self.0.greater_than_eq(other.0))
     }
-
-    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
-        Self(std::iter::repeat_n(bit.0, u8::BITS as usize * num_bytes).collect())
-    }
 }
 
 impl BitwisePcodeOps for SymPcode {
