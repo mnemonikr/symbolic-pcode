@@ -99,41 +99,41 @@ impl<S: Sleigh, K: Kernel> EmulatorHandler for Emulator<S, K> {
         instruction: &PcodeInstruction,
         result: BranchResult,
     ) -> ControlFlowResult {
-        if let Err(Error::UnsupportedInstruction { instruction }) = &result {
-            if instruction.op_code == OpCode::Pseudo(PseudoOp::CallOther) {
-                let arg = instruction.inputs.first().and_then(|input| {
-                    if input.address.address_space.is_constant() {
-                        Some(input.address.offset)
-                    } else {
-                        None
-                    }
-                });
-
-                match arg {
-                    Some(x) if x == CallOtherOps::SupervisorCall as u64 => {
-                        return self.kernel.syscall(self.sleigh.as_ref(), memory);
-                    }
-                    Some(x) if x == CallOtherOps::ExclusiveMonitorPass as u64 => {
-                        if let Some(output) = instruction.output.as_ref() {
-                            // 1 Indicates that the monitor passes and the register can be written
-                            // See usage in AARCH64base.sinc
-                            memory.write_value(output, 1u8)?;
-                        }
-                        return Ok(ControlFlow::Continue(()));
-                    }
-                    Some(x) if x == CallOtherOps::ExclusiveMonitorsStatus as u64 => {
-                        if let Some(output) = instruction.output.as_ref() {
-                            // 0 on success
-                            // See usage in AARCH64base.sinc
-                            memory.write_value(output, 0u8)?;
-                        }
-                        return Ok(ControlFlow::Continue(()));
-                    }
-                    Some(x) if x == CallOtherOps::DataMemoryBarrier as u64 => {
-                        return Ok(ControlFlow::Continue(()));
-                    }
-                    _ => (),
+        if let Err(Error::UnsupportedInstruction { instruction }) = &result
+            && instruction.op_code == OpCode::Pseudo(PseudoOp::CallOther)
+        {
+            let arg = instruction.inputs.first().and_then(|input| {
+                if input.address.address_space.is_constant() {
+                    Some(input.address.offset)
+                } else {
+                    None
                 }
+            });
+
+            match arg {
+                Some(x) if x == CallOtherOps::SupervisorCall as u64 => {
+                    return self.kernel.syscall(self.sleigh.as_ref(), memory);
+                }
+                Some(x) if x == CallOtherOps::ExclusiveMonitorPass as u64 => {
+                    if let Some(output) = instruction.output.as_ref() {
+                        // 1 Indicates that the monitor passes and the register can be written
+                        // See usage in AARCH64base.sinc
+                        memory.write_value(output, 1u8)?;
+                    }
+                    return Ok(ControlFlow::Continue(()));
+                }
+                Some(x) if x == CallOtherOps::ExclusiveMonitorsStatus as u64 => {
+                    if let Some(output) = instruction.output.as_ref() {
+                        // 0 on success
+                        // See usage in AARCH64base.sinc
+                        memory.write_value(output, 0u8)?;
+                    }
+                    return Ok(ControlFlow::Continue(()));
+                }
+                Some(x) if x == CallOtherOps::DataMemoryBarrier as u64 => {
+                    return Ok(ControlFlow::Continue(()));
+                }
+                _ => (),
             }
         }
 
