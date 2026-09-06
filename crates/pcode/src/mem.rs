@@ -31,17 +31,6 @@ pub trait VarnodeDataStore {
     type Value: PcodeOps;
 
     fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
-    fn read_bit(&self, source: &VarnodeData) -> Result<<Self::Value as PcodeOps>::Bit> {
-        if source.size > 1 {
-            Err(Error::InvalidArguments(format!(
-                "expected varnode size to be 1, actual {size}",
-                size = source.size
-            )))
-        } else {
-            self.read(source).map(PcodeOps::lsb)
-        }
-    }
-
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
 
     /// Read a [PcodeValue] from memory.

@@ -473,34 +473,3 @@ fn read_data_gap() -> Result<()> {
     );
     Ok(())
 }
-
-#[test]
-fn read_bit() -> Result<()> {
-    let mut memory = GenericMemory::<Pcode128>::default();
-    let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
-    let value = 0x01u8;
-    memory.write(&varnode, value.into())?;
-    let read_value = memory.read_bit(&varnode)?;
-    assert!(read_value, "expected to read true bit from memory");
-    Ok(())
-}
-
-#[test]
-fn read_bit_invalid_varnode_size() -> Result<()> {
-    let memory = GenericMemory::<Pcode128>::default();
-    let varnode = VarnodeData::new(Address::new(address_space(0), 0), 2);
-    let result = memory.read_bit(&varnode);
-    assert!(
-        matches!(result, Err(Error::InvalidArguments(msg)) if msg == format!("expected varnode size to be 1, actual {size}", size = varnode.size))
-    );
-    Ok(())
-}
-
-#[test]
-fn read_bit_undefined() -> Result<()> {
-    let memory = GenericMemory::<Pcode128>::default();
-    let varnode = VarnodeData::new(Address::new(address_space(0), 0), 1);
-    let result = memory.read_bit(&varnode);
-    assert!(matches!(result, Err(Error::UndefinedData { target, .. }) if target == varnode));
-    Ok(())
-}
