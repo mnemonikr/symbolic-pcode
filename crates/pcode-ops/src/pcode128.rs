@@ -290,10 +290,6 @@ impl PcodeOps for Pcode128 {
         self.value() >= rhs.value()
     }
 
-    fn fill_bytes_with(bit: Self::Bit, num_bytes: usize) -> Self {
-        std::iter::repeat_n(if bit { u8::MAX } else { 0 }, num_bytes).collect()
-    }
-
     fn into_le_bytes(self) -> impl ExactSizeIterator<Item = Self::Byte> {
         self.value()
             .to_le_bytes()

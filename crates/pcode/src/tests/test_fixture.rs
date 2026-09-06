@@ -189,10 +189,6 @@ impl PcodeOps for SymbolicValue {
     fn unsigned_greater_than_or_equals(self, _rhs: Self) -> Self::Bit {
         self
     }
-
-    fn fill_bytes_with(_bit: Self::Bit, _num_bytes: usize) -> Self {
-        Self::default()
-    }
 }
 
 impl BitwisePcodeOps for SymbolicValue {
