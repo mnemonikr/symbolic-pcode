@@ -34,8 +34,8 @@ pub enum Error {
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
 
-    #[error("symbolic branch condition at {condition_origin}")]
-    SymbolicBranch { condition_origin: VarnodeData },
+    #[error("symbolic branch")]
+    SymbolicBranch { branch: Branch },
 
     #[error("internal error: {0}")]
     InternalError(String),
@@ -57,7 +57,7 @@ enum NextExecution {
 }
 
 enum BranchingNextExecution {
-    Branch(VarnodeData, NextExecution, NextExecution),
+    Branch(Branch),
     Flow(NextExecution),
 }
 
@@ -201,16 +201,19 @@ impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResp
                 )?;
                 match x.next_execution(control_flow) {
                     BranchingNextExecution::Flow(e1) => self.update_execution(e1)?,
-                    BranchingNextExecution::Branch(condition, e1, e2) => {
-                        match branch_condition_evaluation {
-                            Some(true) => self.update_execution(e1)?,
-                            Some(false) => self.update_execution(e2)?,
-                            _ => {
-                                return Err(Error::SymbolicBranch {
-                                    condition_origin: condition,
-                                });
-                            }
-                        }
+                    BranchingNextExecution::Branch(branch) => {
+                        let next_execution = match branch.conditional_destination(&self.memory) {
+                            Some(ControlFlow::Continue(())) => x.next_instruction(),
+                            Some(ControlFlow::Break(destination)) => x.jump(destination),
+                            None => match branch_condition_evaluation {
+                                Some(true) => x.jump(branch.branch_destination()),
+                                Some(false) => x.next_instruction(),
+                                None => {
+                                    return Err(Error::SymbolicBranch { branch });
+                                }
+                            },
+                        };
+                        self.update_execution(next_execution)?
                     }
                 }
             }
@@ -294,8 +297,8 @@ impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResp
     pub fn step(&mut self, sleigh: &impl Sleigh) -> Result<Option<Self>> {
         match self.processor.step(sleigh) {
             Err(e) => {
-                if let Error::SymbolicBranch { condition_origin } = &e {
-                    let mut branched_processor = self.branch(condition_origin);
+                if let Error::SymbolicBranch { branch } = &e {
+                    let mut branched_processor = self.branch(branch);
                     self.processor.step_branch(sleigh, false)?;
                     branched_processor.processor.step_branch(sleigh, true)?;
                     Ok(Some(branched_processor))
@@ -308,18 +311,15 @@ impl<E: EmulatorHandler + Clone, M: VarnodeDataStore + Default, H: ProcessorResp
     }
 
     /// Create a new processor with a branch of memory that takes this branch
-    fn branch(&mut self, condition_origin: &VarnodeData) -> Self {
+    fn branch(&mut self, branch: &Branch) -> Self {
         Self {
             processor: Processor {
-                memory: self.processor.memory.new_branch(
-                    self.processor
-                        .memory
-                        .read_bit(condition_origin)
-                        .unwrap()
-                        // Need to negate this condition because the new memory is the one that
-                        // does NOT take the branch
-                        .not(),
-                ),
+                memory: self
+                    .processor
+                    .memory
+                    // Need to negate this condition because the new memory is the one that does
+                    // NOT take the branch
+                    .new_branch(branch.condition(&self.processor.memory).unwrap().not()),
                 state: self.processor.state.clone(),
                 handler: self.processor.handler.clone(),
                 emulator: self.processor.emulator.clone(),
@@ -517,30 +517,12 @@ impl PcodeExecution {
 
     fn next_execution(&self, flow: ControlFlow<ControlFlowBreak>) -> BranchingNextExecution {
         match flow {
-            ControlFlow::Continue(())
-            | ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
-                condition: Some(false),
-                ..
-            })) => BranchingNextExecution::Flow(self.next_instruction()),
-            ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Unconditional {
-                destination,
-            }))
-            | ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
-                condition: Some(true),
-                destination,
-                ..
-            })) => BranchingNextExecution::Flow(self.jump(&destination)),
-            ControlFlow::Break(ControlFlowBreak::Emulator(Branch::Conditional {
-                condition_origin,
-                destination,
-                ..
-            })) => BranchingNextExecution::Branch(
-                condition_origin,
-                self.jump(&destination),
-                self.next_instruction(),
-            ),
+            ControlFlow::Continue(()) => BranchingNextExecution::Flow(self.next_instruction()),
             ControlFlow::Break(ControlFlowBreak::Halt) => {
                 BranchingNextExecution::Flow(NextExecution::Halt)
+            }
+            ControlFlow::Break(ControlFlowBreak::Emulator(branch)) => {
+                BranchingNextExecution::Branch(branch)
             }
         }
     }

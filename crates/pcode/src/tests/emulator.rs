@@ -1701,7 +1701,6 @@ fn conditional_branch_absolute() -> Result<()> {
         .expect("branch");
     let expected = Branch::Conditional {
         condition_origin: condition_input,
-        condition: Some(true),
         destination: Destination::MachineAddress(Address {
             address_space: processor_address_space(),
             offset: 0xDEADBEEF,
@@ -1741,7 +1740,6 @@ fn conditional_branch_when_condition_neither_zero_nor_one() -> Result<()> {
         .expect("branch");
     let expected = Branch::Conditional {
         condition_origin: condition_input,
-        condition: Some(true),
         destination: Destination::MachineAddress(Address {
             address_space: processor_address_space(),
             offset: 0xDEADBEEF,
@@ -1780,7 +1778,6 @@ fn conditional_branch_pcode_relative() -> Result<()> {
         .expect("branch");
     let expected = Branch::Conditional {
         condition_origin: condition_input,
-        condition: Some(true),
         destination: Destination::PcodeAddress(-1),
     };
     assert_eq!(actual, expected);

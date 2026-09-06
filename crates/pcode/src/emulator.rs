@@ -98,8 +98,49 @@ pub enum Branch {
     Conditional {
         destination: Destination,
         condition_origin: VarnodeData,
-        condition: Option<bool>,
     },
+}
+
+impl Branch {
+    /// Read the branch condition from memory. Unconditional branches will always return true.
+    pub fn condition<M: VarnodeDataStore>(&self, mem: &M) -> Result<<M::Value as PcodeOps>::Bit> {
+        match self {
+            Branch::Unconditional { .. } => Ok(true.into()),
+            Branch::Conditional {
+                condition_origin, ..
+            } => {
+                let zero = PcodeValue::<M::Value>::from(0u8);
+                let condition = mem.read(condition_origin)?;
+                Ok(condition.not_equals(zero.into_inner()))
+            }
+        }
+    }
+
+    /// Get the branch destination based on the branch condition. Returns None if the branch
+    /// condition cannot be determined to be either true or false.
+    pub fn conditional_destination<'a, M: VarnodeDataStore>(
+        &'a self,
+        mem: &M,
+    ) -> Option<ControlFlow<&'a Destination>> {
+        self.condition(mem).ok().and_then(|bit| {
+            bit.try_into().ok().map(|condition| {
+                if condition {
+                    ControlFlow::Break(self.branch_destination())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+        })
+    }
+
+    /// The branch destination when the branch is taken.
+    pub fn branch_destination(&self) -> &Destination {
+        match self {
+            Branch::Unconditional { destination } | Branch::Conditional { destination, .. } => {
+                destination
+            }
+        }
+    }
 }
 
 macro_rules! binary_shift_op {
@@ -246,7 +287,7 @@ impl PcodeEmulator {
             OpCode::Return => return self.return_instruction(memory, instruction),
             OpCode::BranchIndirect => return self.branch_ind(memory, instruction),
             OpCode::Branch => return self.branch(instruction),
-            OpCode::BranchConditional => return self.conditional_branch(memory, instruction),
+            OpCode::BranchConditional => return self.conditional_branch(instruction),
             OpCode::Call => return self.call(instruction),
             OpCode::CallIndirect => return self.call_ind(memory, instruction),
             _ => {
@@ -441,20 +482,12 @@ impl PcodeEmulator {
     /// is not treated as a variable but as an address and is interpreted in the same way.
     /// Furthermore, a constant space address is also interpreted as a relative address so that a
     /// CBRANCH can do p-code relative branching. See the discussion for the BRANCH operation.
-    fn conditional_branch<M: VarnodeDataStore>(
-        &self,
-        memory: &mut M,
-        instruction: &PcodeInstruction,
-    ) -> BranchResult {
+    fn conditional_branch(&self, instruction: &PcodeInstruction) -> BranchResult {
         require_num_inputs(instruction, 2)?;
         require_has_output(instruction, false)?;
         require_input_size_equals(instruction, 1, 1)?;
 
-        let zero = PcodeValue::<M::Value>::from(0u8);
-        let condition = memory.read(&instruction.inputs[1])?;
-
         Ok(ControlFlow::Break(Branch::Conditional {
-            condition: condition.not_equals(zero.into_inner()).try_into().ok(),
             condition_origin: instruction.inputs[1].clone(),
             destination: Self::branch_destination(&instruction.inputs[0]),
         }))
