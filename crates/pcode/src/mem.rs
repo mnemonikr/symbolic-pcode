@@ -184,14 +184,20 @@ impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
 ///
 /// [Self::read] is *not* conditioned on the branch predicate. See [Self::predicated_read].
 #[derive(Debug)]
-pub struct MemoryBranch<M: VarnodeDataStore + Default> {
+pub struct MemoryBranch<M: VarnodeDataStore + Default>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     leaf_predicate: <M::Value as PcodeOps>::Bit,
     branch_predicate: <M::Value as PcodeOps>::Bit,
     parent: Option<Rc<Self>>,
     memory: M,
 }
 
-impl<M: VarnodeDataStore + Default> Default for MemoryBranch<M> {
+impl<M: VarnodeDataStore + Default> Default for MemoryBranch<M>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     fn default() -> Self {
         Self {
             leaf_predicate: true.into(),
@@ -202,7 +208,10 @@ impl<M: VarnodeDataStore + Default> Default for MemoryBranch<M> {
     }
 }
 
-impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
+impl<M: VarnodeDataStore + Default> MemoryBranch<M>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     pub fn new(memory: M) -> Self {
         Self {
             memory,
@@ -274,7 +283,10 @@ impl<M: VarnodeDataStore + Default> MemoryBranch<M> {
     }
 }
 
-impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
+impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     type Value = M::Value;
 
     /// Read the bytes for this varnode.
@@ -330,12 +342,18 @@ impl<M: VarnodeDataStore + Default> VarnodeDataStore for MemoryBranch<M> {
 /// Collection of all memory branches into a single tree. Tree is composed of both live and dead
 /// branches. A *dead branch* is a branch of memory that has no bearing on an outcome. These branches
 /// are necessary to include so that their predicates are appropriately excluded from the outcome.
-pub struct MemoryTree<'b, 'd, M: VarnodeDataStore + Default> {
+pub struct MemoryTree<'b, 'd, M: VarnodeDataStore + Default>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     branches: Vec<&'b MemoryBranch<M>>,
     dead_branches: Vec<&'d MemoryBranch<M>>,
 }
 
-impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M> {
+impl<'b, 'd, M: VarnodeDataStore + Default> MemoryTree<'b, 'd, M>
+where
+    <M::Value as PcodeOps>::Bit: std::fmt::Debug,
+{
     /// Create a new memory tree composed of the given (live) branches and dead branches.
     pub fn new(
         branches: impl IntoIterator<Item = &'b MemoryBranch<M>>,
