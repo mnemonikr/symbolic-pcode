@@ -28,7 +28,7 @@ pub enum Error {
 }
 
 pub trait VarnodeDataStore {
-    type Value: PcodeOps;
+    type Value: PcodeOps<Bit: Clone, Byte: Clone>;
 
     fn read(&self, source: &VarnodeData) -> Result<Self::Value>;
     fn write(&mut self, destination: &VarnodeData, data: Self::Value) -> Result<()>;
@@ -62,7 +62,12 @@ impl<T: PcodeOps> Default for GenericMemory<T> {
     }
 }
 
-impl<T: PcodeOps> GenericMemory<T> {
+impl<T> GenericMemory<T>
+where
+    T: PcodeOps,
+    <T as PcodeOps>::Bit: Clone,
+    <T as PcodeOps>::Byte: Clone,
+{
     fn read_bytes(
         &self,
         source: &VarnodeData,
@@ -163,7 +168,12 @@ impl<T: PcodeOps> GenericMemory<T> {
     }
 }
 
-impl<T: PcodeOps> VarnodeDataStore for GenericMemory<T> {
+impl<T> VarnodeDataStore for GenericMemory<T>
+where
+    T: PcodeOps,
+    <T as PcodeOps>::Bit: Clone,
+    <T as PcodeOps>::Byte: Clone,
+{
     type Value = T;
 
     fn read(&self, source: &VarnodeData) -> Result<Self::Value> {
