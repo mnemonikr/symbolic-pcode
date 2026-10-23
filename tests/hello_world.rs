@@ -4,10 +4,10 @@ use std::rc::Rc;
 
 use pcode_ops::PcodeOps;
 use symbolic_pcode::arch;
-use symbolic_pcode::emulator::PcodeEmulator;
+use symbolic_pcode::emulator::{self, PcodeEmulator};
 use symbolic_pcode::kernel::linux::LinuxKernel;
 use symbolic_pcode::libsla::Sleigh;
-use symbolic_pcode::mem::VarnodeDataStore;
+use symbolic_pcode::mem::{self, VarnodeDataStore};
 use symbolic_pcode::processor::{self, Processor, ProcessorState};
 
 use crate::common;
@@ -50,7 +50,15 @@ fn hello_world_x86_linux() -> processor::Result<()> {
 
     loop {
         let print_pcode = matches!(processor.state(), ProcessorState::Decode(_));
-        processor.step(sleigh.as_ref())?;
+        let step_result = processor.step(sleigh.as_ref());
+        if let Err(processor::Error::Emulation(emulator::Error::MemoryAccess(
+            mem::Error::UndefinedData { target, .. },
+        ))) = step_result.as_ref()
+            && let Some(register_name) = sleigh.register_name(target)
+        {
+            println!("Undefined data in register: {register_name}");
+        }
+        step_result?;
 
         if print_pcode && let ProcessorState::Execute(e) = processor.state() {
             for instr in &e.pcode().instructions {
