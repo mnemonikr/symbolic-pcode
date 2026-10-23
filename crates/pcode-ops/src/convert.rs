@@ -50,7 +50,14 @@ impl<T: PcodeOps> PcodeValue<T> {
         byte[0] = bit;
         Self::from_byte(byte.into())
     }
+}
 
+impl<T> PcodeValue<T>
+where
+    T: PcodeOps,
+    T::Bit: Clone,
+    T::Byte: Clone,
+{
     /// Create a value with given number of bytes filled with the provided bit.
     pub fn bytes_filled_by(bit: T::Bit, num_bytes: usize) -> Self {
         let byte = T::Byte::from(std::array::from_fn(|_| bit.clone()));
