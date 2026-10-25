@@ -123,7 +123,12 @@ pub fn init_registers_x86_64(sleigh: &impl Sleigh, memory: &mut Memory) {
     let registers = ["RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RBP"]
         .into_iter()
         .map(str::to_owned)
-        .chain((8..16).map(|n| format!("R{n}")));
+        .chain((8..16).map(|n| format!("R{n}")))
+        // In Rust 1.99.1 it has been observed that XMM registers are referenced
+        // Unclear as to the root cause, but observed the following:
+        //
+        // Decoded: [[ram:0000000000424503]#3]: [ram:0000000000424503] XORPS XMM0, XMM0
+        .chain((0..16).map(|n| format!("XMM{n}")));
 
     init_registers(sleigh, memory, &rsp, registers);
 
